@@ -130,12 +130,15 @@ function chercher(options: Option[], q: string, max = 14): Option[] {
   }
   return res.sort((a, b) => b.s - a.s || a.o.valeur.localeCompare(b.o.valeur)).slice(0, max).map(x => x.o);
 }
-function RechercheIntelligente({ options, placeholder, onChoisir, c, grand, autoFocus, extra }: { options: Option[]; placeholder: string; onChoisir: (o: Option) => void; c: Couleurs; grand?: boolean; autoFocus?: boolean; extra?: (q: string) => Option[] }) {
+// 14/10/2026 — multi : cases à cocher, la liste reste ouverte (plusieurs articles sans retaper)
+// et « Tout cocher » pour prendre tous les résultats d'un coup.
+function RechercheIntelligente({ options, placeholder, onChoisir, c, grand, autoFocus, extra, multi, estChoisi }: { options: Option[]; placeholder: string; onChoisir: (o: Option) => void; c: Couleurs; grand?: boolean; autoFocus?: boolean; extra?: (q: string) => Option[]; multi?: boolean; estChoisi?: (o: Option) => boolean }) {
   const [q, setQ] = useState("");
   const [actif, setActif] = useState(0);
   const [ouvert, setOuvert] = useState(false);
-  const resultats = useMemo(() => [...(extra ? extra(q) : []), ...chercher(options, q)].slice(0, 16), [options, q, extra]);
-  const choisir = (o: Option) => { onChoisir(o); setQ(""); setOuvert(false); };
+  const resultats = useMemo(() => multi ? chercher(options, q, 60) : [...(extra ? extra(q) : []), ...chercher(options, q)].slice(0, 16), [options, q, extra, multi]);
+  const choisir = (o: Option) => { onChoisir(o); if (!multi) { setQ(""); setOuvert(false); } };
+  const parType = multi ? resultats.reduce((m, o) => m.set(o.type, [...(m.get(o.type) || []), o]), new Map<string, Option[]>()) : null;
   return (
     <div style={{ position: "relative" }}>
       <input value={q} autoFocus={autoFocus} placeholder={placeholder}
@@ -151,9 +154,20 @@ function RechercheIntelligente({ options, placeholder, onChoisir, c, grand, auto
       {ouvert && q && (
         <div style={{ position: "absolute", left: 0, right: 0, top: "calc(100% + 4px)", zIndex: 50, background: c.carte, border: `1px solid ${c.bord}`, borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,.15)", maxHeight: 380, overflowY: "auto" }}>
           {!resultats.length && <div style={{ padding: "10px 14px", fontSize: 13, color: c.gris }}>Aucun résultat pour « {q} »</div>}
+          {multi && parType && [...parType].filter(([, l]) => l.length > 1).map(([t, l]) => {
+            const tous = l.every(o => estChoisi?.(o));
+            const lib = t === "article" ? "articles" : t === "famille" ? "familles" : t === "client" ? "clients" : "fournisseurs";
+            return (
+              <button key={"tout" + t} type="button" onMouseDown={e => { e.preventDefault(); l.filter(o => !!estChoisi?.(o) === tous).forEach(o => onChoisir(o)); }}
+                style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "9px 14px", border: "none", borderBottom: `1px solid ${c.bord}`, background: c.sombre ? "#1d2e2b" : "#f0f7f3", color: c.vert, cursor: "pointer", fontSize: 13.5, fontWeight: 900 }}>
+                <span style={{ fontSize: 16 }}>{tous ? "☑" : "☐"}</span>{tous ? "Tout décocher" : "Tout cocher"} : les {l.length} {lib} « {q} »
+              </button>
+            );
+          })}
           {resultats.map((o, i) => (
             <button key={o.type + o.valeur} type="button" onMouseDown={e => { e.preventDefault(); choisir(o); }} onMouseEnter={() => setActif(i)}
               style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "9px 14px", border: "none", background: i === actif ? (c.sombre ? "#1d2e2b" : "#eaf2ee") : "transparent", color: c.texte, cursor: "pointer", fontSize: 14 }}>
+              {multi && <span style={{ fontSize: 17, color: estChoisi?.(o) ? c.vert : c.gris, width: 18 }}>{estChoisi?.(o) ? "☑" : "☐"}</span>}
               <span style={{ fontSize: 16 }}>{ICONES[o.type] || "•"}</span>
               <span style={{ flex: 1, minWidth: 0 }}>
                 <span style={{ display: "block", fontWeight: 700 }}>{o.valeur}</span>
@@ -161,6 +175,11 @@ function RechercheIntelligente({ options, placeholder, onChoisir, c, grand, auto
               </span>
             </button>
           ))}
+          {multi && resultats.length > 0 && (
+            <div style={{ position: "sticky", bottom: 0, display: "flex", justifyContent: "flex-end", gap: 8, padding: "8px 12px", background: c.carte, borderTop: `1px solid ${c.bord}` }}>
+              <button type="button" onMouseDown={e => { e.preventDefault(); setQ(""); setOuvert(false); }} style={{ padding: "7px 16px", borderRadius: 10, border: "none", background: c.vert, color: "#fff", fontWeight: 800, cursor: "pointer" }}>✓ Terminé</button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -589,7 +608,8 @@ function VentesProduits({ c, voirMarge, voirEuros = true, ventes, equipes, prese
     return [...vers("famille", m.famille, n => `Famille · ${ent(n)} colis sur la période`), ...vers("article", m.article, n => `Article · ${ent(n)} colis`), ...vers("client", m.client, n => voirEuros ? `Client · ${eur0(n)}` : "Client"), ...vers("fournisseur", m.fournisseur, n => voirEuros ? `Fournisseur · ${eur0(n)}` : "Fournisseur")];
   }, [dansPeriode]);
   const ajouter = (o: Option) => {
-    const add = (l: string[], set: (x: string[]) => void) => { if (!l.includes(o.valeur)) set([...l, o.valeur]); };
+    // Mise à jour « fonctionnelle » : « Tout cocher » appelle ajouter() plusieurs fois d'affilée.
+    const add = (_l: string[], set: (f: (x: string[]) => string[]) => void) => set(l => l.includes(o.valeur) ? l.filter(x => x !== o.valeur) : [...l, o.valeur]);
     if (o.type === "article") add(articles, setArticles); else if (o.type === "famille") add(familles, setFamilles);
     else if (o.type === "client") add(clients, setClients); else add(fournisseurs, setFournisseurs);
   };
@@ -645,7 +665,8 @@ function VentesProduits({ c, voirMarge, voirEuros = true, ventes, equipes, prese
         {maxDate && <p style={{ margin: "6px 0 0", fontSize: 11.5, color: c.gris }}>« Derniers jours » comptés à partir du dernier jour de la base ({dateFr(maxDate)}).</p>}
       </Bloc>
       <Bloc titre="Quoi ? — familles, articles, clients, fournisseurs (cumulables)" c={c}>
-        <RechercheIntelligente options={options} c={c} autoFocus={!preset.articles && !preset.familles} placeholder="🔍 Tape une famille, un article, un client ou un fournisseur…" onChoisir={ajouter} />
+        <RechercheIntelligente options={options} c={c} multi autoFocus={!preset.articles && !preset.familles} placeholder="🔍 Tape une famille, un article, un client ou un fournisseur… puis coche" onChoisir={ajouter}
+          estChoisi={o => (o.type === "article" ? articles : o.type === "famille" ? familles : o.type === "client" ? clients : fournisseurs).includes(o.valeur)} />
         <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8, alignItems: "center" }}>
           <span style={{ fontSize: 12.5, fontWeight: 800, color: c.gris, marginRight: 4 }}>Compte de stock :</span>
           {(["tous", "GMS", "PRESTIGE"] as const).map(k => <button key={k} type="button" onClick={() => setCompte(k)} style={puce(c, compte === k)}>{k === "tous" ? "Tous" : k === "GMS" ? "GMS" : "Prestige"}</button>)}
