@@ -51,11 +51,35 @@ function decisionAbrege(decision?: string): string {
   return "OK";
 }
 
+// 15/10/2026 — Demande d'Elinathan : « trouver un autre système que juste un tableau, rendre le
+// truc dynamique comme la traça Lidl ». Vue en cartes par lot, rangées par jour du dernier
+// contrôle, filtres rapides par décision, recherche élargie (lot, fournisseur, produit, n° traça) ;
+// une carte s'ouvre sur place en frise des contrôles. L'ancien tableau reste disponible (bascule).
+const RANG_DECISION: Record<string, number> = { refus: 2, reserve: 1 };
+const pireDecision = (items: RapportRecap[]) => items.reduce<string | undefined>((p, r) => ((RANG_DECISION[r.decision || ""] || 0) > (RANG_DECISION[p || ""] || 0) ? r.decision : p), undefined);
+const JOURS = ["Dimanche", "Lundi", "Mardi", "Mercredi", "Jeudi", "Vendredi", "Samedi"];
+function libelleJour(ts: number): string {
+  if (!ts) return "Sans date";
+  const d = new Date(ts), auj = new Date();
+  const j0 = new Date(auj.getFullYear(), auj.getMonth(), auj.getDate()).getTime();
+  const jd = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const dd = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+  if (jd === j0) return `Aujourd'hui · ${dd}`;
+  if (jd === j0 - 86400000) return `Hier · ${dd}`;
+  return `${JOURS[d.getDay()]} ${dd}${d.getFullYear() !== auj.getFullYear() ? `/${d.getFullYear()}` : ""}`;
+}
+const decisionFond = (d?: string) => (d === "refus" ? "#fef2f2" : d === "reserve" ? "#fffbeb" : "#f0fdf4");
+
 export function RecapQualiteModule({ rapports, arrivages, onClose }: { rapports: RapportRecap[]; arrivages: ArrivageRecap[]; onClose: () => void }) {
   const [rechercheLot, setRechercheLot] = useState("");
   const [du, setDu] = useState("");
   const [au, setAu] = useState("");
   const [lotOuvert, setLotOuvert] = useState<string | null>(null);
+  const [filtreDecision, setFiltreDecision] = useState<"" | "ok" | "reserve" | "refus">("");
+  const [vue, setVue] = useState<"cartes" | "tableau">(() => {
+    try { return localStorage.getItem("recap_qualite_vue") === "tableau" ? "tableau" : "cartes"; } catch { return "cartes"; }
+  });
+  const changerVue = (v: "cartes" | "tableau") => { setVue(v); try { localStorage.setItem("recap_qualite_vue", v); } catch { /* sans stockage local */ } };
 
   // Poids net réellement pesé à l'agréage, retrouvé via l'arrivage lié au rapport.
   const poidsNetDe = (r: RapportRecap): string => {
@@ -83,7 +107,7 @@ export function RecapQualiteModule({ rapports, arrivages, onClose }: { rapports:
       }
       if (rechercheLot.trim()) {
         const q = rechercheLot.trim().toLowerCase();
-        const lot = `${r.lotMoorea || ""} ${r.lotFournisseur || ""}`.toLowerCase();
+        const lot = `${r.lotMoorea || ""} ${r.lotFournisseur || ""} ${r.fournisseur || ""} ${r.produit || ""} ${r.numeroTracabilite || ""}`.toLowerCase();
         if (!lot.includes(q)) return false;
       }
       return true;
@@ -103,20 +127,98 @@ export function RecapQualiteModule({ rapports, arrivages, onClose }: { rapports:
       lot,
       items: items.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0)),
       dernierTimestamp: Math.max(...items.map(i => i.timestamp || 0)),
+      pire: pireDecision(items),
     }));
     // Lots les plus récemment mis à jour en premier.
     return entries.sort((a, b) => b.dernierTimestamp - a.dernierTimestamp);
   }, [rapportsFiltres]);
 
+  const nbParDecision = useMemo(() => {
+    const n = { ok: 0, reserve: 0, refus: 0 };
+    groupes.forEach(g => { if (g.pire === "refus") n.refus++; else if (g.pire === "reserve") n.reserve++; else n.ok++; });
+    return n;
+  }, [groupes]);
+  const groupesVisibles = useMemo(() => groupes.filter(g =>
+    !filtreDecision || (filtreDecision === "ok" ? g.pire !== "refus" && g.pire !== "reserve" : g.pire === filtreDecision)
+  ), [groupes, filtreDecision]);
+  // Cartes rangées par jour du dernier contrôle.
+  const parJour = useMemo(() => {
+    const m: { jour: string; lots: typeof groupesVisibles }[] = [];
+    groupesVisibles.forEach(g => {
+      const j = libelleJour(g.dernierTimestamp);
+      const last = m[m.length - 1];
+      if (last && last.jour === j) last.lots.push(g); else m.push({ jour: j, lots: [g] });
+    });
+    return m;
+  }, [groupesVisibles]);
+
+  const pastille = (txt: string, actif: boolean) => ({
+    color: actif ? "#374151" : "#c4c4c4", background: "#f9fafb", border: "1px solid #eef0f2", borderRadius: 7, padding: "2px 7px", fontSize: 11, fontWeight: 600, whiteSpace: "nowrap" as const, overflow: "hidden", textOverflow: "ellipsis", maxWidth: "100%",
+  });
+  const rendreCarte = ({ lot, items, pire }: { lot: string; items: RapportRecap[]; pire?: string }) => {
+    const ouvert = lotOuvert === lot;
+    const dernier = items[items.length - 1];
+    const traca = [...items].reverse().find(r => r.numeroTracabilite)?.numeroTracabilite;
+    const temp = [...items].reverse().find(r => r.temperature)?.temperature;
+    const poids = [...items].reverse().map(poidsNetDe).find(Boolean);
+    const coul = decisionColor(pire);
+    return [
+      <div key={lot} onClick={() => setLotOuvert(ouvert ? null : lot)}
+        style={{ background: "#fff", borderRadius: ouvert ? "12px 12px 0 0" : 12, border: `2px solid ${ouvert ? coul : "#eee8dc"}`, borderBottom: ouvert ? "none" : undefined, borderLeft: `${ouvert ? 2 : 5}px solid ${coul}`, padding: ouvert ? "10px 12px 10px 15px" : "10px 12px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 6, position: "relative", zIndex: ouvert ? 1 : undefined, marginBottom: ouvert ? -12 : 0, paddingBottom: ouvert ? 22 : 10, boxShadow: ouvert ? "none" : "0 1px 6px rgba(0,0,0,0.04)" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 15, fontWeight: 900, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>{lot === "Sans lot" ? lot : `Lot ${lot}`}</span>
+          <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 800, color: coul, background: decisionFond(pire), borderRadius: 20, padding: "2px 9px" }}>{decisionAbrege(pire)}</span>
+        </div>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 12.5, fontWeight: 700, color: "#1f2937", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={dernier.produit}>{dernier.produit || "-"}</div>
+          <div style={{ fontSize: 11, color: "#9ca3af", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={dernier.fournisseur}>{dernier.fournisseur || "-"}</div>
+        </div>
+        <div style={{ display: "flex", gap: 5, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={pastille("", !!traca)} title={traca}>🏷️ {traca || "—"}</span>
+          <span style={pastille("", !!temp)}>🌡️ {temp ? `${temp}°C` : "—"}</span>
+          <span style={pastille("", !!poids)}>⚖️ {poids ? `${poids} kg` : "—"}</span>
+          <span style={{ marginLeft: "auto", fontSize: 10.5, color: "#9ca3af", fontWeight: 700, whiteSpace: "nowrap" }}>{items.length} contrôle{items.length > 1 ? "s" : ""}</span>
+        </div>
+      </div>,
+      ouvert && (
+        <div key={`${lot}_detail`} style={{ gridColumn: "1 / -1", background: "#fff", border: `2px solid ${coul}`, borderRadius: 12, padding: "12px 14px" }}>
+          <div style={{ fontSize: 11, fontWeight: 800, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>Contrôles du lot {lot}</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
+            {items.map((r, i) => {
+              const pn = poidsNetDe(r);
+              const c = decisionColor(r.decision);
+              return (
+                <div key={r.id || r.firebaseKey || i} style={{ display: "flex", gap: 10, alignItems: "stretch" }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", width: 14, flexShrink: 0 }}>
+                    <span style={{ width: 12, height: 12, borderRadius: "50%", background: c, marginTop: 9, flexShrink: 0 }} />
+                    {i < items.length - 1 && <span style={{ flex: 1, width: 2, background: "#e5e7eb" }} />}
+                  </div>
+                  <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "6px 10px", margin: "2px 0", borderRadius: 8, background: decisionFond(r.decision), fontSize: 12 }}>
+                    <span style={{ fontWeight: 800, color: "#374151", minWidth: 110 }}>{r.date || "-"}{r.heure ? ` · ${r.heure}` : ""}</span>
+                    {r.numeroRapport && <span style={{ color: "#6b7280", fontWeight: 700 }}>{r.numeroRapport}</span>}
+                    <span style={pastille("", !!r.numeroTracabilite)}>🏷️ {r.numeroTracabilite || "—"}</span>
+                    <span style={pastille("", !!r.temperature)}>🌡️ {r.temperature ? `${r.temperature}°C` : "—"}</span>
+                    <span style={pastille("", !!pn)}>⚖️ {pn ? `${pn} kg` : "—"}</span>
+                    <span style={{ marginLeft: "auto", fontWeight: 800, color: c }}>{decisionAbrege(r.decision)}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ),
+    ];
+  };
+
   return (
     <div style={{ minHeight: "100vh", background: "#faf9f6" }}>
       <PageHeader titre="🧪 Récap Qualité" couleur="#16a34a" onBack={onClose} />
-      <div style={{ maxWidth: 900, margin: "0 auto", padding: 16 }}>
+      <div style={{ maxWidth: vue === "cartes" ? 1200 : 900, margin: "0 auto", padding: 16 }}>
         <div style={{ background: "#fff", borderRadius: 14, padding: 14, marginBottom: 14, border: "1.5px solid #e8e0d0" }}>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-            <label style={{ fontSize: 11, color: "#6b7280" }}>N° de lot
-              <input type="text" value={rechercheLot} onChange={e => setRechercheLot(e.target.value)} placeholder="Moorea ou fournisseur"
-                style={{ display: "block", marginTop: 3, padding: "7px 10px", borderRadius: 8, border: "1.5px solid #e8e0d0", fontSize: 13, width: 170 }} />
+            <label style={{ fontSize: 11, color: "#6b7280" }}>Rechercher
+              <input type="text" value={rechercheLot} onChange={e => setRechercheLot(e.target.value)} placeholder="Lot, fournisseur, produit, n° traça…"
+                style={{ display: "block", marginTop: 3, padding: "7px 10px", borderRadius: 8, border: "1.5px solid #e8e0d0", fontSize: 13, width: 240 }} />
             </label>
             <label style={{ fontSize: 11, color: "#6b7280" }}>Du
               <input type="date" value={du} onChange={e => setDu(e.target.value)}
@@ -126,12 +228,32 @@ export function RecapQualiteModule({ rapports, arrivages, onClose }: { rapports:
               <input type="date" value={au} onChange={e => setAu(e.target.value)}
                 style={{ display: "block", marginTop: 3, padding: "7px 10px", borderRadius: 8, border: "1.5px solid #e8e0d0", fontSize: 13 }} />
             </label>
-            {(rechercheLot || du || au) && (
-              <button onClick={() => { setRechercheLot(""); setDu(""); setAu(""); }}
+            {(rechercheLot || du || au || filtreDecision) && (
+              <button onClick={() => { setRechercheLot(""); setDu(""); setAu(""); setFiltreDecision(""); }}
                 style={{ padding: "7px 12px", borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
                 ✕
               </button>
             )}
+            <span style={{ marginLeft: "auto", display: "inline-flex", border: "1px solid #e5e7eb", borderRadius: 8, overflow: "hidden" }}>
+              {(["cartes", "tableau"] as const).map(v => (
+                <button key={v} type="button" onClick={() => changerVue(v)}
+                  style={{ padding: "7px 12px", border: "none", background: vue === v ? "#1a2e1a" : "#fff", color: vue === v ? "#fff" : "#6b7280", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
+                  {v === "cartes" ? "▦ Cartes" : "☰ Tableau"}
+                </button>
+              ))}
+            </span>
+          </div>
+          {/* Filtres rapides par décision (la plus grave du lot). */}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+            {([["", "Tous", groupes.length, "#1a2e1a", "#f3f4f6"], ["ok", "OK", nbParDecision.ok, "#16a34a", "#f0fdf4"], ["reserve", "Réserve", nbParDecision.reserve, "#d97706", "#fffbeb"], ["refus", "Refusé", nbParDecision.refus, "#dc2626", "#fef2f2"]] as const).map(([cle, lib, n, c, bg]) => {
+              const actif = filtreDecision === cle;
+              return (
+                <button key={cle || "tous"} type="button" onClick={() => setFiltreDecision(cle)}
+                  style={{ padding: "5px 12px", borderRadius: 20, border: `1.5px solid ${actif ? c : "#eee8dc"}`, background: actif ? bg : "#fff", color: c, fontSize: 12, fontWeight: 800, cursor: "pointer" }}>
+                  {lib} <span style={{ opacity: 0.7 }}>{n}</span>
+                </button>
+              );
+            })}
           </div>
           <p style={{ margin: "8px 0 0", fontSize: 11, color: "#9ca3af" }}>
             {groupes.length} lot(s) · {rapportsFiltres.length} rapport(s)
@@ -139,8 +261,23 @@ export function RecapQualiteModule({ rapports, arrivages, onClose }: { rapports:
           </p>
         </div>
 
-        {groupes.length === 0 ? (
+        {groupesVisibles.length === 0 ? (
           <p style={{ textAlign: "center", color: "#9ca3af", fontSize: 13, padding: "3rem 0" }}>Aucun rapport qualité sur cette sélection.</p>
+        ) : vue === "cartes" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {parJour.map(({ jour, lots }) => (
+              <div key={jour}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 13, fontWeight: 800, color: "#1a2e1a" }}>{jour}</span>
+                  <span style={{ fontSize: 11, color: "#9ca3af", fontWeight: 700 }}>{lots.length} lot{lots.length > 1 ? "s" : ""}</span>
+                  <span style={{ flex: 1, height: 1, background: "#eee8dc" }} />
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(260px, 100%), 1fr))", gridAutoFlow: "row dense", gap: 10 }}>
+                  {lots.map(rendreCarte)}
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           <div style={{ background: "#fff", borderRadius: 14, overflow: "auto", border: "1.5px solid #e8e0d0" }}>
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
@@ -154,7 +291,7 @@ export function RecapQualiteModule({ rapports, arrivages, onClose }: { rapports:
                 </tr>
               </thead>
               <tbody>
-                {groupes.map(({ lot, items }, idx) => {
+                {groupesVisibles.map(({ lot, items }, idx) => {
                   const ouvert = lotOuvert === lot;
                   const dernier = items[items.length - 1];
                   return [
