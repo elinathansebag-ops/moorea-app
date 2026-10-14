@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
-import { db, ref, get, onValue, update, set, push } from "./firebase";
+import { db, ref, get, onValue, update, set, push, srcPhoto } from "./firebase";
 import { calculerAcces, cleEmail, type AccesRole, type AccesUser } from "./shared";
 import { PageHeader } from "./shared";
 import { chargerEquipes, equipeArticle } from "./stockEquipes";
@@ -1583,7 +1583,7 @@ function FicheRapport({ c, rapport: r, onClose }: { c: Couleurs; rapport: any; o
             <div style={{ marginTop: 10 }}>
               <div style={{ fontSize: 12.5, fontWeight: 800, color: c.gris, marginBottom: 6 }}>📷 Photos ({photos.length})</div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(110px, 1fr))", gap: 6 }}>
-                {photos.map((u, i) => <a key={i} href={u} target="_blank" rel="noreferrer"><img src={u} alt="" style={{ width: "100%", height: 100, objectFit: "cover", borderRadius: 8 }} /></a>)}
+                {photos.map((u, i) => <a key={i} href={srcPhoto(u)} target="_blank" rel="noreferrer"><img src={srcPhoto(u)} loading="lazy" alt="" style={{ width: "100%", height: 100, objectFit: "cover", borderRadius: 8 }} /></a>)}
               </div>
             </div>
           )}

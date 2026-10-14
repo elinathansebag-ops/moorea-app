@@ -7,7 +7,7 @@ import { useState, useEffect, useRef, useMemo, lazy, createElement } from "react
 import { useProfilGenerique, avecProfil, ouvrirWhatsApp, nomSignataire } from "./ProfilGenerique";
 import { AccueilModulesV2 } from "./AccueilModulesV2";
 import { cleDoublonArrivage, classifierImportArr } from "./arrivagesImport";
-import { db, ref, push, onValue, update, remove, set, get, onDisconnect, serverTimestamp, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged } from "./firebase";
+import { db, ref, push, onValue, update, remove, set, get, onDisconnect, serverTimestamp, auth, googleProvider, signInWithPopup, signOut, onAuthStateChanged, envoyerPhoto, srcPhoto } from "./firebase";
 import { EnvoisMails } from "./EnvoisMails";
 import { query, orderByChild, equalTo, onChildAdded } from "firebase/database";
 import { NotificationsPush, AttributionNotifications, alerterPush, EtatNotificationsComptes, InvitationNotifications, envoyerUneFois, dejaEnvoye } from "./NotificationsPush";
@@ -1042,6 +1042,9 @@ export default function App() {
   const isDrawing = useRef(false);
   // Aperçu PDF intégré au site (au lieu d'ouvrir un nouvel onglet) — voir genererBonRetourAvecSignature
   const [pdfApercu, setPdfApercu] = useState<string | null>(null);
+  // 14/10/2026 — Téléchargement du rapport : on demande d'abord la langue (français / anglais).
+  const [choixLangueRapport, setChoixLangueRapport] = useState<any>(null);
+  const [pdfEnCours, setPdfEnCours] = useState(false);
   const pdfApercuIframeRef = useRef<HTMLIFrameElement>(null);
 
   // ─── AUTH ───
@@ -2423,17 +2426,11 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   const uploadPhotosImgBB = async (photosList: { name: string; url: string }[]) => {
     // 11/10/2026 — Passe par le serveur (serveur/routes/upload-photo.js) : la clé ImgBB n'est plus
     // dans l'appli.
+    // 14/10/2026 — Firebase Storage d'abord (voir envoyerPhoto dans firebase.ts), ImgBB en secours.
     const uploaded: string[] = [];
     for (const photo of photosList) {
-      try {
-        const res = await fetch("/api/upload-photo", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ image: photo.url.split(",")[1] }),
-        });
-        const data = await res.json();
-        if (data.url) uploaded.push(data.url);
-      } catch {}
+      const url = await envoyerPhoto(photo.url);
+      if (url) uploaded.push(url);
     }
     return uploaded;
   };
@@ -2622,6 +2619,36 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   };
 
   // ─── GÉNÉRER PDF (aperçu écran) ───
+  // 14/10/2026 — Libellés du rapport PDF en anglais (version « English » du téléchargement).
+  const traduireTextePdf = (t: any): any => {
+    if (typeof t !== "string") return t;
+    const mots: Record<string, string> = {
+      "Rapport Qualite - Arrivages": "Quality Report - Arrivals", "ENTREE EN STOCK": "ACCEPTED INTO STOCK", "RESERVE": "ACCEPTED WITH RESERVATION", "REFUS": "REJECTED",
+      "INFORMATIONS DU COLIS": "SHIPMENT INFORMATION", "EVALUATION QUALITE": "QUALITY ASSESSMENT", "POIDS": "WEIGHT", "CONFORMITE ETIQUETTE": "LABEL COMPLIANCE",
+      "COMMENTAIRE": "COMMENTS", "CONTROLES QUALITE": "QUALITY CHECKS", "PHOTOS": "PHOTOS",
+      "Fournisseur": "Supplier", "Produit": "Product", "Agreeur": "Inspector", "Origine": "Origin", "Calibre": "Size", "Poids": "Weight", "Conditionnement": "Packaging",
+      "N Lot Moorea": "Moorea lot no.", "N Lot Fournisseur": "Supplier lot no.", "DLC": "Best before", "N Tracabilite": "Traceability no.", "Temperature": "Temperature",
+      "Colis attendus": "Cases expected", "Colis recus": "Cases received",
+      "Qualite visuelle": "Visual quality", "Couleur": "Colour", "Etat emballage": "Packaging condition", "Sanitaire": "Sanitary", "Etat general": "General condition",
+      "Fraicheur": "Freshness", "Maturite": "Ripeness", "Coloration": "Coloration", "Critere": "Criterion",
+      "Poids OK": "Weight OK", "Etiquette absente": "Label missing",
+      "Nom du produit": "Product name", "Origine en français": "Origin in French", "GGN": "GGN", "Numéro de lot": "Lot number",
+    };
+    const notes: Record<string, string> = { Insuffisant: "Poor", Passable: "Fair", Correct: "Satisfactory", Bon: "Good", Excellent: "Excellent" };
+    const verdicts: Record<string, string> = { Conforme: "Compliant", Reserve: "Reservation", "Non conforme": "Non-compliant" };
+    if (mots[t]) return mots[t];
+    let m: RegExpMatchArray | null;
+    if ((m = t.match(/^(.+) :$/)) && mots[m[1]]) return `${mots[m[1]]}:`;
+    if ((m = t.match(/^(\d{2}\/\d{2}\/\d{4}) a (.+)$/))) return `${m[1]} at ${m[2]}`;
+    if ((m = t.match(/^Colis (en reserve|refuses) : (.+) colis {2}\((.+)\)$/))) return `Cases ${m[1] === "en reserve" ? "with reservation" : "rejected"}: ${m[2]} cases  (${m[3]})`;
+    if ((m = t.match(/^(\d)\/5 - (.+)$/))) return `${m[1]}/5 - ${notes[m[2]] || m[2]}`;
+    if ((m = t.match(/^Score moyen : (.+) - (.+)$/))) return `Average score: ${m[1]} - ${verdicts[m[2]] || m[2]}`;
+    if ((m = t.match(/^Ecart(.*)$/))) return `Deviation${m[1].replace(" : ", ": ")}`;
+    if ((m = t.match(/^(OK|X) (.+)$/)) && mots[m[2]]) return `${m[1]} ${mots[m[2]]}`;
+    if ((m = t.match(/^Genere par Moorea - Agreage Rungis(.*)$/))) return `Generated by Moorea - Quality control Rungis${m[1]}`;
+    return t;
+  };
+
   const generatePDF = async (r: any): Promise<string> => {
     return generatePDFBase64(r);
   };
@@ -2862,10 +2889,23 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   };
 
   // ─── GÉNÉRER PDF EN BASE64 (pour email) ───
-  const generatePDFBase64 = async (r: any): Promise<string> => {
+  const generatePDFBase64 = async (r: any, langue: "fr" | "en" = "fr"): Promise<string> => {
     // 05/10/2026 — jsPDF chargé à la demande (plus dans le fichier principal de l'appli).
     const { default: jsPDF } = await import("jspdf");
     const doc = new jsPDF({ unit: "mm", format: "a4" });
+    // 14/10/2026 — Rapport en anglais : chaque texte dessiné passe par traduireTextePdf, et le
+    // commentaire de l'agréeur est traduit par le serveur (Claude, /api/traduire).
+    if (langue === "en") {
+      if (r.observations) {
+        try {
+          const rep = await fetch("/api/traduire", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ textes: [r.observations] }) });
+          const d = await rep.json();
+          if (d?.textes?.[0]) r = { ...r, observations: d.textes[0] };
+        } catch { /* commentaire laissé en français */ }
+      }
+      const texteOrigine = doc.text.bind(doc);
+      (doc as any).text = (t: any, ...reste: any[]) => texteOrigine(Array.isArray(t) ? t.map(traduireTextePdf) : traduireTextePdf(t), ...reste);
+    }
     const W = 210; const M = 14; const CW = W - M * 2;
     let y = 0;
     const addPage = () => { doc.addPage(); y = 14; };
@@ -3272,9 +3312,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       showToast("Erreur génération PDF : " + (e?.message || String(e)), "error");
     }
   };
-  const downloadPDF = async (r: any) => {
+  const downloadPDF = async (r: any, langue: "fr" | "en" = "fr") => {
     try {
-      const pdfDataUri = await generatePDFBase64(r);
+      const pdfDataUri = await generatePDFBase64(r, langue);
       // Sur iPad/Safari iOS, un blob: URL donne une page blanche dans l'iframe de façon fiable
       // (bug connu), donc on garde la data URI directe dans ce cas précis.
       // Sur desktop (Chrome/Firefox), c'est l'inverse avec les rapports contenant des photos :
@@ -4304,6 +4344,57 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       onClose={() => { setRaccourciPresta(null); setShowAccueil(true); }} demandesRecondExterne={reconditionnementDemandesListe} /></>;
   }
 
+  // 14/10/2026 — Choix de la langue + aperçu du PDF du rapport : partagés par l'écran principal et la Recherche.
+  const fenetresPdf = (
+    <>
+      {choixLangueRapport && (
+        <div onClick={() => !pdfEnCours && setChoixLangueRapport(null)} style={{ position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, padding: "20px 20px 16px", width: "min(380px, 100%)", boxShadow: "0 20px 60px rgba(0,0,0,.3)", textAlign: "center" }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: "#1a2e1a", marginBottom: 4 }}>Télécharger le rapport</div>
+            <div style={{ fontSize: 12.5, color: "#6b7280", marginBottom: 14 }}>{choixLangueRapport.produit || ""}{choixLangueRapport.numeroRapport ? ` · ${choixLangueRapport.numeroRapport}` : ""}</div>
+            <div style={{ display: "flex", gap: 10 }}>
+              {([["fr", "🇫🇷", "Français"], ["en", "🇬🇧", "English"]] as const).map(([l, drapeau, nom]) => (
+                <button key={l} type="button" disabled={pdfEnCours} onClick={async () => { setPdfEnCours(true); await downloadPDF(choixLangueRapport, l); setPdfEnCours(false); setChoixLangueRapport(null); }}
+                  style={{ flex: 1, padding: "14px 0", borderRadius: 14, border: "1.5px solid #e8e0d0", background: "#faf8f5", cursor: pdfEnCours ? "wait" : "pointer", fontSize: 15, fontWeight: 700, color: "#1a2e1a" }}>
+                  <div style={{ fontSize: 26 }}>{drapeau}</div>{nom}
+                </button>
+              ))}
+            </div>
+            <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 10, minHeight: 16 }}>{pdfEnCours ? "⏳ Préparation du PDF…" : ""}</div>
+          </div>
+        </div>
+      )}
+      {pdfApercu && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "#f5f3ee", display: "flex", flexDirection: "column" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", background: "#0a0a0a", borderBottom: "3px solid #c8a84b", flexShrink: 0 }}>
+            <button
+              onClick={() => {
+                if (pdfApercu?.startsWith("blob:")) { try { URL.revokeObjectURL(pdfApercu); } catch {} }
+                setPdfApercu(null);
+              }}
+              style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,0.8)", fontFamily: "'Syne', sans-serif" }}
+            >
+              ← Retour
+            </button>
+            <span style={{ color: "#c8a84b", fontWeight: 700, fontFamily: "'Syne', sans-serif", fontSize: 13 }}>📄 Rapport</span>
+            <button
+              onClick={() => { try { pdfApercuIframeRef.current?.contentWindow?.print(); } catch {} }}
+              style={{ padding: "6px 14px", borderRadius: 9, border: "none", background: "#c8a84b", color: "#0a0a0a", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
+            >
+              🖨️ Imprimer
+            </button>
+          </div>
+          <iframe
+            ref={pdfApercuIframeRef}
+            src={pdfApercu}
+            title="Aperçu rapport"
+            style={{ flex: 1, border: "none", background: "#fff" }}
+          />
+        </div>
+      )}
+    </>
+  );
+
   if (showRecherche) {
     if (!monAcces.hasModule("arrivages")) return <AccesRefuse onRetour={() => { setShowRecherche(false); setShowAccueil(true); }} />;
     const resultats = searchLotQuery.length >= 2
@@ -4334,7 +4425,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     const titreRes = (t: string, n: number) => n > 0 && <p style={{ margin: "14px 0 8px", fontSize: 11.5, fontWeight: 700, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".5px" }}>{t} · {n}</p>;
 
     return (
-      <>{fabScanner}{invitationNotif}
+      <>{fabScanner}{invitationNotif}{fenetresPdf}
       <div style={{ minHeight: "100vh", background: "#f5f3ee", fontFamily: "'Syne', sans-serif" }}>
         <style>{styles}</style>
         <PageHeader titre="🔍 Recherche" couleur="#3b82f6" onBack={() => { setShowRecherche(false); setShowAccueil(true); }} onHome={() => { setShowRecherche(false); setShowAccueil(true); }} />
@@ -4381,7 +4472,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1a2e1a" }}>{r.numeroRapport} · {r.produit}</p>
                 <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>{r.fournisseur} · {r.date}{r.lotMoorea ? ` · Lot ${r.lotMoorea}` : ""} · {r.decision === "stock" ? "Conforme" : r.decision === "reserve" ? "Réserve" : "Refus"}</p>
               </div>
-              <button onClick={() => downloadPDF(r)} style={boutonRes}>PDF</button>
+              <button onClick={() => setChoixLangueRapport(r)} style={boutonRes}>PDF</button>
             </div>
           ))}
           {titreRes("📦 Arrivages", resultats.length)}
@@ -4444,7 +4535,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       <span className="pill" style={{ background: rapport.decision === "stock" ? "#f0fdf4" : rapport.decision === "reserve" ? "#fffbeb" : "#fef2f2", color: rapport.decision === "stock" ? "#15803d" : rapport.decision === "reserve" ? "#d97706" : "#dc2626", border: `1px solid ${rapport.decision === "stock" ? "#bbf7d0" : rapport.decision === "reserve" ? "#fcd34d" : "#fca5a5"}` }}>
                         {rapport.decision === "stock" ? "✅ En stock" : rapport.decision === "reserve" ? "⚠️ Réserve" : "❌ Refusé"}
                       </span>
-                      <button onClick={() => downloadPDF(rapport)} style={{ marginLeft: "auto", padding: "5px 12px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#fff", color: "#8a6f2e", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>🖨️ Imprimer</button>
+                      <button onClick={() => setChoixLangueRapport(rapport)} style={{ marginLeft: "auto", padding: "5px 12px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#fff", color: "#8a6f2e", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>🖨️ Imprimer</button>
                     </div>
                   </div>
                 )}
@@ -4775,34 +4866,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       {/* APERÇU PDF INTÉGRÉ AU SITE — au lieu d'ouvrir un nouvel onglet (où on ne peut pas
           forcément choisir son imprimante), le PDF s'affiche dans une fenêtre sur la page
           elle-même, et l'impression se lance automatiquement dès que l'aperçu est prêt. */}
-      {pdfApercu && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 3000, background: "#f5f3ee", display: "flex", flexDirection: "column" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", background: "#0a0a0a", borderBottom: "3px solid #c8a84b", flexShrink: 0 }}>
-            <button
-              onClick={() => {
-                if (pdfApercu?.startsWith("blob:")) { try { URL.revokeObjectURL(pdfApercu); } catch {} }
-                setPdfApercu(null);
-              }}
-              style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,0.8)", fontFamily: "'Syne', sans-serif" }}
-            >
-              ← Retour
-            </button>
-            <span style={{ color: "#c8a84b", fontWeight: 700, fontFamily: "'Syne', sans-serif", fontSize: 13 }}>📄 Rapport</span>
-            <button
-              onClick={() => { try { pdfApercuIframeRef.current?.contentWindow?.print(); } catch {} }}
-              style={{ padding: "6px 14px", borderRadius: 9, border: "none", background: "#c8a84b", color: "#0a0a0a", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
-            >
-              🖨️ Imprimer
-            </button>
-          </div>
-          <iframe
-            ref={pdfApercuIframeRef}
-            src={pdfApercu}
-            title="Aperçu rapport"
-            style={{ flex: 1, border: "none", background: "#fff" }}
-          />
-        </div>
-      )}
+      {fenetresPdf}
 
       <PageHeader
         titre={vue === "form" ? "Nouveau rapport" : vue === "historique" ? "Rapports qualité" : pageMode === "arrivages" ? "Pointer arrivage" : pageMode === "historique_arr" ? "Historique arrivages" : "Moorea"}
@@ -5334,7 +5398,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                           onLitige={() => { ouvrirRapportDepuisArrivage(a, true); const noeud = a.archived_at != null ? "arrivages_archives" : "arrivages"; update(ref(db, `${noeud}/${a.id}`), { statut: "sous réserve", litige: { type: "sous réserve", raison: "", pct: "", lot_moorea: a.lot_interne||"", lot_fournisseur: a.lot_fournisseur||"", date: new Date().toLocaleDateString("fr-FR"), statut: "ouvert", createdAt: Date.now(), ouvertApresValidation: a.statut==="validé" } }); }}
                           onClotureLitige={() => { const noeud = a.archived_at != null ? "arrivages_archives" : "arrivages"; update(ref(db, `${noeud}/${a.id}/litige`), { statut: "clôturé", clotureLe: new Date().toLocaleDateString("fr-FR") }).then(() => showToast("✅ Litige clôturé")); }}
                           onDestruction={async (qte: string, raison: string) => { const noeud = a.archived_at != null ? "arrivages_archives" : "arrivages"; await update(ref(db, `${noeud}/${a.id}`), { destruction: { quantite: qte, raison, date: new Date().toLocaleDateString("fr-FR"), demandePar: user?.displayName||user?.email||"-" } }); showToast("🗑 Destruction enregistrée"); }}
-                          onPDF={() => rapport && downloadPDF(rapport)}
+                          onPDF={() => rapport && setChoixLangueRapport(rapport)}
                           onWA={() => rapport && partagerWhatsApp(rapport)}
                           user={user}
                         />
@@ -5508,7 +5572,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                         <div style={{ background: "#faf8f3", border: "1px solid #e8e0d0", borderRadius: 10, padding: "8px 14px", marginBottom: 10, display: "flex", gap: 10, alignItems: "center" }}>
                           <span style={{ fontSize: 12, fontWeight: 600, color: "#8a6f2e" }}>📋 {rapport.numeroRapport}</span>
                           {rapport.score && <span style={{ fontSize: 12, color: NOTE_COLORS[Math.round(parseFloat(rapport.score))], fontWeight: 700 }}>Score {rapport.score}/5</span>}
-                          <button onClick={() => downloadPDF(rapport)} style={{ marginLeft: "auto", padding: "4px 10px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#fff", color: "#8a6f2e", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>🖨️ Imprimer</button>
+                          <button onClick={() => setChoixLangueRapport(rapport)} style={{ marginLeft: "auto", padding: "4px 10px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#fff", color: "#8a6f2e", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>🖨️ Imprimer</button>
                         </div>
                       )}
                     </div>
@@ -5795,7 +5859,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(72px, 1fr))", gap: 6, marginTop: 8 }}>
                             {siennes.map(({ p, i }) => (
                               <div key={i} style={{ position: "relative", borderRadius: 8, overflow: "hidden", aspectRatio: "1", background: "#f5f5f5" }}>
-                                <img src={p.url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                                <img src={srcPhoto(p.url)} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                                 <button onClick={() => setPhotos(prev => prev.filter((_, j) => j !== i))} aria-label="Retirer la photo"
                                   style={{ position: "absolute", top: 3, right: 3, width: 20, height: 20, borderRadius: "50%", background: "rgba(0,0,0,0.6)", border: "none", color: "#fff", fontSize: 12, cursor: "pointer" }}>×</button>
                               </div>
@@ -5823,7 +5887,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
                   {photos.map((p, i) => p.arrivageId ? null : (
                     <div key={i} style={{ position: "relative", borderRadius: 10, overflow: "hidden", aspectRatio: "1", background: "#f5f5f5" }}>
-                      <img src={p.url} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                      <img src={srcPhoto(p.url)} alt={p.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                       <button onClick={() => setPhotos(prev => prev.filter((_, j) => j !== i))}
                         style={{ position: "absolute", top: 4, right: 4, width: 22, height: 22, borderRadius: "50%", background: "rgba(0,0,0,0.6)", border: "none", color: "#fff", fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>✕</button>
                     </div>
@@ -6308,7 +6372,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6, marginBottom: 10 }}>
                     {(r.photoUrls?.length > 0 ? r.photoUrls : r.photos?.map((p: any) => p.url) || []).slice(0, 6).map((url: string, pi: number) => (
                       <div key={pi} style={{ borderRadius: 8, overflow: "hidden", aspectRatio: "4/3" }}>
-                        <img src={url} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                        <img src={srcPhoto(url)} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                       </div>
                     ))}
                   </div>
@@ -6334,7 +6398,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 )}
                 {r.observations && <p style={{ fontSize: 13, color: "#6b7280", fontStyle: "italic", borderTop: "1px solid #f0fdf4", paddingTop: 8, marginTop: 8 }}>"{r.observations}"</p>}
                 <div className="action-row" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #f0f0f0" }}>
-                  <button onClick={() => downloadPDF(r)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "1.5px solid #e8e0d0", background: "#faf8f5", cursor: "pointer", fontSize: 14, fontWeight: 600, color: "#8a6f2e", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, touchAction: "manipulation" }}>
+                  <button onClick={() => setChoixLangueRapport(r)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "1.5px solid #e8e0d0", background: "#faf8f5", cursor: "pointer", fontSize: 14, fontWeight: 600, color: "#8a6f2e", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, touchAction: "manipulation" }}>
                     🖨️ Imprimer
                   </button>
                   <button onClick={() => partagerWhatsApp(r)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #25d366, #128c7e)", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, touchAction: "manipulation" }}>

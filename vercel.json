@@ -65,6 +65,10 @@
       "destination": "/api/routeur?__route=scan-etiquette"
     },
     {
+      "source": "/api/traduire",
+      "destination": "/api/routeur?__route=traduire"
+    },
+    {
       "source": "/api/sante-comptes-mail",
       "destination": "/api/routeur?__route=sante-comptes-mail"
     },

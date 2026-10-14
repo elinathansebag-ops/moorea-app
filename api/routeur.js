@@ -56,6 +56,7 @@ const ROUTES = {
   "push-envoyer": () => import("../serveur/routes/push-envoyer.js"),
   "recap-reconditionnement": () => import("../serveur/routes/recap-reconditionnement.js"),
   "scan-etiquette": () => import("../serveur/routes/scan-etiquette.js"),
+  "traduire": () => import("../serveur/routes/traduire.js"),
   "sante-comptes-mail": () => import("../serveur/routes/sante-comptes-mail.js"),
   "send-email": () => import("../serveur/routes/send-email.js"),
   "upload-photo": () => import("../serveur/routes/upload-photo.js"),

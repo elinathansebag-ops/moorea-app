@@ -1,5 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, push, onValue, remove, update, onDisconnect, serverTimestamp, set, get } from "firebase/database";
+import { getStorage, ref as refStockage, uploadString, getDownloadURL } from "firebase/storage";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence, signInAnonymously, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
 
 const firebaseConfig = {
@@ -15,6 +16,30 @@ const firebaseConfig = {
 const app = initializeApp(firebaseConfig);
 export const db = getDatabase(app);
 export const auth = getAuth(app);
+export const stockage = getStorage(app);
+
+// 14/10/2026 — Photos (rapports d'agréage…) stockées dans Firebase Storage : ImgBB (gratuit)
+// remplace maintenant les photos affichées hors de son site par une pub « upgrade to Pro ».
+// Si Storage n'est pas (encore) activé ou refuse l'envoi, on retombe sur ImgBB via le serveur.
+export async function envoyerPhoto(dataUrl: string, dossier = "rapports"): Promise<string> {
+  try {
+    const m = new Date().toISOString().slice(0, 7);
+    const nom = `${dossier}/${m}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.jpg`;
+    const r = refStockage(stockage, nom);
+    await uploadString(r, dataUrl, "data_url");
+    return await getDownloadURL(r);
+  } catch (e) {
+    console.warn("Firebase Storage indisponible, envoi ImgBB", e);
+  }
+  try {
+    const res = await fetch("/api/upload-photo", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ image: dataUrl.split(",")[1] }) });
+    const data = await res.json();
+    return data.url || "";
+  } catch { return ""; }
+}
+
+// Affichage : les anciennes photos ImgBB passent par notre serveur (api/fetch-image.ts).
+export const srcPhoto = (url: string) => /^https:\/\/(i\.)?ibb\.co\//.test(url || "") ? `/api/fetch-image?url=${encodeURIComponent(url)}` : url;
 
 // localStorage — reste connecté, évite le conflit IndexedDB/service worker
 setPersistence(auth, browserLocalPersistence);

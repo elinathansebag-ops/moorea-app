@@ -19,7 +19,8 @@ export default async function handler(req: Request) {
     const { searchParams } = new URL(req.url);
     const url = searchParams.get('url') || '';
     // Sécurité minimale : n'autorise que les images hébergées sur imgBB (seul hébergeur utilisé par l'app)
-    if (!/^https:\/\/(i\.)?ibb\.co\//.test(url)) {
+    // 14/10/2026 — + Firebase Storage (nouvelles photos), pour les PDF.
+    if (!/^https:\/\/(i\.)?ibb\.co\//.test(url) && !/^https:\/\/firebasestorage\.googleapis\.com\/v0\/b\/moorea-qualite\./.test(url)) {
       return new Response('URL non autorisée', { status: 403, headers: corsHeaders });
     }
     // Timeout court : mieux vaut échouer vite et proprement (le navigateur continue sans
