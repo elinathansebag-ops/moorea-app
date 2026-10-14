@@ -325,18 +325,10 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
         {/* 14/10/2026 — Accueil : un bouton pour ajouter une commande, un pour toutes les commandes
             passées ; le tableau de la semaine est cliquable (un jour = sa commande). */}
         {onglet === "accueil" && (
-          <div style={{ display: "grid", gap: 10, marginBottom: 16 }}>
-            <button type="button" onClick={() => { setImportDirect(true); setJourOuvert(""); setOnglet("jour"); }} style={{ display: "flex", alignItems: "center", gap: 14, padding: "16px 18px", borderRadius: 16, border: "none", background: "linear-gradient(135deg, #0050aa, #1d6fd1)", color: "#fff", cursor: "pointer", textAlign: "left", boxShadow: "0 8px 20px rgba(0,80,170,.25)" }}>
-              <span style={{ fontSize: 30 }}>➕</span>
-              <span style={{ flex: 1 }}><span style={{ display: "block", fontSize: 18, fontWeight: 900 }}>Ajouter une commande</span><span style={{ display: "block", fontSize: 12.5, opacity: 0.9 }}>Importer le tableau Lidl reçu</span></span>
-              <span style={{ fontSize: 22, fontWeight: 900 }}>›</span>
-            </button>
-            <button type="button" onClick={() => setOnglet("passees")} style={{ display: "flex", alignItems: "center", gap: 14, padding: "12px 18px", borderRadius: 14, border: "1.5px solid #e5e7eb", background: "#fff", color: "#111827", cursor: "pointer", textAlign: "left" }}>
-              <span style={{ fontSize: 24 }}>🗂️</span>
-              <span style={{ flex: 1, fontSize: 15, fontWeight: 800 }}>Voir toutes les commandes passées</span>
-              <span style={{ fontSize: 20, fontWeight: 900, color: "#0050aa" }}>›</span>
-            </button>
-            <div style={{ fontSize: 12.5, color: "#6b7280" }}>👆 Clique sur un jour du tableau ci-dessous pour ouvrir sa commande (bons, étiquettes, traçabilité).</div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 14 }}>
+            <button type="button" onClick={() => { setImportDirect(true); setJourOuvert(""); setOnglet("jour"); }} style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: "#0050aa", color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>➕ Ajouter une commande</button>
+            <button type="button" onClick={() => setOnglet("passees")} style={{ padding: "10px 16px", borderRadius: 10, border: "1.5px solid #0050aa", background: "#fff", color: "#0050aa", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>🗂️ Commandes passées</button>
+            <span style={{ fontSize: 12, color: "#6b7280" }}>· clique sur un jour du tableau pour ouvrir sa commande</span>
           </div>
         )}
         {(onglet === "stats" || onglet === "accueil") && (
