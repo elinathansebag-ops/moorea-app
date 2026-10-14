@@ -137,7 +137,7 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
       <PageHeader titre="🛒 Commandes Lidl" couleur="#0050aa" onBack={onClose} onHome={onClose} />
       <div style={{ maxWidth: 1000, margin: "0 auto", padding: 16 }}>
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
-          {btnOnglet("accueil", "📊 Tableau de bord")}{btnOnglet("jour", "🛒 Commandes")}{btnOnglet("passees", "🗂️ Commandes passées")}{btnOnglet("traca", "📤 Traçabilité Lidl")}{btnOnglet("config", "⚙️ Configuration")}
+          {btnOnglet("accueil", "📊 Tableau de bord")}{btnOnglet("jour", "🛒 Commandes")}{btnOnglet("passees", "🗂️ Commandes passées")}{btnOnglet("config", "⚙️ Configuration")}
         </div>
         {/* 02/10/2026 — Demande d'Elinathan : le commercial voit tout de suite si le mail est bien parti chez Lidl, et à quelle heure. */}
         <div style={{ marginBottom: 12, padding: "8px 12px", borderRadius: 10, fontSize: 13, fontWeight: 700, border: `1.5px solid ${(envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#bbf7d0" : envoiJour.erreur ? "#fecaca" : "#e5e7eb"}`, background: (envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#f0fdf4" : envoiJour.erreur ? "#fef2f2" : "#fff", color: (envoiJour.version > 0 || envoiJour.manuel) && !envoiJour.erreur ? "#15803d" : envoiJour.erreur ? "#b91c1c" : "#6b7280" }}>
@@ -145,6 +145,9 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
             : envoiJour.erreur ? `❌ Mail Lidl du ${dateFr(jourT)} : échec (${envoiJour.erreur})`
             : envoiJour.version > 0 ? `📧 Mail Lidl du ${dateFr(jourT)} envoyé le ${envoiJour.dernierEnvoi} ${envoiJour.mode === "test" ? "(TEST — à Elinathan)" : "à Lidl"}`
             : `⏳ Mail Lidl du ${dateFr(jourT)} : pas encore envoyé`}
+          {/* 14/10/2026 — Onglet « Traçabilité Lidl » retiré (le fichier est dans les commandes) : l'envoi à la main est ici. */}
+          {!envoiJour.manuel && <button type="button" disabled={occupe} onClick={envoyerMaintenant} style={{ marginLeft: 10, padding: "4px 10px", borderRadius: 8, border: "1.5px solid #0050aa", background: "#fff", color: "#0050aa", fontWeight: 800, fontSize: 12, cursor: occupe ? "wait" : "pointer" }}>{occupe ? "⏳ Envoi…" : envoiJour.version > 0 ? "📤 Renvoyer à Lidl" : "📤 Envoyer à Lidl maintenant"}</button>}
+          {msgTraca && <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 700, color: msgTraca.type === "ok" ? "#166534" : "#b91c1c" }}>{msgTraca.texte}</span>}
           {/* 13/10/2026 — Effacer l'erreur et noter que le tableau a été validé à la main. */}
           {envoiJour.erreur && !envoiJour.manuel && (
             <button type="button" onClick={async () => { if (window.confirm(`Le tableau Lidl du ${dateFr(jourT)} a bien été envoyé / validé autrement ?\n\nL'erreur sera effacée et l'envoi automatique ne repartira pas pour ce jour.`)) await validerTracaManuellement(jourT, userName || ""); }}

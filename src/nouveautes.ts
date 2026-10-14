@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 20, date: "14/10", pages: ["lidl"], texte: "🛒 Commandes Lidl : onglet Traçabilité retiré ; le bouton « Envoyer / Renvoyer à Lidl » est dans le bandeau d'envoi en haut." },
   { id: 19, date: "14/10", pages: ["lidl", "refus_signer", "admin.acces"], texte: "🛒 Commandes Lidl : une page d'accueil (stats de la semaine + tableau de bord) avec un gros bouton « Commandes ». 👤 Le nom de qui a fait l'action est affiché sur les rapports et les bons de reprise ; le journal « Comptes partagés » est retiré." },
   { id: 18, date: "14/10", pages: ["admin.acces", "droits.comptes", "droits.modules"], texte: "🔐 Droits d'accès : comptes en cartes (un clic ouvre ses réglages), modules marqués « consultation seule », et droits détaillés (valider, compter, configuration…) réglables personne par personne." },
   { id: 17, date: "14/10", texte: "🔴 Pastilles rouges « nouveau » sur les pages et onglets que je modifie ; elles disparaissent dès que tu les ouvres." },
