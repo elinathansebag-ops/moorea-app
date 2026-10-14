@@ -1002,7 +1002,8 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     const e = envois[j] || {};
     if (e.manuel) return pastille("✅ Traça validée manuellement", "#15803d", "#dcfce7");
     if (e.erreur) return pastille("❌ Traça : échec", "#b91c1c", "#fee2e2");
-    if (e.version > 0) return pastille(`📧 Traça envoyée${e.dernierEnvoi ? ` ${String(e.dernierEnvoi).split(" ")[1]?.slice(0, 5) || ""}` : ""}${e.mode === "test" ? " (test)" : ""}`, "#15803d", "#dcfce7");
+    // 14/10/2026 — Heure d'envoi bien visible : « le 14/10 à 13:00 ».
+    if (e.version > 0) { const [d, h] = String(e.dernierEnvoi || "").split(" "); return pastille(`📧 Traça envoyée${d ? ` le ${d.slice(0, 5)}${h ? ` à ${h.slice(0, 5)}` : ""}` : ""}${e.mode === "test" ? " (test)" : ""}`, "#15803d", "#dcfce7"); }
     return pastille("⏳ Traça pas envoyée", "#6b7280", "#f3f4f6");
   };
   const btnJour = (lib: string, onClick: () => void, plein = false) => (

@@ -126,7 +126,7 @@ export function ConsultationLidl({ onClose, darkMode }: { onClose: () => void; d
                     <div style={{ padding: "12px 14px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ flex: 1, fontSize: 16, fontWeight: 900, textTransform: "capitalize" }}>{dateLongueFr(cmd.j)}</span>
-                        <span title={envoyee ? "Traçabilité envoyée à Lidl" : "Traçabilité pas encore envoyée"} style={{ fontSize: 11.5, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: envoyee ? "#dcfce7" : "#fef3c7", color: envoyee ? "#166534" : "#92400e" }}>{envoyee ? "📤 Envoyée" : "⏳ Pas envoyée"}</span>
+                        <span title={envoyee ? "Traçabilité envoyée à Lidl" : "Traçabilité pas encore envoyée"} style={{ fontSize: 11.5, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: envoyee ? "#dcfce7" : "#fef3c7", color: envoyee ? "#166534" : "#92400e", whiteSpace: "nowrap" }}>{envoyee ? (() => { const [d, h] = String(env?.dernierEnvoi || env?.manuel?.le || "").split(" "); return `📤 Envoyée${d ? ` le ${d.slice(0, 5)}` : ""}${h ? ` à ${h.slice(0, 5)}` : ""}`; })() : "⏳ Pas envoyée"}</span>
                       </div>
                       <div style={{ fontSize: 12.5, color: gris, marginTop: 4 }}>{cmd.bases} base{cmd.bases > 1 ? "s" : ""} · {cmd.departs.join(" + ")}{cmd.produits.length ? ` · ${cmd.produits.slice(0, 2).join(", ")}${cmd.produits.length > 2 ? "…" : ""}` : ""}</div>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
