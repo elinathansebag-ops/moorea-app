@@ -4,6 +4,7 @@
 // La dernière entrée vue est rangée dans comptes/{uid}/nouveautes_vu (même sur un autre appareil).
 export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 export const NOUVEAUTES: { id: number; date: string; texte: string }[] = [
+  { id: 14, date: "14/10", texte: "🔄 Refus à faire signer : « Récupéré sans signature » marche à chaque fois, et un bouton (admin) marque d'un coup tous les refus en attente comme récupérés." },
   { id: 13, date: "14/10", texte: "🔄 Refus à faire signer : les 4 photos de chaque carte sont maintenant des carrés identiques." },
   { id: 12, date: "14/10", texte: "📋 Rapports qualité : 4 derniers rapports en haut (une seule ligne)." },
   { id: 11, date: "14/10", texte: "🔎 Traçabilité Lidl : une carte par commande (bases, départs, avancement, qui l'a préparée, traça envoyée) ; un clic ouvre la commande avec une carte par base." },

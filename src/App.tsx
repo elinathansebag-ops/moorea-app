@@ -516,6 +516,7 @@ export default function App() {
   // ni signé par le transporteur, ni marqué « récupéré sans signature ».
   const [aSignerSeul, setASignerSeul] = useState(false);
   const [imprimerBonEntrepot, setImprimerBonEntrepot] = useState(false);
+  const [confirmerToutRecupere, setConfirmerToutRecupere] = useState(false);
   const refusASigner = (r: any) => r?.decision === "refus" && !r?.transporteur?.signatureBase64 && !r?.recupereSansSig;
   const [showStats, setShowStats] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
@@ -4968,14 +4969,16 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               </button>
             </div>
             <button onClick={async () => {
+              // 14/10/2026 — Ne marchait pas à tous les coups : set() réécrivait tout le rapport (refusé
+              // dès qu'un champ était vide) et confirm() ne s'affiche pas toujours dans l'appli installée.
+              // On n'écrit plus que les deux champs utiles.
               const r = signatureModal;
-              if (!window.confirm("Confirmer que la marchandise a été récupérée sans signature ?")) return;
+              if (!r?.firebaseKey) { showToast("Rapport introuvable", "error"); return; }
               try {
-                const { set } = await import("firebase/database");
-                await set(ref(db, `rapports/${r.firebaseKey}`), { ...r, recupereSansSig: true, recuperéLe: new Date().toLocaleDateString("fr-FR") });
+                await update(ref(db, `rapports/${r.firebaseKey}`), { recupereSansSig: true, recuperéLe: new Date().toLocaleDateString("fr-FR") });
                 showToast("📦 Marqué comme récupéré sans signature");
-                setSignatureModal(null);
-              } catch { showToast("Erreur", "error"); }
+                setSignatureModal(null); setImprimerBonEntrepot(false);
+              } catch (e: any) { showToast("Erreur : " + (e?.message || e), "error"); }
             }} style={{ width: "100%", marginTop: 8, padding: "12px 0", borderRadius: 12, border: "1.5px solid #e5e7eb", background: "#f9fafb", cursor: "pointer", fontSize: 13, fontWeight: 600, color: "#6b7280", fontFamily: "'Syne', sans-serif" }}>
               📦 Récupéré sans signature
             </button>
@@ -6108,7 +6111,25 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           const liste = rapports.filter(refusASigner).sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
           return (
             <div className="fade-up">
-              <p style={{ margin: "0 0 14px", fontSize: 14, color: "#6b7280" }}>{liste.length ? `${liste.length} refus en attente de signature du transporteur.` : ""}</p>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "0 0 14px" }}>
+                <p style={{ margin: 0, flex: 1, fontSize: 14, color: "#6b7280" }}>{liste.length ? `${liste.length} refus en attente de signature du transporteur.` : ""}</p>
+                {/* 14/10/2026 — Remise à zéro (admins) : tous les refus en attente passent en « récupéré sans signature ». */}
+                {monAcces.isAdmin && liste.length > 0 && (confirmerToutRecupere ? (
+                  <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap", padding: "8px 12px", borderRadius: 12, background: "#fff7ed", border: "1.5px solid #fdba74" }}>
+                    <span style={{ fontSize: 13, fontWeight: 700, color: "#9a3412" }}>Marquer les {liste.length} refus comme récupérés sans signature ?</span>
+                    <button type="button" onClick={async () => {
+                      const le = new Date().toLocaleDateString("fr-FR"), maj: Record<string, any> = {};
+                      liste.forEach(r => { if (r.firebaseKey) { maj[`rapports/${r.firebaseKey}/recupereSansSig`] = true; maj[`rapports/${r.firebaseKey}/recuperéLe`] = le; } });
+                      try { await update(ref(db), maj); showToast(`📦 ${Object.keys(maj).length / 2} refus marqués récupérés sans signature`); }
+                      catch (e: any) { showToast("Erreur : " + (e?.message || e), "error"); }
+                      setConfirmerToutRecupere(false);
+                    }} style={{ padding: "7px 12px", borderRadius: 10, border: "none", background: "#ea580c", color: "#fff", fontWeight: 800, cursor: "pointer" }}>Oui, tout marquer</button>
+                    <button type="button" onClick={() => setConfirmerToutRecupere(false)} style={{ padding: "7px 12px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", fontWeight: 700, cursor: "pointer" }}>Annuler</button>
+                  </span>
+                ) : (
+                  <button type="button" onClick={() => setConfirmerToutRecupere(true)} style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px solid #fdba74", background: "#fff", color: "#9a3412", fontWeight: 800, cursor: "pointer", fontSize: 13 }}>📦 Tout marquer comme récupéré sans signature</button>
+                ))}
+              </div>
               {!liste.length && <div style={{ padding: 40, textAlign: "center", background: "#fff", borderRadius: 16, color: "#6b7280", fontSize: 15, fontWeight: 700 }}>✅ Aucun refus à faire signer.</div>}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(230px, 100%), 1fr))", gap: 12 }}>
                 {liste.map(r => {
