@@ -3,7 +3,7 @@ import { db, ref, onValue, update, remove } from "./firebase";
 import { PageHeader } from "./shared";
 import { LidlTableauDeBord } from "./LidlTableauDeBord";
 import { LidlProducteurs } from "./LidlProducteurs";
-import { LidlCommandes, infoBase, contexteLidl, useProducteursLidl, BASES_LIDL, ADRESSES_LIDL, useAdressesLidl, EMAILS_MEDINA_DEFAUT, nouveauJetonMedina } from "./LidlCommandes";
+import { LidlCommandes, REFS_LIDL, infoBase, contexteLidl, useProducteursLidl, BASES_LIDL, ADRESSES_LIDL, useAdressesLidl, EMAILS_MEDINA_DEFAUT, nouveauJetonMedina } from "./LidlCommandes";
 import { genererXlsxLidl, envoyerTracabiliteLidl, validerTracaManuellement, annulerValidationManuelle, nomFichierLidl, lireConfigLidl, EMAIL_LIDL_DEFAUT, EMAIL_TEST, type LigneExport } from "./lidlExport";
 
 // 02/10/2026 — Demande d'Elinathan : le commercial a son propre module « Commandes Lidl » (il n'a
@@ -86,11 +86,17 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
   const joursSemaine = useMemo(() => Array.from({ length: 7 }, (_, i) => ajouteJours(semaine, i)), [semaine]);
   const lignesSemaine = useMemo(() => lignes.filter(l => l.date >= semaine && l.date <= joursSemaine[6] && (filtreDepart === "tous" || (l.depart || "sud") === filtreDepart)), [lignes, semaine, joursSemaine, filtreDepart]);
   const matrice = useMemo(() => {
-    const m = new Map<string, { base: string; parJour: number[]; total: number; prets: number; nb: number }>();
+    // 14/10/2026 — Détail par jour : une entrée par référence (et par départ), pour le code couleur.
+    const m = new Map<string, { base: string; parJour: number[]; detail: { ref: string; q: number; depart: string }[][]; total: number; prets: number; nb: number }>();
     for (const l of lignesSemaine) {
-      const g = m.get(l.base) || { base: l.base, parJour: Array(7).fill(0), total: 0, prets: 0, nb: 0 };
+      const g = m.get(l.base) || { base: l.base, parJour: Array(7).fill(0), detail: Array.from({ length: 7 }, () => []), total: 0, prets: 0, nb: 0 };
       const i = joursSemaine.indexOf(l.date);
-      if (i >= 0) g.parJour[i] += l.quantite;
+      if (i >= 0) {
+        g.parJour[i] += l.quantite;
+        const ref = (l as any).refLidl || "?", dep = l.depart === "paris" ? "paris" : "sud";
+        const ex = g.detail[i].find(x => x.ref === ref && x.depart === dep);
+        if (ex) ex.q += l.quantite; else g.detail[i].push({ ref, q: l.quantite, depart: dep });
+      }
       g.total += l.quantite; g.nb++; if (l.statut === "pret") g.prets++;
       m.set(l.base, g);
     }
@@ -99,6 +105,11 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
   const totalSemaine = matrice.reduce((s, g) => s + g.total, 0);
   const totalParJour = joursSemaine.map((_, i) => matrice.reduce((s, g) => s + g.parJour[i], 0));
   const maxCase = Math.max(1, ...matrice.flatMap(g => g.parJour));
+  // 14/10/2026 — Code couleur par référence Lidl (tableau de la semaine).
+  const PALETTE_REFS = [{ fond: "#dbeafe", texte: "#1e40af" }, { fond: "#ffedd5", texte: "#9a3412" }, { fond: "#dcfce7", texte: "#166534" }, { fond: "#ede9fe", texte: "#5b21b6" }, { fond: "#fce7f3", texte: "#9d174d" }];
+  const couleurRef = (k: string) => { const i = REFS_LIDL.findIndex(r => r.k === k); return i >= 0 ? PALETTE_REFS[i % PALETTE_REFS.length] : { fond: "#f3f4f6", texte: "#374151" }; };
+  const libRef = (k: string) => { const r = REFS_LIDL.find(x => x.k === k); return r ? `${r.article} — ${r.origine}` : "Référence inconnue"; };
+  const refsSemaine = [...new Set(lignesSemaine.map(l => (l as any).refLidl || "?"))];
   const nbCmd = lignesSemaine.length, nbPrets = lignesSemaine.filter(l => l.statut === "pret").length;
 
   const joursTraca = useMemo(() => [...new Set(lignes.map(l => l.date))].sort().reverse(), [lignes]);
@@ -152,7 +163,6 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
           {/* 14/10/2026 — Onglet « Traçabilité Lidl » retiré (le fichier est dans les commandes) : l'envoi à la main est ici. */}
           {!envoiJour.manuel && <button type="button" disabled={occupe} onClick={envoyerMaintenant} style={{ marginLeft: 10, padding: "4px 10px", borderRadius: 8, border: "1.5px solid #0050aa", background: "#fff", color: "#0050aa", fontWeight: 800, fontSize: 12, cursor: occupe ? "wait" : "pointer" }}>{occupe ? "⏳ Envoi…" : envoiJour.version > 0 ? "📤 Renvoyer à Lidl" : "📤 Envoyer à Lidl maintenant"}</button>}
           {msgTraca && <span style={{ marginLeft: 10, fontSize: 12, fontWeight: 700, color: msgTraca.type === "ok" ? "#166534" : "#b91c1c" }}>{msgTraca.texte}</span>}
-          <button type="button" onClick={() => setOnglet("passees")} style={{ float: "right", padding: "3px 10px", borderRadius: 8, border: "1.5px solid #0050aa", background: "#fff", color: "#0050aa", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>🗂️ Commandes passées</button>
           {/* 13/10/2026 — Effacer l'erreur et noter que le tableau a été validé à la main. */}
           {envoiJour.erreur && !envoiJour.manuel && (
             <button type="button" onClick={async () => { if (window.confirm(`Le tableau Lidl du ${dateFr(jourT)} a bien été envoyé / validé autrement ?\n\nL'erreur sera effacée et l'envoi automatique ne repartira pas pour ce jour.`)) await validerTracaManuellement(jourT, userName || ""); }}
@@ -345,6 +355,12 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
               {carte("Bases servies", String(matrice.length), "#b45309", "🏪", "#fffbeb")}
             </div>
             <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: 14, overflowX: "auto" }}>
+              {refsSemaine.length > 0 && (
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10, fontSize: 12 }}>
+                  {refsSemaine.map(k => { const c = couleurRef(k); return <span key={k} style={{ padding: "3px 10px", borderRadius: 999, background: c.fond, color: c.texte, fontWeight: 800 }}>{libRef(k)}</span>; })}
+                  <span style={{ color: "#6b7280" }}><span style={{ fontSize: 10, fontWeight: 900, padding: "0 4px", borderRadius: 4, background: "#fff7ed", color: "#b45309", border: "1px solid #fed7aa" }}>M</span> = départ Medina (Perpignan), sinon Paris</span>
+                </div>
+              )}
               {matrice.length === 0 ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 20 }}>Rien cette semaine</div> : (
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                   <thead><tr style={{ background: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>
@@ -356,7 +372,15 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
                     {matrice.map(g => (
                       <tr key={g.base} style={{ borderBottom: "1px solid #f3f4f6" }}>
                         <td style={{ padding: "7px 8px", fontWeight: 700, whiteSpace: "nowrap" }}>{nomBase(g.base)} <span style={{ color: "#9ca3af", fontWeight: 500 }}>n°{numBase(g.base) === 999 ? "?" : numBase(g.base)}</span></td>
-                        {g.parJour.map((q, i) => <td key={i} onClick={() => q && ouvrirJour(joursSemaine[i])} title={q ? "Ouvrir la commande de ce jour" : undefined} style={{ cursor: q ? "pointer" : "default", padding: "7px 8px", textAlign: "right", color: q ? "#0b2e63" : "#d1d5db", fontWeight: q ? 700 : 400, background: q ? `rgba(37,99,235,${0.08 + 0.4 * (q / maxCase)})` : "transparent" }}>{q || "·"}</td>)}
+                        {g.parJour.map((q, i) => <td key={i} onClick={() => q && ouvrirJour(joursSemaine[i])} title={q ? "Ouvrir la commande de ce jour" : undefined} style={{ verticalAlign: "top", cursor: q ? "pointer" : "default", padding: "7px 8px", textAlign: "right", color: q ? "#0b2e63" : "#d1d5db", fontWeight: q ? 700 : 400, background: "transparent" }}>{q ? (
+                          <span style={{ display: "inline-flex", flexDirection: "column", gap: 3, alignItems: "flex-end" }}>
+                            {g.detail[i].map((d, k) => { const c = couleurRef(d.ref); return (
+                              <span key={k} title={`${libRef(d.ref)} · ${d.depart === "paris" ? "départ Paris" : "départ Medina"}`} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 999, background: c.fond, color: c.texte, fontSize: 12, fontWeight: 800, whiteSpace: "nowrap" }}>
+                                {d.q}{d.depart !== "paris" && <span style={{ fontSize: 10, fontWeight: 900, padding: "0 4px", borderRadius: 4, background: "#fff", color: "#b45309" }}>M</span>}
+                              </span>
+                            ); })}
+                          </span>
+                        ) : "·"}</td>)}
                         <td style={{ padding: "7px 8px", textAlign: "right", fontWeight: 800 }}>{g.total}</td>
                         <td style={{ padding: "7px 8px", textAlign: "right", color: g.prets === g.nb ? "#15803d" : "#b45309" }}>{g.prets}/{g.nb}</td>
                       </tr>

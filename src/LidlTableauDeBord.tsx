@@ -123,11 +123,11 @@ export function LidlTableauDeBord({ lignes, envois }: { lignes: L[]; envois: Rec
         <span style={{ alignSelf: "center", fontSize: 12, color: "#6b7280" }}>depuis le {dateFr(debut)}</span>
       </div>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 12 }}>
-        {tuile("Colis", nbFr(totalColis), `${nbFr(periode.filter(l => l.depart === "paris").reduce((t, l) => t + l.quantite, 0))} Paris · ${nbFr(periode.filter(l => l.depart !== "paris").reduce((t, l) => t + l.quantite, 0))} Medina`)}
-        {tuile("Commandes", nbFr(periode.length), `${bases.length} bases servies`)}
-        {tuile("Jours de livraison", nbFr(jours.length), jours.length ? `${nbFr(Math.round(totalColis / jours.length))} colis / jour en moyenne` : undefined)}
-        {tuile("Traçabilité envoyée", jours.length ? `${joursEnvoyes.length}/${jours.length}` : "—", heureMoy != null ? `dernier envoi vers ${String(Math.floor(heureMoy / 60)).padStart(2, "0")}h${String(heureMoy % 60).padStart(2, "0")} en moyenne` : undefined)}
-        {tuile("Modifiées après import", nbFr(modifsPeriode.length), `${misesAJour} mise${misesAJour > 1 ? "s" : ""} à jour envoyée${misesAJour > 1 ? "s" : ""} à Lidl`)}
+        {false && tuile("Colis", nbFr(totalColis), `${nbFr(periode.filter(l => l.depart === "paris").reduce((t, l) => t + l.quantite, 0))} Paris · ${nbFr(periode.filter(l => l.depart !== "paris").reduce((t, l) => t + l.quantite, 0))} Medina`)}
+        {false && tuile("Commandes", nbFr(periode.length), `${bases.length} bases servies`)}
+        {false && tuile("Jours de livraison", nbFr(jours.length), jours.length ? `${nbFr(Math.round(totalColis / jours.length))} colis / jour en moyenne` : undefined)}
+        {false && tuile("Traçabilité envoyée", jours.length ? `${joursEnvoyes.length}/${jours.length}` : "—", heureMoy != null ? `dernier envoi vers ${String(Math.floor(heureMoy / 60)).padStart(2, "0")}h${String(heureMoy % 60).padStart(2, "0")} en moyenne` : undefined)}
+        {false && tuile("Modifiées après import", nbFr(modifsPeriode.length), `${misesAJour} mise${misesAJour > 1 ? "s" : ""} à jour envoyée${misesAJour > 1 ? "s" : ""} à Lidl`)}
       </div>
       {/* 14/10/2026 — Graphique « Colis par semaine » retiré (demande d'Elinathan). */}
       {false && carte("Colis par semaine", vueTableau ? tableauSemaines : graphique)}
@@ -159,7 +159,7 @@ export function LidlTableauDeBord({ lignes, envois }: { lignes: L[]; envois: Rec
           {jours.length === 0 && <div style={{ color: "#9ca3af", fontSize: 13 }}>Aucune livraison sur la période.</div>}
         </div>
       ))}
-      {carte("Commandes modifiées après import", modifsPeriode.length === 0 ? <div style={{ color: "#9ca3af", fontSize: 13 }}>Aucune modification sur la période.</div> : (
+      {/* 14/10/2026 — retiré (demande d'Elinathan) */}{false && carte("Commandes modifiées après import", modifsPeriode.length === 0 ? <div style={{ color: "#9ca3af", fontSize: 13 }}>Aucune modification sur la période.</div> : (
         <div>
           {modifsPeriode.slice(0, 8).map(c => (
             <div key={c.id} style={{ padding: "6px 0", borderTop: "1px solid #f3f4f6", fontSize: 13 }}>

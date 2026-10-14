@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 26, date: "14/10", pages: ["lidl"], texte: "🛒 Commandes Lidl : chiffres du tableau de bord et « modifiées après import » retirés ; dans le tableau de la semaine, une pastille de couleur par référence (plusieurs par jour possibles), « M » = départ Medina." },
   { id: 25, date: "14/10", pages: ["lidl"], texte: "🛒 Commandes Lidl : « Importer une commande » à côté de Configuration, « Commandes passées » en petit dans le bandeau du mail, graphique « Colis par semaine » retiré." },
   { id: 24, date: "14/10", pages: ["lidl"], texte: "🛒 Commandes Lidl : les boutons « Ajouter une commande » et « Commandes passées » sont maintenant compacts, côte à côte." },
   { id: 23, date: "14/10", pages: ["lidl"], texte: "🛒 Commandes Lidl : « ➕ Ajouter une commande » ouvre directement l'import, « Voir toutes les commandes passées » en dessous, et un clic sur un jour du tableau ouvre sa commande." },
