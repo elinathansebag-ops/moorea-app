@@ -956,6 +956,8 @@ export default function App() {
   // compteurs légers, chargés indépendamment du reste du module Tâches (pour ne pas avoir à
   // ouvrir tout ce module juste pour savoir s'il y a quelque chose en attente).
   const [nbTachesActives, setNbTachesActives] = useState(0);
+  // 14/10/2026 — Bandeau des tâches à faire sur l'accueil (défilement horizontal).
+  const [tachesAccueil, setTachesAccueil] = useState<{ id: string; titre: string; nbSous: number; nbSousFaites: number; ts: number }[]>([]);
   const [nbNotesCommandesEnAttente, setNbNotesCommandesEnAttente] = useState(0);
   useEffect(() => {
     const cle = (user?.email || "invite").toLowerCase().replace(/[.#$[\]]/g, "_");
@@ -967,6 +969,10 @@ export default function App() {
         return !t.fait;
       }).length;
       setNbTachesActives(actives);
+      setTachesAccueil(Object.entries(data).map(([id, t]: any) => {
+        const sous = t.sousTaches ? Object.values(t.sousTaches) as any[] : [];
+        return { id, titre: t.titre || "", nbSous: sous.length, nbSousFaites: sous.filter(x => x.fait).length, ts: t.ts || 0, fait: sous.length ? sous.every(x => x.fait) : !!t.fait };
+      }).filter(t => !t.fait).sort((a, b) => b.ts - a.ts));
     });
     return () => u();
   }, [user?.email]);
@@ -4238,8 +4244,40 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             if (nbNotesCommandesEnAttente > 0) cartes.push({ titre: "Notes commande", valeur: String(nbNotesCommandesEnAttente), detail: "à rentrer", point: ATTENTION, action: () => { setTachesTabDemande("commandes"); setShowAccueil(false); setShowTaches(true); } });
             if (nbTachesActives > 0) cartes.push({ titre: "Mes tâches", valeur: String(nbTachesActives), detail: `tâche${nbTachesActives > 1 ? "s" : ""} active${nbTachesActives > 1 ? "s" : ""}`, point: "#5e8f7f", action: () => { setTachesTabDemande("taches"); setShowAccueil(false); setShowTaches(true); } });
             if (monAccesReel.isAdmin && comptesMailCassesAccueil.length > 0) cartes.push({ titre: "Comptes mail", valeur: String(comptesMailCassesAccueil.length), detail: `déconnecté${comptesMailCassesAccueil.length > 1 ? "s" : ""}`, point: PROBLEME, info: comptesMailCassesAccueil.map((c: any) => c.email).join("\n"), action: () => setShowAdmin(true) });
-            if (!cartes.length) return null;
             const fond = darkMode ? "#171b21" : "#ffffff", encre = darkMode ? "#e6e8eb" : "#1e2b29", gris = darkMode ? "#aab1bb" : "#5e6b69";
+            // 14/10/2026 — Demande d'Elinathan : sur SON accueil, pas de chiffres « Aujourd'hui »
+            // mais ses tâches à faire, sur un bandeau qui défile de gauche à droite.
+            if ((userCompte?.email || "").toLowerCase() === "elinathan.sebag@moorea.fr" && monAcces.hasModule("taches")) {
+              const cleT = (user?.email || "invite").toLowerCase().replace(/[.#$[\]]/g, "_");
+              const ouvrirTaches = () => { setShowAccueil(false); setShowTaches(true); };
+              return (
+                <section aria-label="Mes tâches" style={{ marginBottom: 20 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: darkMode ? "#8cc79a" : "#305a55", letterSpacing: "0.08em", textTransform: "uppercase" }}>Mes tâches à faire{tachesAccueil.length ? ` (${tachesAccueil.length})` : ""}</span>
+                    <span style={{ flex: 1, height: 1, background: darkMode ? "#2e3540" : "#dde6e3" }} />
+                    <button type="button" onClick={ouvrirTaches} style={{ border: "none", background: "transparent", color: darkMode ? "#8cc79a" : "#305a55", fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>Tout voir →</button>
+                  </div>
+                  <div style={{ display: "flex", gap: 10, overflowX: "auto", scrollSnapType: "x mandatory", WebkitOverflowScrolling: "touch", paddingBottom: 6 }}>
+                    {tachesAccueil.map(t => (
+                      <div key={t.id} onClick={ouvrirTaches} style={{ flex: "0 0 230px", scrollSnapAlign: "start", background: fond, borderRadius: 12, padding: "12px 14px", boxShadow: darkMode ? "none" : "0 1px 2px rgba(30,43,41,.07)", cursor: "pointer", color: encre, display: "flex", gap: 10, alignItems: "flex-start", borderLeft: "4px solid #5e8f7f" }}>
+                        {t.nbSous === 0 && (
+                          <button type="button" title="Marquer comme faite" onClick={e => { e.stopPropagation(); update(ref(db, `taches_perso/${cleT}/${t.id}`), { fait: true, completedAt: Date.now() }).catch(() => {}); }}
+                            style={{ width: 22, height: 22, flexShrink: 0, borderRadius: 6, border: "2px solid #5e8f7f", background: "transparent", cursor: "pointer", marginTop: 1 }} />
+                        )}
+                        <span style={{ flex: 1, minWidth: 0 }}>
+                          <span style={{ display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical", overflow: "hidden", fontSize: 14, fontWeight: 700, lineHeight: 1.3 }}>{t.titre}</span>
+                          {t.nbSous > 0 && <span style={{ display: "block", fontSize: 12, color: gris, marginTop: 4 }}>{t.nbSousFaites} / {t.nbSous} sous-tâches</span>}
+                        </span>
+                      </div>
+                    ))}
+                    <button type="button" onClick={ouvrirTaches} style={{ flex: "0 0 150px", scrollSnapAlign: "start", border: `2px dashed ${darkMode ? "#2e3540" : "#cfdcd7"}`, background: "transparent", borderRadius: 12, color: gris, fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>
+                      {tachesAccueil.length ? "＋ Ajouter" : "Aucune tâche · ＋ Ajouter"}
+                    </button>
+                  </div>
+                </section>
+              );
+            }
+            if (!cartes.length) return null;
             return (
               <section aria-label="Aujourd'hui" style={{ marginBottom: 20 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
