@@ -2684,8 +2684,31 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
             )}
             {a.destruction && <span style={{ color: "#dc2626", marginLeft: 8, fontWeight: 700 }}>🗑 {a.destruction.quantite} détruits</span>}
           </p>
+          {/* 15/10/2026 — Infos du pointage toujours visibles (plus besoin d'ouvrir l'article). */}
+          {(a.rapport?.qualite || a.rapport?.temperature || a.rapport?.poids_brut || a.rapport?.poids_net || a.rapport?.observations) && (
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 5 }}>
+              {a.rapport?.qualite && <span style={{ fontSize: 11, background: "#fff", border: "1px solid #e5e7eb", color: "#374151", padding: "2px 8px", borderRadius: 8 }}>⭐ Qualité {a.rapport.qualite}/5</span>}
+              {a.rapport?.temperature && <span style={{ fontSize: 11, background: "#fff", border: "1px solid #e5e7eb", color: "#374151", padding: "2px 8px", borderRadius: 8 }}>🌡 Temp {a.rapport.temperature}</span>}
+              {a.rapport?.poids_brut && <span style={{ fontSize: 11, background: "#fff", border: "1px solid #e5e7eb", color: "#374151", padding: "2px 8px", borderRadius: 8 }}>⚖️ Brut {a.rapport.poids_brut} kg</span>}
+              {a.rapport?.poids_net && <span style={{ fontSize: 11, background: "#fff", border: "1px solid #e5e7eb", color: "#374151", padding: "2px 8px", borderRadius: 8 }}>🥬 Net {a.rapport.poids_net} kg</span>}
+              {a.rapport?.observations && <span style={{ fontSize: 11, background: "#fff", border: "1px solid #e5e7eb", color: "#374151", padding: "2px 8px", borderRadius: 8 }}>📝 {a.rapport.observations}</span>}
+            </div>
+          )}
         </div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0 }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          {/* 15/10/2026 — Rapport de réserve sur la même ligne que le nom du produit. */}
+          <span onClick={e => e.stopPropagation()} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+            <button onClick={() => onOuvreRapport(a, true)}
+              style={{ padding: "5px 10px", borderRadius: 8, border: "none", background: "#d97706", color: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
+              📋 Rapport de réserve
+            </button>
+            {a.statut !== "sous réserve" && (
+              <button onClick={handleReserve} disabled={savingReserve}
+                style={{ padding: "5px 10px", borderRadius: 8, border: "1px solid #fcd34d", background: "#fff", color: "#92400e", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
+                {savingReserve ? "..." : "Passer en réserve"}
+              </button>
+            )}
+          </span>
           {a.nettoyageMasse && (
             <span title="Validé via le bouton de nettoyage en masse par semaine, sans étiquette" style={{ fontSize: 10, fontWeight: 700, padding: "3px 7px", borderRadius: 20, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #93c5fd" }}>
               🧹 Nettoyage
@@ -2698,31 +2721,7 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
       {/* Accordéon */}
       {open && (
         <div style={{ background: "#fff", padding: "12px" }}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-            {a.rapport?.qualite && <span style={{ fontSize: 11, background: "#f3f4f6", color: "#374151", padding: "3px 8px", borderRadius: 8 }}>⭐ Qualité {a.rapport.qualite}/5</span>}
-            {a.rapport?.temperature && <span style={{ fontSize: 11, background: "#f3f4f6", color: "#374151", padding: "3px 8px", borderRadius: 8 }}>🌡 Temp {a.rapport.temperature}</span>}
-            {a.rapport?.poids_brut && <span style={{ fontSize: 11, background: "#f3f4f6", color: "#374151", padding: "3px 8px", borderRadius: 8 }}>⚖️ Brut {a.rapport.poids_brut} kg</span>}
-            {a.rapport?.poids_net && <span style={{ fontSize: 11, background: "#f3f4f6", color: "#374151", padding: "3px 8px", borderRadius: 8 }}>🥬 Net {a.rapport.poids_net} kg</span>}
-            {a.rapport?.observations && <span style={{ fontSize: 11, background: "#f3f4f6", color: "#374151", padding: "3px 8px", borderRadius: 8 }}>📝 {a.rapport.observations}</span>}
-          </div>
-
-          {/* Rapport de réserve */}
-          <div style={{ marginBottom: 10, background: "#fffbeb", border: "1px solid #fcd34d", borderRadius: 10, padding: "10px 12px" }}>
-            <p style={{ margin: "0 0 6px", fontWeight: 700, fontSize: 12, color: "#92400e" }}>⚠️ Rapport de réserve</p>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <button onClick={() => onOuvreRapport(a, true)}
-                style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: "#d97706", color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>
-                📋 Créer un rapport de réserve
-              </button>
-              {a.statut !== "sous réserve" && (
-                <button onClick={handleReserve} disabled={savingReserve}
-                  style={{ padding: "6px 14px", borderRadius: 8, border: "1px solid #fcd34d", background: "#fff", color: "#92400e", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>
-                  {savingReserve ? "..." : "Passer en réserve"}
-                </button>
-              )}
-            </div>
-          </div>
-
+          {/* 15/10/2026 — Infos et « Rapport de réserve » remontés sur la ligne du produit. */}
           {/* Actions */}
           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
             {a.statut === "refusé" ? (
