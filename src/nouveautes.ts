@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 55, date: "15/10", texte: "🔄 Reconditionnement : la carte « À reconditionner aujourd'hui » est masquée pour l'instant (à revoir ensemble)." },
   { id: 54, date: "15/10", pages: ["qualite"], texte: "🧪 Récap qualité › Traçabilité : cartes par lot rangées par jour (décision en couleur, traça, température, poids), filtres OK / Réserve / Refusé, recherche par fournisseur, produit ou n° traça ; une carte s'ouvre en frise des contrôles. Ancien tableau disponible." },
   { id: 53, date: "15/10", pages: ["reconditionnement"], texte: "🔄 Reconditionnement : « À reconditionner aujourd'hui » en cartes (colis à faire en grand, détail du calcul en petites cases) ; explication derrière « ℹ️ Calcul » ; ancien tableau disponible (☰ Tableau)." },
   { id: 52, date: "15/10", pages: ["arrivages"], texte: "📋 Pointer arrivage : articles validés sans sous-menu — « Étiquettes (palettes) » et « Re-pointer » sur la ligne du produit (Re-pointer demande confirmation)." },

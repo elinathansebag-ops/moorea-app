@@ -4015,7 +4015,8 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             {/* 14/10/2026 — Demande d'Elinathan : tableau d'aide « 🔄 À reconditionner aujourd'hui »
                 (lecture seule : ventes 📊 Stats de la semaine précédente, dernier comptage Stock,
                 demandes déjà en cours). Voir src/AReconditionnerAujourdhui.tsx. */}
-            <AReconditionnerAujourdhui demandes={demandes} />
+            {/* 15/10/2026 — Masqué à la demande d'Elinathan (à revoir ensemble) ; code gardé. */}
+            {false && <AReconditionnerAujourdhui demandes={demandes} />}
 
             {/* Demandes de réajustement de stock envoyées par les reconditionneurs (voir
                 PortailReconditionneur.tsx) — mêmes données/actions que dans Préparation entrepôt. */}
