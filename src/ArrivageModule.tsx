@@ -2642,7 +2642,6 @@ export function HistoriqueArrivageRow({ a, rapport, borderColor, onRapport, onLi
 }
 
 export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImprimerMulti }: { arrivage: any; onDelete: any; onOuvreRapport: any; onImprimerMulti?: (a: any) => void }) {
-  const [open, setOpen] = useState(false);
   const [savingReserve, setSavingReserve] = useState(false);
   const [showRefusMulti, setShowRefusMulti] = useState(false);
   const borderColor = a.statut === "validé" ? "#27ae60" : a.statut === "refusé" ? "#dc2626" : "#d97706";
@@ -2660,7 +2659,7 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
   return (
     <div style={{ marginBottom: 6, borderRadius: 10, overflow: "hidden", border: "1px solid #e8e0d0", borderLeft: `3px solid ${borderColor}` }}>
       {/* Header */}
-      <div onClick={() => setOpen(!open)} style={{ background: "#f9fafb", padding: "9px 12px", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+      <div style={{ background: "#f9fafb", padding: "9px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1a2e1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {a.produit || a.article || a.nom || a.designation || a.libelle || a.description ||
@@ -2708,22 +2707,7 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
                 {savingReserve ? "..." : "Passer en réserve"}
               </button>
             )}
-          </span>
-          {a.nettoyageMasse && (
-            <span title="Validé via le bouton de nettoyage en masse par semaine, sans étiquette" style={{ fontSize: 10, fontWeight: 700, padding: "3px 7px", borderRadius: 20, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #93c5fd" }}>
-              🧹 Nettoyage
-            </span>
-          )}
-          <BadgeArrivage status={a.statut} par={pointePar(a)} />
-          <span style={{ fontSize: 14, color: "#c8a84b", transform: open ? "rotate(90deg)" : "none", transition: "transform 0.2s", display: "inline-block" }}>›</span>
-        </div>
-      </div>
-      {/* Accordéon */}
-      {open && (
-        <div style={{ background: "#fff", padding: "12px" }}>
-          {/* 15/10/2026 — Infos et « Rapport de réserve » remontés sur la ligne du produit. */}
-          {/* Actions */}
-          <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
+            {/* 15/10/2026 — Étiquettes / Re-pointer ici aussi : plus de sous-accordéon. */}
             {a.statut === "refusé" ? (
               <button onClick={() => setShowRefusMulti(true)} title="Choisir le nombre de palettes et réimprimer une étiquette REFUS par palette"
                 style={{ padding: "5px 10px", background: "#fef2f2", border: "1px solid #fca5a5", color: "#dc2626", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>
@@ -2734,6 +2718,7 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
                 style={{ padding: "5px 10px", background: "#f5f3ff", border: "1px solid #8b5cf6", color: "#7c3aed", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>🏷 Étiquettes (palettes)</button>
             )}
             <button onClick={async () => {
+              if (!window.confirm(`Re-pointer « ${a.produit || "cet article"} » ? Il repassera « en attente ».`)) return;
               const { ref: fbRef, update: fbUpdate, get: fbGet } = await import("firebase/database");
               const { db: dbImport } = await import("./firebase");
               await fbUpdate(fbRef(dbImport, `arrivages/${a.id}`), { statut: "en attente", rapport: null, litige: null, validatedAt: null });
@@ -2779,9 +2764,15 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
                 }
               }
             }} style={{ padding: "5px 10px", background: "#fffbeb", border: "1px solid #fcd34d", color: "#d97706", borderRadius: 8, cursor: "pointer", fontSize: 11, fontWeight: 700 }}>↺ Re-pointer</button>
-          </div>
+          </span>
+          {a.nettoyageMasse && (
+            <span title="Validé via le bouton de nettoyage en masse par semaine, sans étiquette" style={{ fontSize: 10, fontWeight: 700, padding: "3px 7px", borderRadius: 20, background: "#eff6ff", color: "#1d4ed8", border: "1px solid #93c5fd" }}>
+              🧹 Nettoyage
+            </span>
+          )}
+          <BadgeArrivage status={a.statut} par={pointePar(a)} />
         </div>
-      )}
+      </div>
       {showRefusMulti && (
         <PopupEtiquetteRefusMulti arrivage={a} onClose={() => setShowRefusMulti(false)} />
       )}
