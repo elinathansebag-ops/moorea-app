@@ -519,6 +519,7 @@ export default function App() {
   // 05/10/2026 — Compte partagé (commercial@, entrepot@, agreage@) : le prénom choisi dans
   // « Qui es-tu ? » (ProfilGenerique.tsx) remplace le nom du compte partout dans l'appli.
   const profilGenerique = useProfilGenerique();
+  const [popupPhotosFerme, setPopupPhotosFerme] = useState(false);
   const user = useMemo(() => avecProfil(userCompte, profilGenerique), [userCompte, profilGenerique]);
   // 02/09/2026 — Demande d'Elinathan : après un rafraîchissement de la page, un module ouvert
   // apparaissait souvent "vide" (aucune donnée) le temps que tous les listeners Firebase se
@@ -3396,7 +3397,34 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   // ─── FAB SCANNER GLOBAL ───
   // 11/10/2026 — Fenêtre « activer les notifications » / tutoriel d'installation à la connexion
   // (voir InvitationNotifications) — partout où l'appli est utilisable, pas sur l'écran d'attente.
-  const invitationNotif = user ? <InvitationNotifications darkMode={darkMode} /> : null;
+  // 14/10/2026 — Photos perdues chez ImgBB : fenêtre pour Alban dès qu'il se connecte (profil
+  // « Alban »), avec un bouton par rapport vers le formulaire. Rapports de moins de 3 jours.
+  // « Plus tard » la ferme jusqu'à la prochaine ouverture de l'appli.
+  const limitePhotos = Date.now() - 3 * 86400000;
+  const dateRapportPhotos = (r: any) => r.timestamp || (() => { const [j, m, a] = String(r.date || "").split("/").map(Number); return a ? new Date(a, m - 1, j).getTime() : 0; })();
+  const photosARemettre = rapports.filter(r => r.photosPerdues && !(r.photoUrls?.length) && dateRapportPhotos(r) >= limitePhotos);
+  const popupPhotos = user && profilGenerique === "Alban" && photosARemettre.length > 0 && !popupPhotosFerme && vue !== "form" ? (
+    <div style={{ position: "fixed", inset: 0, zIndex: 3200, background: "rgba(0,0,0,.5)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+      <div style={{ background: "#fff", borderRadius: 18, width: "min(520px, 100%)", maxHeight: "88vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+        <div style={{ padding: "16px 18px", background: "#d97706", color: "#fff", borderRadius: "18px 18px 0 0" }}>
+          <div style={{ fontSize: 18, fontWeight: 900 }}>📷 Alban, des photos sont à remettre</div>
+        </div>
+        <div style={{ padding: "14px 18px 18px" }}>
+          <p style={{ margin: "0 0 12px", fontSize: 14, color: "#374151", lineHeight: 1.45 }}>Suite à un bug technique, les photos de ces rapports ont été perdues. Merci de les remettre : ouvre le rapport, ajoute les photos, puis enregistre.</p>
+          <div style={{ display: "grid", gap: 8 }}>
+            {photosARemettre.map(r => (
+              <div key={r.firebaseKey || r.id} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", background: "#fffbeb", borderRadius: 12, padding: "10px 12px", border: "1px solid #fde68a" }}>
+                <span style={{ flex: 1, minWidth: 170, fontSize: 13 }}><b>{r.numeroRapport || ""}</b> · {r.produit || ""}<br /><span style={{ color: "#6b7280", fontSize: 12 }}>{r.fournisseur || ""} · {r.date || ""}</span></span>
+                <button type="button" onClick={() => { setShowAccueil(false); chargerRapportEdition(r); }} style={{ padding: "10px 14px", borderRadius: 10, border: "none", background: "#d97706", color: "#fff", fontWeight: 800, cursor: "pointer", fontSize: 13 }}>📷 Remettre les photos →</button>
+              </div>
+            ))}
+          </div>
+          <button type="button" onClick={() => setPopupPhotosFerme(true)} style={{ marginTop: 14, width: "100%", padding: "11px 0", borderRadius: 12, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, cursor: "pointer" }}>Plus tard</button>
+        </div>
+      </div>
+    </div>
+  ) : null;
+  const invitationNotif = user ? <><InvitationNotifications darkMode={darkMode} />{popupPhotos}</> : null;
   const fabScanner = !showScanner && !showPalette && !showStock && !showRH && !showPointeuse && !showRecapQualite && (
     <button
       onClick={() => { setScannerMode("palette"); setShowScanner(true); setShowAccueil(false); }}
@@ -6029,7 +6057,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               const limite = Date.now() - 3 * 86400000;
               const dateRapport = (r: any) => r.timestamp || (() => { const [j, m, a] = String(r.date || "").split("/").map(Number); return a ? new Date(a, m - 1, j).getTime() : 0; })();
               const aRefaire = rapports.filter(r => r.photosPerdues && !(r.photoUrls?.length) && dateRapport(r) >= limite);
-              if (!aRefaire.length || !(nomSignataire() === "Alban" || monAcces.isAdmin)) return null;
+              if (!aRefaire.length || !(profilGenerique === "Alban" || monAcces.isAdmin)) return null;
               return (
                 <div style={{ marginBottom: 12, padding: "14px 16px", borderRadius: 14, background: "#fffbeb", border: "2px solid #fcd34d" }}>
                   <div style={{ fontSize: 14.5, fontWeight: 800, color: "#92400e", marginBottom: 4 }}>📷 Alban, des photos sont à remettre</div>
