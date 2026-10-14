@@ -230,7 +230,7 @@ const COLORS = {
 // tableau de bord, sans les options rares, et retour à l'accueil une fois enregistré. Le module
 // complet (sans raccourci) ne change pas.
 export type RaccourciPresta = "cartons" | "palette-vierge";
-export function PrestatairesModule({ onClose, userName, initialTab, canConfig = true, demandesRecondExterne, raccourci }: { onClose: () => void; userName?: string; initialTab?: "dashboard" | "configuration"; canConfig?: boolean; demandesRecondExterne?: any[]; raccourci?: RaccourciPresta }) {
+export function PrestatairesModule({ onClose, userName, initialTab, canConfig = true, demandesRecondExterne, raccourci, onOuvrirFactures }: { onClose: () => void; userName?: string; initialTab?: "dashboard" | "configuration"; canConfig?: boolean; demandesRecondExterne?: any[]; raccourci?: RaccourciPresta; onOuvrirFactures?: () => void }) {
   const [activeTab, setActiveTab] = useState<
     "dashboard" | "cartons" | "palettes" | "ifco" | "ifco-histo" | "ifco-stats" | "ifco-rapprochement" | "configuration" | "nouvelle-carton" | "nouvelle-palette" | "entretiens" | "palettes-vierges" | "fiche-recap" | "nouvelle-analyse"
   >(raccourci === "cartons" ? "nouvelle-carton" : raccourci === "palette-vierge" ? "palettes-vierges" : initialTab === "configuration" && !canConfig ? "dashboard" : (initialTab || "dashboard"));
@@ -2202,7 +2202,13 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
 
         {/* Bouton Configuration / retour au Dashboard (en haut à droite) — 02/09/2026 : agrandi
             à la demande d'Elinathan, qui le loupait tout le temps (trop petit / trop discret). */}
-        <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: "16px" }}>
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap", marginBottom: "16px" }}>
+          {/* 14/10/2026 — Factures prestataires rangées ici (demande d'Elinathan), plus de carte à part sur l'accueil. */}
+          {onOuvrirFactures && !raccourci && activeTab === "dashboard" && (
+            <button onClick={onOuvrirFactures} style={{ padding: "14px 26px", background: "white", color: COLORS.gray700, border: `2.5px solid ${COLORS.gray200}`, cursor: "pointer", borderRadius: "10px", fontSize: "16px", fontWeight: "800" }}>
+              💳 Factures prestataires
+            </button>
+          )}
           {canConfig && !raccourci && (
           <button
             onClick={() => setActiveTab(activeTab === "dashboard" ? "configuration" : "dashboard")}

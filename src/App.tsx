@@ -539,6 +539,7 @@ export default function App() {
   const [showRecherche, setShowRecherche] = useState(false);
   const [raccourciPresta, setRaccourciPresta] = useState<null | "cartons" | "palette-vierge">(null);
   const [showFacturesPresta, setShowFacturesPresta] = useState(false);
+  const [facturesDepuisPresta, setFacturesDepuisPresta] = useState(false);
   const [showConsultLidl, setShowConsultLidl] = useState(false);
   const [showExtractions, setShowExtractions] = useState(false);
   // 13/10/2026 — Rubriques regroupées (ménage des modules) : 🧪 Récap qualité et 🌱 Appro.
@@ -3578,6 +3579,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           initialTab={prestatairesInitialTab}
           canConfig={monAcces.hasTab("prestataires.configuration")}
           demandesRecondExterne={reconditionnementDemandesListe}
+          onOuvrirFactures={monAcces.hasModule("factures_prestataires") ? () => { setShowPrestataires(false); setFacturesDepuisPresta(true); setShowFacturesPresta(true); } : undefined}
           scanLidlId={qrLidlId}
           onScanLidlHandled={() => { setQrLidlId(null); window.history.replaceState({}, "", window.location.pathname); }}
         />
@@ -4077,10 +4079,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         { key: "raccourci_cartons", icon: "📦", label: "Commande cartons", color: "#6c757d", badge: null, stat: "Go-Embal — saisie rapide", action: () => { setShowAccueil(false); setRaccourciPresta("cartons"); } },
         { key: "raccourci_palette_vierge", icon: "🟫", label: "Palette vierge", color: "#6c757d", badge: null, stat: "Pointer une livraison", action: () => { setShowAccueil(false); setRaccourciPresta("palette-vierge"); } },
       ] : []),
-      // 12/10/2026 — Pointage des factures prestataires (historique des arrivées + bouton « Facturée »).
-      ...(monAcces.hasModule("factures_prestataires") ? [
-        { key: "factures_prestataires", icon: "💳", label: "Factures prestataires", color: "#305a55", badge: null, stat: "Pointer les factures reçues", action: () => { setShowAccueil(false); setShowFacturesPresta(true); } },
-      ] : []),
+      // 14/10/2026 — Factures prestataires : plus de carte ici, bouton « 💳 Factures prestataires » dans Prestataires.
       { key: "reconditionnement", icon: "🔄", label: "Reconditionnement", color: "#3b82f6", badge: null, stat: "Demandes NLT & Andès", action: () => { setShowAccueil(false); setShowReconditionnement(true); } },
       // 13/10/2026 — En veille (demande d\'Elinathan) : retiré de l\'appli, code gardé.
       // { key: "messagerie", icon: "📧", label: "Messagerie", color: "#0f766e", badge: null, stat: "Tri automatique par commercial", action: () => { setShowAccueil(false); setShowMessagerie(true); } },
@@ -4444,7 +4443,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   }
 
   if (showFacturesPresta) {
-    const fermer = () => { setShowFacturesPresta(false); setShowAccueil(true); };
+    // Retour : vers Prestataires si on vient de là (14/10/2026), sinon l'accueil.
+    const fermer = () => { setShowFacturesPresta(false); if (facturesDepuisPresta) { setFacturesDepuisPresta(false); setShowPrestataires(true); } else setShowAccueil(true); };
     if (!monAcces.hasModule("factures_prestataires")) return <AccesRefuse onRetour={fermer} />;
     return <>{fabScanner}{invitationNotif}<FacturesPrestataires onClose={fermer} darkMode={darkMode} /></>;
   }
