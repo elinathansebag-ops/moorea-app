@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, push, onValue, remove, update, onDisconnect, serverTimestamp, set, get } from "firebase/database";
-import { getStorage, ref as refStockage, uploadString, getDownloadURL } from "firebase/storage";
+import { getStorage, ref as refStockage, uploadString, uploadBytes, getDownloadURL } from "firebase/storage";
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged, setPersistence, browserLocalPersistence, signInAnonymously, createUserWithEmailAndPassword, signInWithEmailAndPassword } from "firebase/auth";
 
 const firebaseConfig = {
@@ -46,3 +46,24 @@ setPersistence(auth, browserLocalPersistence);
 
 export const googleProvider = new GoogleAuthProvider();
 export { ref, push, onValue, remove, update, set, get, onDisconnect, serverTimestamp, signInWithPopup, signOut, onAuthStateChanged, signInAnonymously, createUserWithEmailAndPassword, signInWithEmailAndPassword };
+
+// 14/10/2026 — Recopie d'une photo ImgBB vers Firebase Storage (bouton Réglages › Données).
+// Passe par notre serveur (api/fetch-image.ts) : ImgBB ne laisse pas le navigateur lire l'image.
+export async function recopierPhotoImgBB(url: string): Promise<string> {
+  for (let essai = 0; essai < 3; essai++) {
+    try {
+      const rep = await fetch(`/api/fetch-image?url=${encodeURIComponent(url)}`);
+      if (!rep.ok) throw new Error(`HTTP ${rep.status}`);
+      const blob = await rep.blob();
+      if (!blob.type.startsWith("image/") || blob.size < 2000) throw new Error("Pas une photo");
+      const nom = `rapports/imgbb/${url.split("/").slice(-2).join("-").replace(/[^A-Za-z0-9._-]/g, "_")}`;
+      const r = refStockage(stockage, nom);
+      await uploadBytes(r, blob, { contentType: blob.type });
+      return await getDownloadURL(r);
+    } catch (e) {
+      if (essai === 2) throw e;
+      await new Promise(ok => setTimeout(ok, 1500 * (essai + 1)));
+    }
+  }
+  return "";
+}

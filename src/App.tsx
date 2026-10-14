@@ -72,6 +72,7 @@ const DashboardModule = chargerModule(() => import("./DashboardModule"), "Dashbo
 const ApproModule = chargerModule(() => import("./ApproModule"), "ApproModule");
 const ChargementModule = chargerModule(() => import("./ChargementModule"), "ChargementModule");
 // 13/10/2026 — RH, Pointeuse (écran mural + espace employé) et QR Code Leofresh supprimés (demande d'Elinathan).
+const RecopiePhotos = chargerModule(() => import("./RecopiePhotos"), "default");
 const RecapQualiteModule = chargerModule(() => import("./RecapQualiteModule"), "RecapQualiteModule");
 
 // ─── Précharge une image distante (photo hébergée sur imgBB) en data URL avant de la
@@ -3943,6 +3944,10 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                         <BoutonReglage label={archivageGlobalBusy || archivageBusy ? "Archivage…" : "🗄️ Archiver (+21j)"} onClick={() => archiverToutAncien()} />
                         <BoutonReglage label="📜 Historique des arrivages →" onClick={() => { setShowAdmin(false); setPageMode("historique_arr"); setVue("__none__" as any); }} accent={{ bg: "#faf8f3", fg: "#6c757d", bd: "#e8e0d0" }} />
                       </div>
+                    </CarteReglage>
+                    {/* 14/10/2026 — ImgBB n'affiche plus les photos hors de son site : recopie vers Firebase Storage. */}
+                    <CarteReglage titre="📷 Photos des rapports" desc="Recopie les anciennes photos (hébergées sur ImgBB) vers Firebase, puis met chaque rapport à jour. Se relance sans risque : les photos déjà recopiées sont ignorées.">
+                      <RecopiePhotos />
                     </CarteReglage>
 
                     </>)}
