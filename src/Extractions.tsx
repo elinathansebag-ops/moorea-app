@@ -137,7 +137,11 @@ function RechercheIntelligente({ options, placeholder, onChoisir, c, grand, auto
   const [q, setQ] = useState("");
   const [actif, setActif] = useState(0);
   const [ouvert, setOuvert] = useState(false);
-  const resultats = useMemo(() => multi ? chercher(options, q) : [...(extra ? extra(q) : []), ...chercher(options, q)], [options, q, extra, multi]);
+  // 14/10/2026 — Filtres par type en haut de la liste (cases à cocher).
+  const [typesMasques, setTypesMasques] = useState<Record<string, boolean>>({});
+  const tousResultats = useMemo(() => multi ? chercher(options, q) : [...(extra ? extra(q) : []), ...chercher(options, q)], [options, q, extra, multi]);
+  const resultats = useMemo(() => tousResultats.filter(o => !typesMasques[o.type]), [tousResultats, typesMasques]);
+  const typesPresents = useMemo(() => [...tousResultats.reduce((m, o) => m.set(o.type, (m.get(o.type) || 0) + 1), new Map<string, number>())], [tousResultats]);
   const choisir = (o: Option) => { onChoisir(o); if (!multi) { setQ(""); setOuvert(false); } };
   const parType = multi ? resultats.reduce((m, o) => m.set(o.type, [...(m.get(o.type) || []), o]), new Map<string, Option[]>()) : null;
   return (
@@ -154,6 +158,20 @@ function RechercheIntelligente({ options, placeholder, onChoisir, c, grand, auto
         style={{ width: "100%", boxSizing: "border-box", padding: grand ? "14px 16px" : "10px 12px", borderRadius: 12, border: `2px solid ${c.vert}`, background: c.carte, color: c.texte, fontSize: grand ? 17 : 14.5, fontWeight: 600 }} />
       {ouvert && q && (
         <div style={{ position: "absolute", left: 0, right: 0, top: "calc(100% + 4px)", zIndex: 50, background: c.carte, border: `1px solid ${c.bord}`, borderRadius: 12, boxShadow: "0 10px 30px rgba(0,0,0,.15)", maxHeight: "min(60vh, 520px)", overflowY: "auto" }}>
+          {typesPresents.length > 1 && (
+            <div style={{ position: "sticky", top: 0, zIndex: 1, display: "flex", gap: 6, flexWrap: "wrap", padding: "8px 12px", background: c.carte, borderBottom: `1px solid ${c.bord}` }}>
+              {typesPresents.map(([t, n]) => {
+                const on = !typesMasques[t];
+                const lib = ({ article: "Articles", famille: "Familles", client: "Clients", fournisseur: "Fournisseurs", jour: "Dates", semaine: "Semaines", litiges: "Litiges", reserves: "Réserves" } as Record<string, string>)[t] || t;
+                return (
+                  <button key={t} type="button" onMouseDown={e => { e.preventDefault(); setTypesMasques(m => ({ ...m, [t]: on })); setActif(0); }}
+                    style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 999, border: `1.5px solid ${on ? c.vert : c.bord}`, background: on ? (c.sombre ? "#1d2e2b" : "#eaf2ee") : c.carte, color: on ? c.vert : c.gris, fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>
+                    <span style={{ fontSize: 14 }}>{on ? "☑" : "☐"}</span>{ICONES[t] || ""} {lib} ({n})
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {resultats.length > 0 && <div style={{ padding: "6px 14px", fontSize: 11.5, fontWeight: 800, color: c.gris, borderBottom: `1px solid ${c.bord}` }}>{resultats.length} résultat{resultats.length > 1 ? "s" : ""}{multi && estChoisi ? ` · ${resultats.filter(o => estChoisi(o)).length} compris dans le calcul` : ""}</div>}
           {!resultats.length && <div style={{ padding: "10px 14px", fontSize: 13, color: c.gris }}>Aucun résultat pour « {q} »</div>}
           {multi && parType && [...parType].filter(([, l]) => l.length > 1).map(([t, l]) => {
