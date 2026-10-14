@@ -700,7 +700,6 @@ export default function App() {
     if (!user?.uid) return;
     set(ref(db, cleProfilAccueil ? `comptes/${user.uid}/accueil_mise_en_page_profils/${cleProfilAccueil}` : `comptes/${user.uid}/accueil_mise_en_page`), { ordre: m.ordre || [], couleurs: m.couleurs || {} });
   };
-  const [glisse, setGlisse] = useState<string | null>(null);
   const monAccesCompte = (permsChargees || ADMIN_BOOTSTRAP.includes((user?.email || "").toLowerCase()))
     ? calculerAcces(user?.email, permRoles, permUsers)
     : { isAdmin: false, hasModule: () => false, hasTab: () => false };
@@ -4263,11 +4262,6 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             // 14/10/2026 — Liste du panneau dans l'ordre choisi (masqués compris, à leur place).
             const modulesMasquables = ordonnerModules(tousModulesAccueil.filter(b => b.key), miseEnPage.ordre);
             const clesOrdre = modulesMasquables.map(b => b.key!);
-            const deplacer = (cle: string, vers: number) => {
-              const l = clesOrdre.filter(k => k !== cle);
-              l.splice(Math.max(0, Math.min(l.length, vers)), 0, cle);
-              enregistrerMiseEnPage({ ...miseEnPage, ordre: l });
-            };
             const colorer = (cle: string, id: string | null) => {
               const couleurs = { ...(miseEnPage.couleurs || {}) };
               if (id) couleurs[cle] = id; else delete couleurs[cle];
@@ -4284,50 +4278,19 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                   </button>
                 </div>
 
-                {showPersonnaliserAccueil && (
-                  <div style={{ marginBottom: 16, background: darkMode ? "#1a1808" : "#fffbeb", borderRadius: 14, border: "1.5px solid #f59e0b55", padding: "14px" }}>
-                    <p style={{ margin: "0 0 10px", fontSize: 11.5, color: darkMode ? "#c9a869" : "#8a6f2e" }}>
-                      Range tes modules avec ▲ ▼ (ou glisse-les sur ordinateur), choisis une couleur, et décoche ce que tu ne veux plus voir. Un module décoché garde sa place. Ça ne change rien à tes accès.
-                    </p>
-                    <div style={{ display: "grid", gap: 6 }}>
-                      {modulesMasquables.map((b, i) => {
-                        const masque = !!accueilMasques[b.key!], coul = miseEnPage.couleurs?.[b.key!];
-                        return (
-                          <div key={b.key} draggable onDragStart={() => setGlisse(b.key!)} onDragEnd={() => setGlisse(null)}
-                            onDragOver={e => e.preventDefault()} onDrop={e => { e.preventDefault(); if (glisse && glisse !== b.key) deplacer(glisse, clesOrdre.filter(k => k !== glisse).indexOf(b.key!) + (clesOrdre.indexOf(glisse) < i ? 1 : 0)); setGlisse(null); }}
-                            style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "7px 10px", borderRadius: 10, background: glisse === b.key ? (darkMode ? "#2a2a1a" : "#fef3c7") : (darkMode ? "#171b21" : "#fff"), border: `1px solid ${darkMode ? "#2e3540" : "#f0e6c8"}`, opacity: masque ? 0.55 : 1, cursor: "grab" }}>
-                            <span style={{ color: textSub, fontSize: 14 }} title="Glisser pour déplacer">⠿</span>
-                            <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 13, fontWeight: 700, color: textMain, flex: "1 1 170px", minWidth: 0 }}>
-                              <span className="mrq-case-conteneur">
-                                <input type="checkbox" className="mrq-case-native" checked={!masque} onChange={() => toggleMasqueAccueil(b.key!)} />
-                                <span className="mrq-case-visuelle" />
-                              </span>
-                              <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.icon} {b.label}</span>
-                            </label>
-                            <span style={{ display: "flex", gap: 4, alignItems: "center" }}>
-                              {COULEURS_PASTEL.map(x => (
-                                <button key={x.id} type="button" title={x.nom} onClick={() => colorer(b.key!, coul === x.id ? null : x.id)}
-                                  style={{ width: 20, height: 20, borderRadius: 10, border: coul === x.id ? "2.5px solid #305a55" : "1px solid #d1d5db", background: x.icone, cursor: "pointer", padding: 0 }} />
-                              ))}
-                              <button type="button" title="Sans couleur" onClick={() => colorer(b.key!, null)}
-                                style={{ width: 20, height: 20, borderRadius: 10, border: !coul ? "2.5px solid #305a55" : "1px solid #d1d5db", background: "#fff", color: "#9ca3af", fontSize: 11, lineHeight: 1, cursor: "pointer", padding: 0 }}>✕</button>
-                            </span>
-                            <span style={{ display: "flex", gap: 4 }}>
-                              <button type="button" disabled={i === 0} onClick={() => deplacer(b.key!, i - 1)} style={{ width: 30, height: 28, borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", cursor: i === 0 ? "default" : "pointer", opacity: i === 0 ? 0.35 : 1 }}>▲</button>
-                              <button type="button" disabled={i === modulesMasquables.length - 1} onClick={() => deplacer(b.key!, i + 1)} style={{ width: 30, height: 28, borderRadius: 8, border: "1px solid #e5e7eb", background: "#fff", cursor: i === modulesMasquables.length - 1 ? "default" : "pointer", opacity: i === modulesMasquables.length - 1 ? 0.35 : 1 }}>▼</button>
-                            </span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 10, gap: 8, flexWrap: "wrap" }}>
-                      <button type="button" onClick={() => enregistrerMiseEnPage({})} style={{ border: "none", background: "transparent", color: textSub, fontSize: 11.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Remettre l'ordre et les couleurs par défaut</button>
-                      <button type="button" onClick={() => setShowPersonnaliserAccueil(false)} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: "#305a55", color: "#fff", fontWeight: 800, cursor: "pointer" }}>✓ Terminé</button>
-                    </div>
-                  </div>
-                )}
-
-                {modulesAffiches.length > 0 && <AccueilModulesV2 modules={modulesAffiches as any} sombre={darkMode} ordre={miseEnPage.ordre} couleurs={miseEnPage.couleurs} />}
+                {/* 14/10/2026 (bis) — Personnaliser = mode édition directement sur la grille (glisser,
+                    clic droit couleur, bac des modules masqués) : voir AccueilModulesV2.tsx. */}
+                {showPersonnaliserAccueil ? (
+                  <AccueilModulesV2 modules={modulesAffiches as any} sombre={darkMode} ordre={miseEnPage.ordre} couleurs={miseEnPage.couleurs}
+                    edition={{
+                      tous: modulesMasquables as any,
+                      masques: accueilMasques,
+                      onOrdre: cles => enregistrerMiseEnPage({ ...miseEnPage, ordre: cles }),
+                      onCouleur: (cle, id) => colorer(cle, id),
+                      onMasquer: (cle, masquer) => { if (!!accueilMasques[cle] !== masquer) toggleMasqueAccueil(cle); },
+                      onTerminer: () => setShowPersonnaliserAccueil(false),
+                    }} />
+                ) : modulesAffiches.length > 0 && <AccueilModulesV2 modules={modulesAffiches as any} sombre={darkMode} ordre={miseEnPage.ordre} couleurs={miseEnPage.couleurs} />}
               </>
             );
           })()}
