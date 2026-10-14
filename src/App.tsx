@@ -4473,7 +4473,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       ...(monAcces.hasModule("rapports") ? [{ icone: "📋", titre: "Rapports d'agréage", detail: `${rapports.length} rapports · recherche, filtres, PDF`, couleur: "#305a55", onClick: () => versRapports() }] : []),
       ...(monAcces.hasModule("qualite") ? [{ icone: "🧪", titre: "Traçabilité & mesures", detail: "Lots, températures et poids pesés", couleur: "#0891b2", onClick: ouvrir(() => setShowRecapQualite(true)) }] : []),
       ...(monAcces.hasModule("lidl_consultation") ? [{ icone: "🔎", titre: "Traçabilité Lidl", detail: "Lots, producteurs, envois à Lidl", couleur: "#0050aa", onClick: ouvrir(() => setShowConsultLidl(true)) }] : []),
-      ...(monAcces.hasModule("rapports") ? [{ icone: "🔄", titre: "Refus à faire signer", detail: "Bons de reprise transporteur", couleur: "#dc2626", badge: rapports.filter(refusASigner).length, onClick: () => { setShowQualiteHub(false); setRetourHub("qualite"); setSearchText(""); setFilterDecision(""); setFilterFournisseur(""); setFilterProduit(""); setFilterDateDebut(""); setFilterDateFin(""); setASignerSeul(true); setVue("historique"); setPageMode("arrivages"); } }] : []),
+      // 14/10/2026 — « Refus à faire signer » : module à part (carte d'accueil), plus dans le Récap qualité.
       // 14/10/2026 — Page Litiges retirée (demande d'Elinathan : « sert à rien ») ; code gardé.
     ];
     // Messages de confirmation (mail envoyé…) aussi sur le Récap qualité.
@@ -4994,7 +4994,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         onHome={() => { setShowAccueil(true); setShowLitiges(false); setShowRecherche(false); setShowStock(false); setShowHistoMesures(false); }}
       />
 
-      <div className="content-wrap">
+      <div className="content-wrap" style={vue === "historique" ? { maxWidth: 1300 } : undefined}>
         {pageMode === "arrivages" && vue !== "form" && vue !== "historique" && (
           <div className="fade-up">
             {(() => {
@@ -6110,20 +6110,22 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             <div className="fade-up">
               <p style={{ margin: "0 0 14px", fontSize: 14, color: "#6b7280" }}>{liste.length ? `${liste.length} refus en attente de signature du transporteur.` : ""}</p>
               {!liste.length && <div style={{ padding: 40, textAlign: "center", background: "#fff", borderRadius: 16, color: "#6b7280", fontSize: 15, fontWeight: 700 }}>✅ Aucun refus à faire signer.</div>}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(260px, 100%), 1fr))", gap: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(230px, 100%), 1fr))", gap: 12 }}>
                 {liste.map(r => {
-                  const photo = (r.photoUrls || []).find(Boolean);
+                  const photos4 = (r.photoUrls || []).filter(Boolean).slice(0, 4);
                   return (
                     <div key={r.firebaseKey || r.id} style={{ background: "#fff", borderRadius: 16, overflow: "hidden", boxShadow: "0 1px 4px rgba(0,0,0,.08)", display: "flex", flexDirection: "column" }}>
-                      <div style={{ aspectRatio: "4/3", background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", color: "#9ca3af", fontSize: 13 }}>
-                        {photo ? <img src={srcPhoto(photo)} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "📷 Pas de photo"}
+                      {/* Mosaïque de 4 photos (2 × 2). */}
+                      <div style={{ aspectRatio: "1/1", background: "#f3f4f6", display: "grid", gridTemplateColumns: photos4.length > 1 ? "1fr 1fr" : "1fr", gridTemplateRows: photos4.length > 2 ? "1fr 1fr" : "1fr", gap: 2, color: "#9ca3af", fontSize: 13 }}>
+                        {photos4.length ? photos4.map((u: string, k: number) => <img key={k} src={srcPhoto(u)} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover", minHeight: 0, gridColumn: photos4.length === 3 && k === 0 ? "span 2" : undefined }} />)
+                          : <div style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>📷 Pas de photo</div>}
                       </div>
                       <div style={{ padding: "12px 14px 14px", display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
-                        <div style={{ fontSize: 16, fontWeight: 900, color: "#1a2e1a", lineHeight: 1.2 }}>{r.fournisseur || "Fournisseur ?"}</div>
+                        <div style={{ fontSize: 14.5, fontWeight: 900, color: "#1a2e1a", lineHeight: 1.2 }}>{r.fournisseur || "Fournisseur ?"}</div>
                         <div style={{ fontSize: 12.5, color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.produit} · {r.date}</div>
-                        <div style={{ fontSize: 22, fontWeight: 900, color: "#dc2626", margin: "4px 0 8px" }}>{r.nbColisRefuses ?? "?"} <span style={{ fontSize: 14, fontWeight: 700 }}>colis refusés{r.nbColisTotal ? ` / ${r.nbColisTotal}` : ""}</span></div>
+                        <div style={{ fontSize: 19, fontWeight: 900, color: "#dc2626", margin: "2px 0 8px" }}>{r.nbColisRefuses ?? "?"} <span style={{ fontSize: 13, fontWeight: 700 }}>colis refusés{r.nbColisTotal ? ` / ${r.nbColisTotal}` : ""}</span></div>
                         <button type="button" onClick={() => { setImprimerBonEntrepot(true); genererBonRetour(r); }}
-                          style={{ marginTop: "auto", padding: "13px 0", borderRadius: 12, border: "none", background: "#dc2626", color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer" }}>
+                          style={{ marginTop: "auto", padding: "10px 0", borderRadius: 10, border: "none", background: "#dc2626", color: "#fff", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>
                           🖨️ Faire signer et imprimer
                         </button>
                       </div>
