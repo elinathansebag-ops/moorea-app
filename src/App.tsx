@@ -60,6 +60,7 @@ const RackModule = chargerModule(() => import("./RackModule"), "RackModule");
 const StattModule = chargerModule(() => import("./StattModule"), "StattModule");
 const LidlModule = chargerModule(() => import("./LidlModule"), "LidlModule");
 const Extractions = chargerModule(() => import("./Extractions"), "Extractions");
+import { PointageNouveau } from "./PointageNouveau";
 const QualiteDashboard = chargerModule(() => import("./QualiteDashboard"), "default");
 const HubModules = chargerModule(() => import("./HubModules"), "HubModules");
 const ConsultationLidl = chargerModule(() => import("./ConsultationLidl"), "ConsultationLidl");
@@ -690,6 +691,10 @@ export default function App() {
     update(ref(db, `comptes/${user.uid}/accueil_masques`), { [moduleKey]: accueilMasques[moduleKey] ? null : true });
   };
   const [showPersonnaliserAccueil, setShowPersonnaliserAccueil] = useState(false);
+  // 14/10/2026 — Pointer arrivage : nouvelle apparence (PointageNouveau.tsx) ou ancienne, au choix (par appareil).
+  const [vueArrivageNouvelle, setVueArrivageNouvelle] = useState(() => { try { return localStorage.getItem("moorea-vue-arrivage") !== "ancienne"; } catch { return true; } });
+  const changerVueArrivage = (nouvelle: boolean) => { setVueArrivageNouvelle(nouvelle); try { localStorage.setItem("moorea-vue-arrivage", nouvelle ? "nouvelle" : "ancienne"); } catch { /* rien */ } };
+  const [menuArrivage, setMenuArrivage] = useState(false);
   // 14/10/2026 — Demande d'Elinathan : ranger soi-même ses modules et leur donner une couleur
   // pastel. Même principe que accueil_masques : par compte, et par prénom sur un compte partagé.
   // { ordre: [clés…], couleurs: { clé: id } }. Un module masqué garde sa place dans « ordre ».
@@ -5052,7 +5057,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               const maintenant = Date.now();
               const tempEnRetard = arrivages.length > 0 && (maintenant - dernierTemp) > SEUIL_3J_MS;
               const poidsEnRetard = arrivages.length > 0 && (maintenant - dernierPoids) > SEUIL_3J_MS;
-              if (alerteMesuresFermee || (!tempEnRetard && !poidsEnRetard)) return null;
+              if (alerteMesuresFermee || (!tempEnRetard && !poidsEnRetard) || vueArrivageNouvelle) return null;
               const jours = (at: number) => Math.floor((maintenant - at) / 86400000);
               // 09/09/2026 — Demande d'Elinathan : "l'agréeur se plaint de trop de popup quand il
               // pèse pas ou la température, mets juste un bandeau d'alerte pas un popup" — remplace
@@ -5226,7 +5231,35 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 </div>
               );
             })()}
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+            {vueArrivageNouvelle && (() => {
+              // Barre compacte de la nouvelle apparence : recherche, contrôles en retard, imprimante, menu ⋯.
+              let dT = 0, dP = 0;
+              arrivages.forEach((a: any) => { lireMesures(a?.temperatures).forEach((m: any) => { if (m.at > dT) dT = m.at; }); lireMesures(a?.poids_barquettes).forEach((m: any) => { if (m.at > dP) dP = m.at; }); });
+              const j = (at: number) => at ? Math.floor((Date.now() - at) / 86400000) : null;
+              const retardT = arrivages.length > 0 && (j(dT) ?? 99) >= 3, retardP = arrivages.length > 0 && (j(dP) ?? 99) >= 3;
+              const item = { display: "block", width: "100%", textAlign: "left" as const, padding: "11px 14px", border: "none", borderBottom: "1px solid #f0ede6", background: "#fff", fontSize: 13.5, fontWeight: 700, color: "#1a2e1a", cursor: "pointer" };
+              return (
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginBottom: 14 }}>
+                  <input value={filtersArr.q} onChange={e => setFiltersArr({ ...filtersArr, q: e.target.value })} placeholder="🔍 Produit ou fournisseur…" style={{ flex: 1, minWidth: 180, padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 14, background: "#fff" }} />
+                  {(retardT || retardP) && <button type="button" onClick={() => setShowHistoMesures(true)} title="Ouvrir l'historique des températures et poids" style={{ padding: "7px 12px", borderRadius: 999, border: "1.5px solid #fca5a5", background: "#fef2f2", color: "#b91c1c", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>{retardP ? `⚖️ Poids non relevés depuis ${j(dP) ?? "?"} j` : ""}{retardP && retardT ? " · " : ""}{retardT ? `🌡️ Températures depuis ${j(dT) ?? "?"} j` : ""}</button>}
+                  <span title={`Imprimante PC : ${printRelayOnline ? "en ligne" : "hors ligne"}`} style={{ display: "inline-flex", alignItems: "center", gap: 5, padding: "6px 10px", borderRadius: 999, background: printRelayOnline ? "#f0fdf4" : "#fef2f2", color: printRelayOnline ? "#15803d" : "#b91c1c", fontSize: 12, fontWeight: 700 }}><span style={{ width: 7, height: 7, borderRadius: 4, background: printRelayOnline ? "#16a34a" : "#dc2626" }} />Imprimante</span>
+                  <span style={{ position: "relative" }}>
+                    <button type="button" onClick={() => setMenuArrivage(v => !v)} style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px solid #e8e0d0", background: "#fff", fontWeight: 900, fontSize: 15, cursor: "pointer" }}>⋯</button>
+                    {menuArrivage && (
+                      <div style={{ position: "absolute", right: 0, top: "calc(100% + 6px)", zIndex: 300, minWidth: 240, background: "#fff", borderRadius: 12, boxShadow: "0 12px 30px rgba(0,0,0,.15)", overflow: "hidden", border: "1px solid #e8e0d0" }}>
+                        <label style={{ ...item, cursor: "pointer" }}>📊 Importer des arrivages<input type="file" accept=".xlsx,.xls,.pdf" onChange={e => { setMenuArrivage(false); handleExcelArr(e); }} style={{ display: "none" }} /></label>
+                        <button type="button" style={item} onClick={() => { setMenuArrivage(false); detecterDoublonsArr(); }}>🧹 Doublons</button>
+                        <button type="button" style={item} onClick={() => { setMenuArrivage(false); setShowHistoMesures(true); }}>🌡 Températures et poids</button>
+                        <button type="button" style={item} onClick={() => { setMenuArrivage(false); setPageMode("historique_arr"); setVue("__none__" as any); window.scrollTo(0, 0); }}>📁 Historique des arrivages</button>
+                        <button type="button" style={{ ...item, color: "#6b7280", borderBottom: "none" }} onClick={() => { setMenuArrivage(false); changerVueArrivage(false); }}>↩︎ Ancienne apparence</button>
+                      </div>
+                    )}
+                  </span>
+                </div>
+              );
+            })()}
+            {!vueArrivageNouvelle && <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 8 }}><button type="button" onClick={() => changerVueArrivage(true)} style={{ padding: "6px 12px", borderRadius: 999, border: "1.5px solid #305a55", background: "#eaf2ee", color: "#305a55", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>✨ Nouvelle apparence</button></div>}
+            {!vueArrivageNouvelle && <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
               <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 20, background: printRelayOnline ? "#f0fdf4" : "#fef2f2", color: printRelayOnline ? "#15803d" : "#dc2626", border: `1px solid ${printRelayOnline ? "#bbf7d0" : "#fca5a5"}` }}>
                 <span style={{ width: 7, height: 7, borderRadius: "50%", background: printRelayOnline ? "#16a34a" : "#dc2626", display: "inline-block" }} />
                 🖨️ Imprimante PC : {printRelayOnline === null ? "..." : printRelayOnline ? "en ligne" : "hors ligne"}
@@ -5246,8 +5279,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 11.5, fontWeight: 700, padding: "5px 10px", borderRadius: 20, background: "#fff", color: "#1a2e1a", border: "1px solid #e8e0d0", cursor: "pointer" }}>
                 📁 Voir l'historique
               </button>
-            </div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+            </div>}
+            {!vueArrivageNouvelle && <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
               <label style={{ padding: "10px 14px", borderRadius: 10, cursor: "pointer", fontSize: 13, fontWeight: 700, border: "1.5px solid #e8e0d0", background: "#fff", color: "#1a2e1a", display: "inline-flex", alignItems: "center", gap: 6, fontFamily: "'Syne', sans-serif", whiteSpace: "nowrap" }}>
                 📊 Import
                 <input type="file" accept=".xlsx,.xls,.pdf" onChange={handleExcelArr} style={{ display: "none" }} />
@@ -5262,13 +5295,21 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               {/* 02/09/2026 — Bouton "📲 Récap WA" global retiré à la demande d'Elinathan (jamais
                   utilisé) — celui du jour (dans chaque DateBlock) a été retiré pour la même raison. */}
               <input value={filtersArr.q} onChange={e => setFiltersArr({...filtersArr, q:e.target.value})} placeholder="🔍 Produit ou fournisseur..." style={{ flex: 1, minWidth: 140, padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 14, outline: "none", boxSizing: "border-box" as const }} />
-            </div>
+            </div>}
             {/* 05/10/2026 — Second bandeau « Contrôles qualité en retard » retiré : doublon du bandeau fermable du haut de la page. */}
             {showHistoMesures && (
               <HistoriqueMesures arrivages={arrivages} onClose={() => setShowHistoMesures(false)} />
             )}
             {(() => {
               const filtered = arrivages.filter(a => !filtersArr.q || `${a.produit} ${a.fournisseur}`.toLowerCase().includes(filtersArr.q.toLowerCase()));
+              if (vueArrivageNouvelle && arrivages.length > 0) return (
+                <PointageNouveau arrivages={filtered} tousArrivages={arrivagesAvecArchives} blocProps={{
+                  onValidate: handleAgrement, onOuvreRapport: ouvrirRapportDepuisArrivage, onImprimerMulti: setPopupEtiquette,
+                  onReporterDate: handleReporterDate, onReporterGroupe: handleReporterGroupe, gencodeArticles,
+                  reconditionnementDemandesById, canValider: canValiderArrivages, onReserveGroupe: ouvrirRapportGroupeReserve,
+                  onEcartDetecte: (message: string) => { setEcartPopup({ message }); alerterPush({ type: "ecart_pointage", titre: "⚖️ Écart de quantité au pointage", corps: message.replace(/[*_]/g, "").slice(0, 280) }); },
+                }} />
+              );
               // 09/09/2026 — Bug trouvé avec Elinathan (capture d'écran à l'appui) : c'est CE
               // "return" précis, pas celui plus bas sur weekGroups, qui s'affichait pendant que
               // Firebase n'avait pas encore renvoyé les arrivages — "arrivages.length === 0" est
