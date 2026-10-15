@@ -701,6 +701,8 @@ export default function App() {
   // d'une photo de produit prise au hasard. Ajoutés par un admin directement sur la tuile.
   const [logosFourn, setLogosFourn] = useState<Record<string, string>>({});
   useEffect(() => onValue(ref(db, "config/logos_fournisseurs"), snap => setLogosFourn(snap.val() || {})), []);
+  const [famillesFourn, setFamillesFourn] = useState<Record<string, string>>({});
+  useEffect(() => onValue(ref(db, "config/familles_fournisseurs"), snap => setFamillesFourn(snap.val() || {})), []);
   const cleLogoFourn = (f: string) => String(f || "").trim().toUpperCase().replace(/[.#$/\[\]]/g, "_");
   const importerLogoFournisseur = async (f: string, fichier: File) => {
     try {
@@ -4087,29 +4089,43 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     </CarteReglage>
                     {/* 13/10/2026 — Messagerie en veille : sa configuration est masquée aussi (code gardé). */}
                     {/* 16/10/2026 — Liste de tous les fournisseurs des rapports qualité, avec import du logo. */}
-                    <CarteReglage titre="🏭 Logos des fournisseurs" desc="Affichés sur les tuiles « Par fournisseur » des rapports qualité. Sans logo : les initiales du fournisseur.">
+                    <CarteReglage titre="🏭 Fournisseurs : logos et familles" desc="Logo affiché sur les tuiles « Par fournisseur » des rapports (sans logo : les initiales). Famille = où ses arrivages sont rangés dans Pointer arrivage (Auto = selon le produit).">
                       {(() => {
-                        const parF = new Map<string, number>();
-                        rapports.forEach(r => { const f = String(r.fournisseur || "").trim(); if (f) parF.set(f, (parF.get(f) || 0) + 1); });
-                        const liste = [...parF].sort((a, b) => a[0].localeCompare(b[0], "fr"));
-                        const avec = liste.filter(([f]) => logosFourn[cleLogoFourn(f)]).length;
+                        // 16/10/2026 — Tous les fournisseurs (arrivages + rapports), du plus d'arrivages au moins.
+                        const nbArr = new Map<string, number>(), nbRap = new Map<string, number>(), noms = new Map<string, string>();
+                        const compter = (m: Map<string, number>, f: any) => { const nom = String(f || "").trim(); if (!nom) return; const k = cleLogoFourn(nom); noms.set(k, noms.get(k) || nom); m.set(k, (m.get(k) || 0) + 1); };
+                        arrivages.forEach(a => { if (!a?.test && !a?.hors_liste) compter(nbArr, a?.fournisseur); });
+                        rapports.forEach(r => compter(nbRap, r.fournisseur));
+                        const liste = [...noms.keys()].map(k => ({ k, f: noms.get(k)!, a: nbArr.get(k) || 0, r: nbRap.get(k) || 0 }))
+                          .sort((x, y) => y.a - x.a || y.r - x.r || x.f.localeCompare(y.f, "fr"));
+                        const avec = liste.filter(x => logosFourn[x.k]).length;
+                        const FAM: [string, string, string][] = [["", "Auto", "#6b7280"], ["verts", "🫛 Haricots & pois", "#0284c7"], ["export", "🌍 Grand export", "#ea580c"], ["autres", "🧺 Le reste", "#7c3aed"]];
                         return (
                           <div>
-                            <p style={{ fontSize: 11.5, color: "#6b7280", margin: "0 0 8px" }}>{liste.length} fournisseurs · {avec} avec logo</p>
-                            <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 420, overflowY: "auto", paddingRight: 4 }}>
-                              {liste.map(([f, n]) => {
-                                const logo = logosFourn[cleLogoFourn(f)];
+                            <p style={{ fontSize: 11.5, color: "#6b7280", margin: "0 0 8px" }}>{liste.length} fournisseurs · {avec} avec logo · triés par nombre d'arrivages</p>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 460, overflowY: "auto", paddingRight: 4 }}>
+                              {liste.map(({ k, f, a: nA, r: n }) => {
+                                const logo = logosFourn[k];
+                                const fam = famillesFourn[k] || "";
+                                const couleurFam = FAM.find(x => x[0] === fam)?.[2] || "#6b7280";
                                 return (
-                                  <div key={f} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 8px", borderRadius: 8, background: logo ? "#f0fdf4" : "#faf8f3", border: "1px solid #eee8dc" }}>
+                                  <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 8px", borderRadius: 8, background: "#faf8f3", border: "1px solid #eee8dc", flexWrap: "wrap" }}>
                                     <span style={{ width: 52, height: 30, flexShrink: 0, borderRadius: 6, background: logo ? "#fff" : "#eaf2ee", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                                       {logo ? <img src={logo} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} /> : <b style={{ fontSize: 12, color: "#305a55" }}>{initialesFourn(f)}</b>}
                                     </span>
-                                    <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, color: "#1a2e1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f}>{f} <span style={{ fontWeight: 500, color: "#9ca3af" }}>· {n}</span></span>
+                                    <span style={{ flex: "1 1 160px", minWidth: 0 }}>
+                                      <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "#1a2e1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f}>{f}</span>
+                                      <span style={{ display: "block", fontSize: 11, color: "#9ca3af" }}>{nA} arrivage{nA > 1 ? "s" : ""} · {n ? <span style={{ color: "#15803d", fontWeight: 700 }}>{n} rapport{n > 1 ? "s" : ""}</span> : "aucun rapport"}</span>
+                                    </span>
+                                    <select value={fam} onChange={e => update(ref(db, "config/familles_fournisseurs"), { [k]: e.target.value || null })} title="Famille dans Pointer arrivage"
+                                      style={{ flexShrink: 0, maxWidth: 150, padding: "5px 6px", borderRadius: 8, border: `1.5px solid ${couleurFam}`, color: couleurFam, fontSize: 11.5, fontWeight: 800, background: "#fff" }}>
+                                      {FAM.map(([v, lib]) => <option key={v} value={v}>{lib}</option>)}
+                                    </select>
                                     <label style={{ flexShrink: 0, padding: "5px 10px", borderRadius: 8, border: "1.5px solid #305a55", background: logo ? "#fff" : "#305a55", color: logo ? "#305a55" : "#fff", fontSize: 11.5, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>
                                       {logo ? "Changer" : "📤 Importer le logo"}
                                       <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => { const fi = e.target.files?.[0]; e.target.value = ""; if (fi) importerLogoFournisseur(f, fi); }} />
                                     </label>
-                                    {logo && <button type="button" title="Retirer le logo" onClick={() => update(ref(db, "config/logos_fournisseurs"), { [cleLogoFourn(f)]: null })}
+                                    {logo && <button type="button" title="Retirer le logo" onClick={() => update(ref(db, "config/logos_fournisseurs"), { [k]: null })}
                                       style={{ flexShrink: 0, border: "none", background: "none", color: "#dc2626", fontSize: 15, cursor: "pointer", padding: "0 4px" }}>✕</button>}
                                   </div>
                                 );

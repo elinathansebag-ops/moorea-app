@@ -1184,6 +1184,13 @@ export const FAMILLES_ARRIVAGE: Record<FamilleArrivage, { titre: string; couleur
   export: { titre: "🌍 Grand export", couleur: "#ea580c", fond: "#fff7ed" },
   autres: { titre: "🧺 Le reste", couleur: "#7c3aed", fond: "#f5f3ff" },
 };
+// 16/10/2026 — Famille choisie à la main pour un fournisseur (Admin › Modules › Fournisseurs) :
+// config/familles_fournisseurs/{NOM EN MAJUSCULES}. Elle l'emporte sur la détection par produit.
+export const cleFournisseurConfig = (f: string) => String(f || "").trim().toUpperCase().replace(/[.#$/\[\]]/g, "_");
+export function familleArrivage(a: any, choix: Record<string, string>): FamilleArrivage {
+  const c = choix[cleFournisseurConfig(a?.fournisseur)];
+  return c === "verts" || c === "export" || c === "autres" ? c : familleProduit(a?.produit);
+}
 export function familleProduit(produit: string): FamilleArrivage {
   const p = String(produit || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
   if (/HARICOT|\bPOIS\b|PETITS? POIS|SUGAR ?SNAP|SNAP PEA|MANGE.?TOUT/.test(p)) return "verts";
@@ -2841,6 +2848,8 @@ export function DateBlock({ enColonnes = true, date, arrivages, arrivagesArchive
   const [open, setOpen] = useState(date === today);
   // 15/10/2026 — Un seul fournisseur ouvert à la fois dans la journée.
   const [fournOuvert, setFournOuvert] = useState<string | null>(null);
+  const [famillesChoisies, setFamillesChoisies] = useState<Record<string, string>>({});
+  useEffect(() => onValue(ref(db, "config/familles_fournisseurs"), snap => setFamillesChoisies(snap.val() || {})), []);
   const [validatingAll, setValidatingAll] = useState(false);
   const scanInputId = `scan-date-${date.replace(/\//g, "-")}`;
   // Aperçu PDF traçabilité intégré à la page (au lieu d'un iframe hors-écran qui déclenche
@@ -3108,8 +3117,8 @@ export function DateBlock({ enColonnes = true, date, arrivages, arrivagesArchive
             const cartes: { cle: string; f: string; fam: FamilleArrivage; produits: any[]; traites: any[] }[] = [];
             allFourn.forEach(f => {
               (Object.keys(FAMILLES_ARRIVAGE) as FamilleArrivage[]).forEach(fam => {
-                const produits = (byFournisseur[f] || []).filter((a: any) => familleProduit(a.produit) === fam);
-                const traites = (byFournisseurTraites[f] || []).filter((a: any) => familleProduit(a.produit) === fam);
+                const produits = (byFournisseur[f] || []).filter((a: any) => familleArrivage(a, famillesChoisies) === fam);
+                const traites = (byFournisseurTraites[f] || []).filter((a: any) => familleArrivage(a, famillesChoisies) === fam);
                 if (produits.length || traites.length) cartes.push({ cle: `${fam}|${f}`, f, fam, produits, traites });
               });
             });
