@@ -283,13 +283,13 @@ export function ReglageEtiquetteArrivage({ onRetour, userName }: { onRetour: () 
           <div style={{ flex: "1 1 520px", minWidth: 0 }}>
             {apercuAuto ? <img src={apercuAuto} alt="Aperçu de l'étiquette" style={{ width: "100%", maxWidth: 680, display: "block", boxShadow: "0 4px 18px rgba(0,0,0,.18)", borderRadius: 4 }} /> : <p style={{ color: "#9ca3af", fontSize: 12 }}>Préparation de l'aperçu…</p>}
             <p style={{ fontSize: 11.5, color: "#6b7280", margin: "8px 0 0", lineHeight: 1.5 }}>
-              À gauche : nom du produit (1 ou 2 lignes), nombre de colis, lot fournisseur, date d'arrivée et lot Moorea. À droite : DLC en haut, QR code en dessous.
+              À gauche : nom du produit (1 ou 2 lignes), nombre de colis, lot Moorea (4 chiffres) avec le n° de palette, et date d'arrivée. À droite : DLC en haut, QR code en dessous.
               Chaque texte prend automatiquement la plus grande taille possible dans sa zone.
             </p>
           </div>
           <div style={{ flex: "1 1 260px", display: "flex", flexDirection: "column", gap: 8 }}>
             <span style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>Essayer avec d'autres valeurs</span>
-            {([["produit", "Produit"], ["qte", "Colis"], ["dlc", "DLC"], ["lotFournisseur", "Lot fournisseur"], ["ar", "Date d'arrivée"]] as const).map(([k, lib]) => (
+            {([["produit", "Produit"], ["qte", "Colis"], ["dlc", "DLC"], ["lotMoorea", "Lot Moorea (MRA.xxxx-palette)"], ["ar", "Date d'arrivée"]] as const).map(([k, lib]) => (
               <label key={k} style={{ fontSize: 11.5, color: "#6b7280" }}>{lib}
                 <input value={(exemple as any)[k]} onChange={e => setExemple(x => ({ ...x, [k]: e.target.value }))} style={input} />
               </label>

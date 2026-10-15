@@ -148,12 +148,17 @@ function htmlEtiquetteAuto(job: JobEtiquette, qrDataUrl: string): string {
     .etq .dlc .txt{color:#fff}
   `;
   const dlc = job.dlcLabel ? `<div class="zone dlc" style="left:113mm;top:4mm;width:63mm;height:30mm"><div class="lib">DLC</div><div class="txt" data-max="80">${echapper(job.dlcLabel)}</div></div>` : "";
-  const bas = [job.dateArriveeLabel ? `AR : ${echapper(job.dateArriveeLabel)}` : "", job.lotLabel ? echapper(job.lotLabel) : ""].filter(Boolean).join("&nbsp;&nbsp;·&nbsp;&nbsp;");
+  // 15/10/2026 — Elinathan : « le lot fournisseur je m'en fous, je veux le lot Moorea à 4 chiffres ».
+  // lotLabel = « MRA.8270-1 » (lot 8270, palette 1) → encadré « LOT 8270 · PALETTE 1 ».
+  const m = String(job.lotLabel || "").match(/(\d+)(?:-(\d+))?\s*$/);
+  const lotMoorea = m ? m[1].padStart(4, "0") : "";
+  const palette = m && m[2] ? m[2] : "";
+  const bas = job.dateArriveeLabel ? `AR : ${echapper(job.dateArriveeLabel)}` : "";
   return `<style>${css}</style>
     <div class="etq" data-modele="auto">
       ${zone("nom", 5, 4, 104, 23, echapper(job.produit || ""))}
       ${zone("qte", 5, 28, 104, 47, `${echapper(job.qte || "-")}<small>${echapper(job.unite || "COLIS")}</small>`)}
-      ${job.lotFournisseur ? zone("lot", 5, 79, 104, 12, echapper(job.lotFournisseur)) : ""}
+      ${lotMoorea ? zone("lot", 5, 77, 104, 15, `LOT ${lotMoorea}${palette ? `&nbsp;&nbsp;·&nbsp;&nbsp;PALETTE ${echapper(palette)}` : ""}`) : ""}
       ${bas ? zone("bas", 5, 94, 104, 11, bas) : ""}
       ${dlc}
       <img src="${qrDataUrl}" style="position:absolute;left:113mm;top:${job.dlcLabel ? 40 : 4}mm;width:${job.dlcLabel ? 63 : 70}mm;height:${job.dlcLabel ? 63 : 70}mm;display:block" />
@@ -161,7 +166,7 @@ function htmlEtiquetteAuto(job: JobEtiquette, qrDataUrl: string): string {
 }
 // Plus grande taille de police (px) pour que le texte tienne dans sa zone (recherche par dichotomie).
 function ajusterZonesAuto(hote: HTMLElement) {
-  const maxParZone: Record<string, number> = { nom: 64, qte: 330, lot: 40, bas: 30, dlc: 80 };
+  const maxParZone: Record<string, number> = { nom: 64, qte: 330, lot: 52, bas: 30, dlc: 80 };
   hote.querySelectorAll<HTMLElement>(".zone").forEach(z => {
     const cle = Object.keys(maxParZone).find(k => z.classList.contains(k));
     const t = z.querySelector(".txt") as HTMLElement | null;
