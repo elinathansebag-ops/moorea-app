@@ -1182,7 +1182,7 @@ export type FamilleArrivage = "verts" | "export" | "autres";
 export const FAMILLES_ARRIVAGE: Record<FamilleArrivage, { titre: string; couleur: string; fond: string }> = {
   verts: { titre: "🫛 Haricots & pois", couleur: "#0284c7", fond: "#f0f9ff" }, // bleu : le vert est déjà « validé »
   export: { titre: "🌍 Grand export", couleur: "#ea580c", fond: "#fff7ed" },
-  autres: { titre: "🧺 Le reste", couleur: "#7c3aed", fond: "#f5f3ff" },
+  autres: { titre: "🧺 Le reste", couleur: "#a21caf", fond: "#fdf4ff" }, // violet franc, bien distinct du bleu
 };
 // 16/10/2026 — Famille choisie à la main pour un fournisseur (Admin › Modules › Fournisseurs) :
 // config/familles_fournisseurs/{NOM EN MAJUSCULES}. Elle l'emporte sur la détection par produit.

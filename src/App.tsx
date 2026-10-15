@@ -4099,7 +4099,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                         const liste = [...noms.keys()].map(k => ({ k, f: noms.get(k)!, a: nbArr.get(k) || 0, r: nbRap.get(k) || 0 }))
                           .sort((x, y) => y.a - x.a || y.r - x.r || x.f.localeCompare(y.f, "fr"));
                         const avec = liste.filter(x => logosFourn[x.k]).length;
-                        const FAM: [string, string, string][] = [["", "Auto", "#6b7280"], ["verts", "🫛 Haricots & pois", "#0284c7"], ["export", "🌍 Grand export", "#ea580c"], ["autres", "🧺 Le reste", "#7c3aed"]];
+                        const FAM: [string, string, string][] = [["", "Auto", "#6b7280"], ["verts", "🫛 Haricots & pois", "#0284c7"], ["export", "🌍 Grand export", "#ea580c"], ["autres", "🧺 Le reste", "#a21caf"]];
                         return (
                           <div>
                             <p style={{ fontSize: 11.5, color: "#6b7280", margin: "0 0 8px" }}>{liste.length} fournisseurs · {avec} avec logo · triés par nombre d'arrivages</p>
