@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 75, date: "16/10", pages: ["rapports"], texte: "📷 Rapport qualité : « Prendre des photos » ouvre l'appareil photo qui reste ouvert — on en prend plusieurs d'affilée puis « Terminé » ; « Photothèque » pour les photos déjà prises. Aussi sur chaque produit d'un rapport groupé." },
   { id: 74, date: "16/10", pages: ["lidl", "reconditionnement"], texte: "🎨 Bons Lidl (Geslot) et bons de reconditionnement / bordereaux IFCO : bandeau vert Moorea avec logo, à la place du noir et or." },
   { id: 73, date: "15/10", pages: ["qualite"], texte: "📋 Rapports qualité : deux boutons directs « ⬇ PDF français » et « ⬇ PDF English » (cartes, détail, recherche, historique, Récap qualité) au lieu de la fenêtre de choix." },
   { id: 72, date: "15/10", pages: ["qualite"], texte: "📋 Rapports qualité PDF aux couleurs de Moorea : bandeau vert avec logo et adresse, sections et pied de page verts, n° de page." },

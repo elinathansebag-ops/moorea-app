@@ -5,6 +5,7 @@ import { noterHistoriqueDemande } from "./historiqueRecond";
 import { Calculatrice } from "./Calculatrice";
 import { useState, useEffect, useRef, useMemo, lazy, createElement, Suspense } from "react";
 import { useProfilGenerique, avecProfil, ouvrirWhatsApp, nomSignataire } from "./ProfilGenerique";
+import { CameraMulti } from "./CameraMulti";
 import { AccueilModulesV2, ordonnerModules, COULEURS_PASTEL } from "./AccueilModulesV2";
 import { NOUVEAUTES, NOUVEAUTES_POUR } from "./nouveautes";
 import { initPastilles, marquerVu, Pastille } from "./pastilles";
@@ -1100,6 +1101,8 @@ export default function App() {
   const [pdfApercu, setPdfApercu] = useState<string | null>(null);
   // 14/10/2026 — Téléchargement du rapport : on demande d'abord la langue (français / anglais).
   const [choixLangueRapport, setChoixLangueRapport] = useState<any>(null);
+  // 16/10/2026 — Caméra « rafale » du rapport qualité : "general" ou id de l'arrivage (photos par produit).
+  const [cameraPhotosPour, setCameraPhotosPour] = useState<string | null>(null);
   const [pdfEnCours, setPdfEnCours] = useState(false);
   // 15/10/2026 — Demande d'Elinathan : un bouton « télécharger en français » et un « télécharger en
   // anglais » directement sur les rapports (plus de fenêtre de choix de langue).
@@ -6143,7 +6146,10 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                           </div>
                           <input type="file" accept="image/*" multiple id={`photo-produit-${a.id}`} style={{ display: "none" }}
                             onChange={e => { ajouterPhotos(Array.from(e.target.files || []), a.id); e.target.value = ""; }} />
-                          <label htmlFor={`photo-produit-${a.id}`} style={{ cursor: "pointer", padding: "7px 12px", borderRadius: 8, border: "1.5px solid #e8e0d0", background: "#fff", fontSize: 12.5, fontWeight: 700, color: "#8a6f2e" }}>📷 Ajouter</label>
+                          <span style={{ display: "inline-flex", gap: 6 }}>
+                            <button type="button" onClick={() => setCameraPhotosPour(a.id)} style={{ cursor: "pointer", padding: "7px 12px", borderRadius: 8, border: "1.5px solid #305a55", background: "#305a55", fontSize: 12.5, fontWeight: 700, color: "#fff" }}>📷 Prendre</button>
+                            <label htmlFor={`photo-produit-${a.id}`} style={{ cursor: "pointer", padding: "7px 12px", borderRadius: 8, border: "1.5px solid #e8e0d0", background: "#fff", fontSize: 12.5, fontWeight: 700, color: "#8a6f2e" }}>🖼️ Photothèque</label>
+                          </span>
                         </div>
                         {siennes.length > 0 && (
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(72px, 1fr))", gap: 6, marginTop: 8 }}>
@@ -6162,16 +6168,29 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 </div>
               </div>
             )}
+            {cameraPhotosPour && (
+              <CameraMulti onFermer={() => setCameraPhotosPour(null)}
+                onTermine={fichiers => ajouterPhotos(fichiers, cameraPhotosPour === "general" ? undefined : cameraPhotosPour)} />
+            )}
             <div className="card" style={{ padding: "24px", marginBottom: 16 }}>
               <div className="section-title">{rapportGroupe ? "📷 Photos générales (facultatif)" : "📷 Photos"}</div>
               <div style={{ border: "2px dashed #e8e0d0", borderRadius: 14, padding: "20px", textAlign: "center", background: "#faf8f5", marginBottom: photos.some(p => !p.arrivageId) ? 16 : 0 }}>
                 <input type="file" accept="image/*" multiple id="photo-input" style={{ display: "none" }}
                   onChange={e => { ajouterPhotos(Array.from(e.target.files || [])); e.target.value = ""; }} />
-                <label htmlFor="photo-input" style={{ cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
-                  <div style={{ width: 44, height: 44, borderRadius: 12, background: "#f0ebe0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22 }}>📷</div>
-                  <span style={{ fontSize: 14, color: "#8a6f2e", fontWeight: 600 }}>Ajouter des photos</span>
-                  <span style={{ fontSize: 12, color: "#9ca3af" }}>Cliquez pour sélectionner</span>
-                </label>
+                {/* 16/10/2026 — « Prendre des photos » : caméra qui reste ouverte (plusieurs photos d'affilée) ;
+                    « Photothèque » : photos déjà prises. */}
+                <div style={{ display: "flex", gap: 10, justifyContent: "center", flexWrap: "wrap" }}>
+                  <button type="button" onClick={() => setCameraPhotosPour("general")}
+                    style={{ flex: "1 1 180px", maxWidth: 260, padding: "14px 16px", borderRadius: 12, border: "none", background: "#305a55", color: "#fff", fontSize: 15, fontWeight: 800, cursor: "pointer", touchAction: "manipulation" }}>
+                    📷 Prendre des photos
+                    <span style={{ display: "block", fontSize: 11.5, fontWeight: 500, opacity: .85, marginTop: 2 }}>plusieurs d'affilée</span>
+                  </button>
+                  <label htmlFor="photo-input"
+                    style={{ flex: "1 1 180px", maxWidth: 260, padding: "14px 16px", borderRadius: 12, border: "1.5px solid #e8e0d0", background: "#fff", color: "#8a6f2e", fontSize: 15, fontWeight: 800, cursor: "pointer", boxSizing: "border-box" }}>
+                    🖼️ Photothèque
+                    <span style={{ display: "block", fontSize: 11.5, fontWeight: 500, color: "#9ca3af", marginTop: 2 }}>photos déjà prises</span>
+                  </label>
+                </div>
               </div>
               {photos.some(p => !p.arrivageId) && (
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
