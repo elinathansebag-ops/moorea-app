@@ -1180,9 +1180,9 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
 // colonne vide, chaque famille est une SECTION dont les cartes s'étalent sur toutes les colonnes.
 export type FamilleArrivage = "verts" | "export" | "autres";
 export const FAMILLES_ARRIVAGE: Record<FamilleArrivage, { titre: string; couleur: string; fond: string }> = {
-  verts: { titre: "🫛 Haricots & pois", couleur: "#16a34a", fond: "#f0fdf4" },
+  verts: { titre: "🫛 Haricots & pois", couleur: "#0284c7", fond: "#f0f9ff" }, // bleu : le vert est déjà « validé »
   export: { titre: "🌍 Grand export", couleur: "#ea580c", fond: "#fff7ed" },
-  autres: { titre: "🧺 Le reste", couleur: "#6366f1", fond: "#eef2ff" },
+  autres: { titre: "🧺 Le reste", couleur: "#7c3aed", fond: "#f5f3ff" },
 };
 export function familleProduit(produit: string): FamilleArrivage {
   const p = String(produit || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();

@@ -701,6 +701,21 @@ export default function App() {
   // d'une photo de produit prise au hasard. Ajoutés par un admin directement sur la tuile.
   const [logosFourn, setLogosFourn] = useState<Record<string, string>>({});
   useEffect(() => onValue(ref(db, "config/logos_fournisseurs"), snap => setLogosFourn(snap.val() || {})), []);
+  const cleLogoFourn = (f: string) => String(f || "").trim().toUpperCase().replace(/[.#$/\[\]]/g, "_");
+  const importerLogoFournisseur = async (f: string, fichier: File) => {
+    try {
+      // Logo réduit (600 px max) en PNG pour garder la transparence.
+      const img = await createImageBitmap(fichier);
+      const k = Math.min(1, 600 / Math.max(img.width, img.height));
+      const c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+      c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+      const url = await envoyerPhoto(c.toDataURL("image/png"), "rapports/logos");
+      await update(ref(db, "config/logos_fournisseurs"), { [cleLogoFourn(f)]: url });
+      showToast(`✅ Logo ajouté pour ${f}`);
+    } catch (err: any) { showToast("❌ Logo non enregistré : " + (err?.message || "erreur"), "error"); }
+  };
+  // Visuel générique quand un fournisseur n'a pas (encore) de logo : ses initiales sur fond vert clair.
+  const initialesFourn = (f: string) => String(f || "?").replace(/\b(LTD|SARL|SAS|BV|SA|CO|COMPANY|LIMITED|GMBH|SL|SRL)\b/gi, "").trim().split(/\s+/).filter(Boolean).slice(0, 2).map(m => m[0]).join("").toUpperCase() || "?";
   // 14/10/2026 — Demande d'Elinathan : ranger soi-même ses modules et leur donner une couleur
   // pastel. Même principe que accueil_masques : par compte, et par prénom sur un compte partagé.
   // { ordre: [clés…], couleurs: { clé: id } }. Un module masqué garde sa place dans « ordre ».
@@ -4071,6 +4086,39 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       <BoutonReglage label="Ouvrir la configuration →" onClick={() => { setShowAdmin(false); setApproInitialTab("configuration"); setShowAppro(true); }} />
                     </CarteReglage>
                     {/* 13/10/2026 — Messagerie en veille : sa configuration est masquée aussi (code gardé). */}
+                    {/* 16/10/2026 — Liste de tous les fournisseurs des rapports qualité, avec import du logo. */}
+                    <CarteReglage titre="🏭 Logos des fournisseurs" desc="Affichés sur les tuiles « Par fournisseur » des rapports qualité. Sans logo : les initiales du fournisseur.">
+                      {(() => {
+                        const parF = new Map<string, number>();
+                        rapports.forEach(r => { const f = String(r.fournisseur || "").trim(); if (f) parF.set(f, (parF.get(f) || 0) + 1); });
+                        const liste = [...parF].sort((a, b) => a[0].localeCompare(b[0], "fr"));
+                        const avec = liste.filter(([f]) => logosFourn[cleLogoFourn(f)]).length;
+                        return (
+                          <div>
+                            <p style={{ fontSize: 11.5, color: "#6b7280", margin: "0 0 8px" }}>{liste.length} fournisseurs · {avec} avec logo</p>
+                            <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 420, overflowY: "auto", paddingRight: 4 }}>
+                              {liste.map(([f, n]) => {
+                                const logo = logosFourn[cleLogoFourn(f)];
+                                return (
+                                  <div key={f} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 8px", borderRadius: 8, background: logo ? "#f0fdf4" : "#faf8f3", border: "1px solid #eee8dc" }}>
+                                    <span style={{ width: 52, height: 30, flexShrink: 0, borderRadius: 6, background: logo ? "#fff" : "#eaf2ee", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                                      {logo ? <img src={logo} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} /> : <b style={{ fontSize: 12, color: "#305a55" }}>{initialesFourn(f)}</b>}
+                                    </span>
+                                    <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, fontWeight: 700, color: "#1a2e1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f}>{f} <span style={{ fontWeight: 500, color: "#9ca3af" }}>· {n}</span></span>
+                                    <label style={{ flexShrink: 0, padding: "5px 10px", borderRadius: 8, border: "1.5px solid #305a55", background: logo ? "#fff" : "#305a55", color: logo ? "#305a55" : "#fff", fontSize: 11.5, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>
+                                      {logo ? "Changer" : "📤 Importer le logo"}
+                                      <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => { const fi = e.target.files?.[0]; e.target.value = ""; if (fi) importerLogoFournisseur(f, fi); }} />
+                                    </label>
+                                    {logo && <button type="button" title="Retirer le logo" onClick={() => update(ref(db, "config/logos_fournisseurs"), { [cleLogoFourn(f)]: null })}
+                                      style={{ flexShrink: 0, border: "none", background: "none", color: "#dc2626", fontSize: 15, cursor: "pointer", padding: "0 4px" }}>✕</button>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </CarteReglage>
                     </div>
 
                     {/* 10/10/2026 — Demande d'Elinathan : être prévenue sur son téléphone même
@@ -6946,42 +6994,21 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                   })()}
                   <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "26px 0 10px", flexWrap: "wrap" }}>
                     <p style={{ fontSize: 12.5, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".06em", margin: 0 }}>🏭 Par fournisseur ({fourns.length})</p>
-                    {monAccesReel.isAdmin && <span style={{ fontSize: 11.5, color: "#9ca3af" }}>Touchez 🖼️ sur une tuile pour ajouter le logo du fournisseur.</span>}
+                    {monAccesReel.isAdmin && <button type="button" onClick={() => { setShowAdmin(true); setAdminTab("modules"); window.scrollTo(0, 0); }} style={{ fontSize: 11.5, color: "#305a55", background: "none", border: "none", textDecoration: "underline", cursor: "pointer", padding: 0 }}>Logos des fournisseurs (Admin)</button>}
                   </div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(210px, 100%), 1fr))", gap: 12 }}>
                     {fourns.map(([f, l]) => {
-                      const cleLogo = String(f).trim().toUpperCase().replace(/[.#$/\[\]]/g, "_");
-                      const logo = logosFourn[cleLogo];
-                      const photo = l.map(r => (r.photoUrls || [])[0]).find(Boolean);
+                      const logo = logosFourn[cleLogoFourn(f)];
                       const nRes = l.filter(r => r.decision === "reserve").length, nRef = l.filter(r => r.decision === "refus").length;
                       return (
                         <button key={f} type="button" onClick={() => { setFilterFournisseur(f); window.scrollTo(0, 0); }}
                           style={{ padding: 0, border: "none", borderRadius: 16, overflow: "hidden", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.07)", cursor: "pointer", textAlign: "left", display: "flex", flexDirection: "column" }}>
                           {/* 16/10/2026 — « que toutes les photos aient le même format » : image en position absolue
                               dans un cadre 16/9 fixe (une photo en hauteur agrandissait sa tuile). */}
-                          <div style={{ position: "relative", aspectRatio: "16/9", overflow: "hidden", flexShrink: 0, background: logo ? "#fff" : "#eef2f0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, borderBottom: logo ? "1px solid #f0ebe0" : undefined }}>
+                          <div style={{ position: "relative", aspectRatio: "16/9", overflow: "hidden", flexShrink: 0, background: logo ? "#fff" : "#eaf2ee", display: "flex", alignItems: "center", justifyContent: "center", borderBottom: "1px solid #f0ebe0" }}>
                             {logo ? <img src={logo} alt={f} loading="lazy" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", padding: "10px 14px", boxSizing: "border-box" }} />
-                              : photo ? <img src={srcPhoto(photo)} alt="" loading="lazy" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} /> : "🏭"}
-                            {monAccesReel.isAdmin && (
-                              <label onClick={e => e.stopPropagation()} title={logo ? "Changer le logo" : "Ajouter le logo du fournisseur"}
-                                style={{ position: "absolute", top: 6, right: 6, width: 32, height: 32, borderRadius: 9, background: "rgba(255,255,255,.92)", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, cursor: "pointer" }}>
-                                🖼️
-                                <input type="file" accept="image/*" style={{ display: "none" }} onChange={async e => {
-                                  const fichier = e.target.files?.[0]; e.target.value = "";
-                                  if (!fichier) return;
-                                  try {
-                                    // Logo réduit (600 px max) en PNG pour garder la transparence.
-                                    const img = await createImageBitmap(fichier);
-                                    const k = Math.min(1, 600 / Math.max(img.width, img.height));
-                                    const c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
-                                    c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
-                                    const url = await envoyerPhoto(c.toDataURL("image/png"), "rapports/logos");
-                                    await update(ref(db, "config/logos_fournisseurs"), { [cleLogo]: url });
-                                    showToast(`✅ Logo ajouté pour ${f}`);
-                                  } catch (err: any) { showToast("❌ Logo non enregistré : " + (err?.message || "erreur"), "error"); }
-                                }} />
-                              </label>
-                            )}
+                              : <span style={{ fontSize: 44, fontWeight: 900, color: "#305a55", letterSpacing: 2, fontFamily: "'Syne', sans-serif" }}>{initialesFourn(f)}</span>}
+
                           </div>
                           <div style={{ padding: "10px 12px 12px" }}>
                             <div style={{ fontSize: 13.5, fontWeight: 900, color: "#1a2e1a", lineHeight: 1.2, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{f}</div>
