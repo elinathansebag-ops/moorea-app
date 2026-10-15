@@ -1101,6 +1101,16 @@ export default function App() {
   // 14/10/2026 — Téléchargement du rapport : on demande d'abord la langue (français / anglais).
   const [choixLangueRapport, setChoixLangueRapport] = useState<any>(null);
   const [pdfEnCours, setPdfEnCours] = useState(false);
+  // 15/10/2026 — Demande d'Elinathan : un bouton « télécharger en français » et un « télécharger en
+  // anglais » directement sur les rapports (plus de fenêtre de choix de langue).
+  const [pdfLangueEnCours, setPdfLangueEnCours] = useState("");
+  const telechargerRapport = async (r: any, l: "fr" | "en") => {
+    const cle = `${r?.id || r?.firebaseKey || r?.numeroRapport}|${l}`;
+    if (pdfLangueEnCours) return;
+    setPdfLangueEnCours(cle);
+    try { await downloadPDF(r, l); } finally { setPdfLangueEnCours(""); }
+  };
+  const pdfLangueOccupe = (r: any, l: "fr" | "en") => pdfLangueEnCours === `${r?.id || r?.firebaseKey || r?.numeroRapport}|${l}`;
   const pdfApercuIframeRef = useRef<HTMLIFrameElement>(null);
 
   // ─── AUTH ───
@@ -4634,6 +4644,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     const toastQualite = toast && <div className="toast" style={{ position: "fixed", top: 20, right: 20, zIndex: 99999, background: toast.type === "error" ? "#fef2f2" : "#f0fdf4", color: toast.type === "error" ? "#dc2626" : "#15803d", border: `1.5px solid ${toast.type === "error" ? "#fca5a5" : "#86efac"}`, borderRadius: 12, padding: "11px 20px", fontWeight: 500, fontSize: 14, boxShadow: "0 8px 24px rgba(0,0,0,0.12)" }}>{toast.msg}</div>;
     return <>{fabScanner}{invitationNotif}{fenetresPdf}{toastQualite}<QualiteDashboard rapports={monAcces.hasModule("rapports") ? rapports : []} raccourcis={raccourcis} ouvrirFournisseur={n => monAcces.hasModule("rapports") && versRapports({ fournisseur: n })} ouvrirProduit={n => monAcces.hasModule("rapports") && versRapports({ produit: n })} ouvrirRapport={r => setChoixLangueRapport(r)}
       actionsRapport={r => [
+        { libelle: "⬇ PDF français", fond: "#faf8f3", texte: "#8a6f2e", onClick: () => telechargerRapport(r, "fr") },
+        { libelle: "⬇ PDF English", fond: "#faf8f3", texte: "#8a6f2e", onClick: () => telechargerRapport(r, "en") },
         { libelle: "✉ Mail commercial", fond: "#1f4440", onClick: () => envoyerEmail(r) },
         { libelle: "WhatsApp", fond: "#16a34a", onClick: () => partagerWhatsApp(r) },
         { libelle: "✏️ Modifier", fond: "#eff6ff", texte: "#1d4ed8", onClick: () => { setShowQualiteHub(false); setRetourHub("qualite"); chargerRapportEdition(r); setPageMode("arrivages"); window.scrollTo(0, 0); } },
@@ -4746,7 +4758,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1a2e1a" }}>{r.numeroRapport} · {r.produit}</p>
                 <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>{r.fournisseur} · {r.date}{r.lotMoorea ? ` · Lot ${r.lotMoorea}` : ""} · {r.decision === "stock" ? "Conforme" : r.decision === "reserve" ? "Réserve" : "Refus"}</p>
               </div>
-              <button onClick={() => setChoixLangueRapport(r)} style={boutonRes}>PDF</button>
+              <span style={{ display: "inline-flex", gap: 6, flexShrink: 0 }}>
+                {(["fr", "en"] as const).map(l => <button key={l} onClick={() => telechargerRapport(r, l)} style={boutonRes}>{pdfLangueOccupe(r, l) ? "⏳" : `⬇ ${l.toUpperCase()}`}</button>)}
+              </span>
             </div>
           ))}
           {titreRes("📦 Arrivages", resultats.length)}
@@ -4809,7 +4823,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       <span className="pill" style={{ background: rapport.decision === "stock" ? "#f0fdf4" : rapport.decision === "reserve" ? "#fffbeb" : "#fef2f2", color: rapport.decision === "stock" ? "#15803d" : rapport.decision === "reserve" ? "#d97706" : "#dc2626", border: `1px solid ${rapport.decision === "stock" ? "#bbf7d0" : rapport.decision === "reserve" ? "#fcd34d" : "#fca5a5"}` }}>
                         {rapport.decision === "stock" ? "✅ En stock" : rapport.decision === "reserve" ? "⚠️ Réserve" : "❌ Refusé"}
                       </span>
-                      <button onClick={() => setChoixLangueRapport(rapport)} style={{ marginLeft: "auto", padding: "5px 12px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#fff", color: "#8a6f2e", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>🖨️ Imprimer</button>
+                      <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
+                        {(["fr", "en"] as const).map(l => <button key={l} onClick={() => telechargerRapport(rapport, l)} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#fff", color: "#8a6f2e", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{pdfLangueOccupe(rapport, l) ? "⏳" : `⬇ PDF ${l.toUpperCase()}`}</button>)}
+                      </span>
                     </div>
                   </div>
                 )}
@@ -5844,7 +5860,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                         <div style={{ background: "#faf8f3", border: "1px solid #e8e0d0", borderRadius: 10, padding: "8px 14px", marginBottom: 10, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
                           <span style={{ fontSize: 12, fontWeight: 600, color: "#8a6f2e" }}>📋 {rapport.numeroRapport}</span>
                           {rapport.score && <span style={{ fontSize: 12, color: NOTE_COLORS[Math.round(parseFloat(rapport.score))], fontWeight: 700 }}>Score {rapport.score}/5</span>}
-                          <button onClick={() => setChoixLangueRapport(rapport)} style={{ marginLeft: "auto", padding: "4px 10px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#fff", color: "#8a6f2e", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>🖨️ Imprimer</button>
+                          <span style={{ marginLeft: "auto", display: "inline-flex", gap: 6 }}>
+                            {(["fr", "en"] as const).map(l => <button key={l} onClick={() => telechargerRapport(rapport, l)} style={{ padding: "4px 10px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#fff", color: "#8a6f2e", cursor: "pointer", fontSize: 12, fontWeight: 700 }}>{pdfLangueOccupe(rapport, l) ? "⏳" : `⬇ PDF ${l.toUpperCase()}`}</button>)}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -6784,9 +6802,11 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 )}
                 {r.observations && <p style={{ fontSize: 13, color: "#6b7280", fontStyle: "italic", borderTop: "1px solid #f0fdf4", paddingTop: 8, marginTop: 8 }}>"{r.observations}"</p>}
                 <div className="action-row" style={{ marginTop: 12, paddingTop: 10, borderTop: "1px solid #f0f0f0" }}>
-                  <button onClick={() => setChoixLangueRapport(r)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "1.5px solid #e8e0d0", background: "#faf8f5", cursor: "pointer", fontSize: 14, fontWeight: 600, color: "#8a6f2e", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, touchAction: "manipulation" }}>
-                    🖨️ Imprimer
-                  </button>
+                  {(["fr", "en"] as const).map(l => (
+                    <button key={l} onClick={() => telechargerRapport(r, l)} disabled={!!pdfLangueEnCours} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "1.5px solid #e8e0d0", background: "#faf8f5", cursor: "pointer", fontSize: 14, fontWeight: 600, color: "#8a6f2e", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, touchAction: "manipulation" }}>
+                      {pdfLangueOccupe(r, l) ? "⏳…" : l === "fr" ? "⬇ PDF français" : "⬇ PDF English"}
+                    </button>
+                  ))}
                   <button onClick={() => partagerWhatsApp(r)} style={{ flex: 1, padding: "13px 0", borderRadius: 12, border: "none", background: "linear-gradient(135deg, #25d366, #128c7e)", cursor: "pointer", fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: "'Syne', sans-serif", display: "flex", alignItems: "center", justifyContent: "center", gap: 6, touchAction: "manipulation" }}>
                     WhatsApp
                   </button>
@@ -6872,7 +6892,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     {r.bonRepriseSigné && r.transporteur && <div style={{ padding: "6px 14px 0", fontSize: 11.5, color: "#16a34a", fontWeight: 700 }}>✅ Bon signé par {r.transporteur.nom || "le transporteur"}{r.transporteur.signéLe ? ` le ${r.transporteur.signéLe}` : ""}{r.bonPar ? ` · fait par ${r.bonPar}` : ""}</div>}
                     {r.recupereSansSig && <div style={{ padding: "6px 14px 0", fontSize: 11.5, color: "#6b7280", fontWeight: 700 }}>📦 Récupéré sans signature{r.recuperéLe ? ` le ${r.recuperéLe}` : ""}{r.recuperePar ? ` · ${r.recuperePar}` : ""}</div>}
                     <div style={{ display: "flex", gap: 6, padding: "10px 14px 12px", marginTop: "auto", flexWrap: "wrap" }}>
-                      {petitBouton("Voir / télécharger le PDF (français ou anglais)", "📄", () => setChoixLangueRapport(r))}
+                      {(["fr", "en"] as const).map(l => <span key={l} style={{ display: "contents" }}>{petitBouton(l === "fr" ? "Télécharger le PDF en français" : "Télécharger le PDF en anglais", pdfLangueOccupe(r, l) ? "⏳" : <span style={{ fontSize: 10.5, fontWeight: 900, lineHeight: 1.05, textAlign: "center" }}>⬇<br />{l.toUpperCase()}</span>, () => telechargerRapport(r, l), { desactive: !!pdfLangueEnCours })}</span>)}
                       {petitBouton("Envoyer au commercial par mail", envoi ? "⏳" : "✉️", () => envoyerEmail(r), { desactive: envoi })}
                       {petitBouton("Partager sur WhatsApp", <svg width="18" height="18" viewBox="0 0 24 24" fill="#16a34a"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.6.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.2.1-.1 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.1 5.1 0 0 0 1.1 2.7 11.7 11.7 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6a2.7 2.7 0 0 0 1.8-1.3 2.2 2.2 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3z"/></svg>, () => partagerWhatsApp(r))}
                       {r.decision === "refus" && !r.bonRepriseSigné && !r.recupereSansSig && petitBouton("Bon de retour à faire signer", "🔄", () => genererBonRetour(r), { fond: "#fef2f2", texte: "#dc2626" })}

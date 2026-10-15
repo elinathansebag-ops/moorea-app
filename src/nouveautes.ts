@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 73, date: "15/10", pages: ["qualite"], texte: "📋 Rapports qualité : deux boutons directs « ⬇ PDF français » et « ⬇ PDF English » (cartes, détail, recherche, historique, Récap qualité) au lieu de la fenêtre de choix." },
   { id: 72, date: "15/10", pages: ["qualite"], texte: "📋 Rapports qualité PDF aux couleurs de Moorea : bandeau vert avec logo et adresse, sections et pied de page verts, n° de page." },
   { id: 71, date: "15/10", pages: ["qualite", "qualite.ecarts"], texte: "📦 Récap qualité › Écarts de colis : chaque livraison avec un écart entre colis attendus et reçus, et son rapport PDF Moorea en français, en anglais ou bilingue (choix des produits, commentaire)." },
   { id: 70, date: "15/10", pages: ["admin.materiel"], texte: "✨ Modèle automatique d'étiquette agrandi : nom du produit sur toute la largeur en haut (beaucoup plus gros), nombre de colis et lot plus grands, DLC et QR à droite en dessous — moins de place perdue." },
