@@ -125,6 +125,59 @@ function ajusterNomProduit(hote: HTMLElement, cfgApp: any) {
   while (nom.offsetHeight > hauteurMax && taille > 14) { taille -= 1; nom.style.fontSize = taille + "px"; }
 }
 
+// ── 15/10/2026 — MODÈLE AUTOMATIQUE (choisi par Elinathan : « le A, avec la DLC en haut, alignée
+// sur le QR code ») : plus rien à placer à la main. Chaque texte a sa zone fixe (en mm) et prend la
+// plus grande taille qui y tient (mesurée dans le navigateur avant la photo de l'étiquette).
+//   À gauche : nom (1 ou 2 lignes), gros nombre de colis, lot fournisseur sur une ligne, AR + lot Moorea.
+//   À droite : bloc noir DLC en haut, QR code en dessous, même largeur.
+function htmlEtiquetteAuto(job: JobEtiquette, qrDataUrl: string): string {
+  const zone = (cls: string, x: number, y: number, w: number, h: number, contenu: string, extra = "") =>
+    `<div class="zone ${cls}" style="left:${x}mm;top:${y}mm;width:${w}mm;height:${h}mm;${extra}"><div class="txt">${contenu}</div></div>`;
+  const css = `
+    .etq *{margin:0;padding:0;box-sizing:border-box;text-transform:uppercase}
+    .etq{position:relative;width:180mm;height:110mm;background:#fff;overflow:hidden;font-family:'Arial Black','Arial',Helvetica,sans-serif;font-weight:900;color:#000}
+    .etq .zone{position:absolute;display:flex;align-items:center;overflow:hidden}
+    .etq .txt{line-height:1.02;white-space:nowrap}
+    .etq .nom .txt{white-space:normal;overflow-wrap:break-word;width:100%}
+    .etq .qte{align-items:flex-end}
+    .etq .qte .txt{line-height:.8}
+    .etq .qte small{font-size:.16em;margin-left:.15em;letter-spacing:.02em}
+    .etq .lot{background:#e6e6e6;border-radius:1.5mm;padding:0 2.5mm}
+    .etq .dlc{background:#000;color:#fff;border-radius:2mm;flex-direction:column;justify-content:center;align-items:center}
+    .etq .dlc .lib{font-size:16px;font-weight:700;letter-spacing:2px;margin-bottom:1mm}
+    .etq .dlc .txt{color:#fff}
+  `;
+  const dlc = job.dlcLabel ? `<div class="zone dlc" style="left:113mm;top:4mm;width:63mm;height:30mm"><div class="lib">DLC</div><div class="txt" data-max="80">${echapper(job.dlcLabel)}</div></div>` : "";
+  const bas = [job.dateArriveeLabel ? `AR : ${echapper(job.dateArriveeLabel)}` : "", job.lotLabel ? echapper(job.lotLabel) : ""].filter(Boolean).join("&nbsp;&nbsp;·&nbsp;&nbsp;");
+  return `<style>${css}</style>
+    <div class="etq" data-modele="auto">
+      ${zone("nom", 5, 4, 104, 23, echapper(job.produit || ""))}
+      ${zone("qte", 5, 28, 104, 47, `${echapper(job.qte || "-")}<small>${echapper(job.unite || "COLIS")}</small>`)}
+      ${job.lotFournisseur ? zone("lot", 5, 79, 104, 12, echapper(job.lotFournisseur)) : ""}
+      ${bas ? zone("bas", 5, 94, 104, 11, bas) : ""}
+      ${dlc}
+      <img src="${qrDataUrl}" style="position:absolute;left:113mm;top:${job.dlcLabel ? 40 : 4}mm;width:${job.dlcLabel ? 63 : 70}mm;height:${job.dlcLabel ? 63 : 70}mm;display:block" />
+    </div>`;
+}
+// Plus grande taille de police (px) pour que le texte tienne dans sa zone (recherche par dichotomie).
+function ajusterZonesAuto(hote: HTMLElement) {
+  const maxParZone: Record<string, number> = { nom: 64, qte: 330, lot: 40, bas: 30, dlc: 80 };
+  hote.querySelectorAll<HTMLElement>(".zone").forEach(z => {
+    const cle = Object.keys(maxParZone).find(k => z.classList.contains(k));
+    const t = z.querySelector(".txt") as HTMLElement | null;
+    if (!cle || !t) return;
+    const largeur = z.clientWidth - (cle === "lot" ? 19 : 0), hauteur = cle === "dlc" ? z.clientHeight - 30 : z.clientHeight;
+    const tient = () => t.scrollWidth <= largeur + 0.5 && t.scrollHeight <= hauteur + 0.5 && (cle !== "nom" || t.offsetHeight <= hauteur);
+    let bas = 10, haut = maxParZone[cle];
+    while (haut - bas > 1) {
+      const m = Math.floor((bas + haut) / 2);
+      t.style.fontSize = m + "px";
+      if (tient()) bas = m; else haut = m;
+    }
+    t.style.fontSize = bas + "px";
+  });
+}
+
 let cfgCache: { v: any; at: number } | null = null;
 export function oublierConfigEtiquette() { cfgCache = null; } // après « Enregistrer » dans le réglage
 async function lireConfig() {
@@ -140,34 +193,47 @@ export async function fabriquerPdfEtiquetteArrivage(job: JobEtiquette): Promise<
   return fabriquerPdfEtiquettesArrivage([job]);
 }
 
+// Dessine UNE étiquette (canvas ≈ 300 dpi) avec les réglages donnés.
+async function dessinerEtiquette(job: JobEtiquette, cfgApp: any, QRCode: any, html2canvas: any): Promise<HTMLCanvasElement> {
+  const qr = await QRCode.toDataURL(job.url || " ", { width: 500, margin: 0, color: { dark: "#000000", light: "#FFFFFF" } });
+  const hote = document.createElement("div");
+  hote.style.cssText = "position:fixed;left:-10000px;top:0;width:180mm;height:110mm;background:#fff;z-index:-1";
+  const auto = cfgApp?.modele === "auto";
+  hote.innerHTML = auto ? htmlEtiquetteAuto(job, qr) : htmlEtiquette(job, qr, cfgApp);
+  document.body.appendChild(hote);
+  try {
+    const img = hote.querySelector("img");
+    if (img && !img.complete) await new Promise(r => { img.onload = r; img.onerror = r; });
+    if ((document as any).fonts?.ready) await (document as any).fonts.ready;
+    if (auto) ajusterZonesAuto(hote); else ajusterNomProduit(hote, cfgApp);
+    const cible = hote.querySelector(".etq") as HTMLElement;
+    // ≈ 300 dpi : 180 mm = 680 px CSS → ×3,1.
+    const canvas = await html2canvas(cible, { scale: 3.1, backgroundColor: "#ffffff", logging: false, useCORS: true });
+    if (import.meta.env.DEV) (window as any).__etiquettePng = canvas.toDataURL("image/png");
+    return canvas;
+  } finally {
+    hote.remove();
+  }
+}
+
+// Aperçu (image PNG) pour la page de réglage.
+export async function apercuEtiquetteArrivage(job: JobEtiquette, cfgApp: any): Promise<string> {
+  const [{ default: QRCode }, { default: html2canvas }] = await Promise.all([import("qrcode"), import("html2canvas")]);
+  return (await dessinerEtiquette(job, cfgApp, QRCode, html2canvas)).toDataURL("image/png");
+}
+
 // 15/10/2026 — Plusieurs palettes d'un même arrivage : UN SEUL PDF de plusieurs pages, envoyé en une
 // seule impression (avant : une impression par étiquette, et le PC relançait Acrobat entre chaque).
-export async function fabriquerPdfEtiquettesArrivage(jobs: JobEtiquette[]): Promise<string> {
-  const [{ default: QRCode }, { default: html2canvas }, { jsPDF }, cfgApp] = await Promise.all([
-    import("qrcode"), import("html2canvas"), import("jspdf"), lireConfig(),
+export async function fabriquerPdfEtiquettesArrivage(jobs: JobEtiquette[], cfgImpose?: any): Promise<string> {
+  const [{ default: QRCode }, { default: html2canvas }, { jsPDF }, cfgLu] = await Promise.all([
+    import("qrcode"), import("html2canvas"), import("jspdf"), cfgImpose ? Promise.resolve(null) : lireConfig(),
   ]);
+  const cfgApp = cfgImpose || cfgLu;
   const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: [180, 110], compress: true });
   for (let n = 0; n < jobs.length; n++) {
-    const job = jobs[n];
-    const qr = await QRCode.toDataURL(job.url || " ", { width: 500, margin: 0, color: { dark: "#000000", light: "#FFFFFF" } });
-    const hote = document.createElement("div");
-    hote.style.cssText = "position:fixed;left:-10000px;top:0;width:180mm;height:110mm;background:#fff;z-index:-1";
-    hote.innerHTML = htmlEtiquette(job, qr, cfgApp);
-    document.body.appendChild(hote);
-    try {
-      const img = hote.querySelector("img");
-      if (img && !img.complete) await new Promise(r => { img.onload = r; img.onerror = r; });
-      if ((document as any).fonts?.ready) await (document as any).fonts.ready;
-      ajusterNomProduit(hote, cfgApp);
-      const cible = hote.querySelector(".etq") as HTMLElement;
-      // ≈ 300 dpi : 180 mm = 680 px CSS → ×3,1.
-      const canvas = await html2canvas(cible, { scale: 3.1, backgroundColor: "#ffffff", logging: false, useCORS: true });
-      if (import.meta.env.DEV) (window as any).__etiquettePng = canvas.toDataURL("image/png");
-      if (n > 0) pdf.addPage([180, 110], "landscape");
-      pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, 180, 110, undefined, "FAST");
-    } finally {
-      hote.remove();
-    }
+    const canvas = await dessinerEtiquette(jobs[n], cfgApp, QRCode, html2canvas);
+    if (n > 0) pdf.addPage([180, 110], "landscape");
+    pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, 180, 110, undefined, "FAST");
   }
   return pdf.output("datauristring").split(",").pop() || "";
 }

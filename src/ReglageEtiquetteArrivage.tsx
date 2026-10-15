@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { db, ref, onValue, set, push } from "./firebase";
+import { db, ref, onValue, set, push, update } from "./firebase";
 
 // ── Réglage de l'étiquette d'arrivage (palette) ──
 // 24/09/2026 — Demande d'Elinathan : « recrée-moi le module pour régler les éléments ». Remplace
@@ -131,6 +131,22 @@ export function ReglageEtiquetteArrivage({ onRetour, userName }: { onRetour: () 
   const [message, setMessage] = useState<{ ok: boolean; txt: string } | null>(null);
   const [exemple, setExemple] = useState({ produit: "ASPERGE VERTE MADAGASCAR", qte: "48", dlc: "02/10/2026", lotFournisseur: "L3402", ar: "24/09/2026", lotMoorea: "MRA.7721-1" });
   const zoneRef = useRef<HTMLDivElement>(null);
+  // 15/10/2026 — « le truc de création d'étiquette est infernal » : modèle automatique (rien à placer).
+  const modeAuto = (cfg as any).modele === "auto";
+  const [apercuAuto, setApercuAuto] = useState("");
+  useEffect(() => {
+    if (!modeAuto) return;
+    let annule = false;
+    import("./etiquetteArrivagePdf").then(m => m.apercuEtiquetteArrivage({ lotLabel: exemple.lotMoorea, produit: exemple.produit.toUpperCase(), qte: parseInt(exemple.qte) || 0, unite: "COLIS", lotFournisseur: exemple.lotFournisseur.toUpperCase(), dlcLabel: exemple.dlc, dateArriveeLabel: exemple.ar, url: `${window.location.origin}/?id=test` }, { modele: "auto" }))
+      .then(png => { if (!annule) setApercuAuto(png); }).catch(() => {});
+    return () => { annule = true; };
+  }, [modeAuto, exemple]);
+  const choisirModele = async (v: "auto" | "manuel") => {
+    try {
+      await update(ref(db, "config/etiquette_arrivage"), { modele: v, updatedAt: Date.now(), updatedBy: userName || "" });
+      import("./etiquetteArrivagePdf").then(m => m.oublierConfigEtiquette()).catch(() => {});
+    } catch (e: any) { flash(false, "❌ Erreur : " + (e?.message || "enregistrement impossible")); }
+  };
   const [echelle, setEchelle] = useState(0.8);
   const glisse = useRef<null | { cle: Cle; startX: number; startY: number; pos: Pos }>(null);
 
@@ -249,6 +265,40 @@ export function ReglageEtiquetteArrivage({ onRetour, userName }: { onRetour: () 
 
       {message && <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: 10, fontSize: 13, fontWeight: 700, background: message.ok ? "#eafaf1" : "#fef2f2", color: message.ok ? "#27ae60" : "#dc2626" }}>{message.txt}</div>}
 
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+        {([["auto", "✨ Modèle automatique", "Tout se place et s'agrandit tout seul"], ["manuel", "✋ Réglage à la main", "Glisser chaque élément (ancien système)"]] as const).map(([v, titre, sous]) => {
+          const actif = (v === "auto") === modeAuto;
+          return (
+            <button key={v} type="button" onClick={() => choisirModele(v)}
+              style={{ flex: "1 1 220px", textAlign: "left", padding: "10px 14px", borderRadius: 12, border: `2px solid ${actif ? "#305a55" : "#e5e7eb"}`, background: actif ? "#eaf2ee" : "#fff", cursor: "pointer" }}>
+              <span style={{ display: "block", fontSize: 14, fontWeight: 800, color: actif ? "#305a55" : "#374151" }}>{titre}</span>
+              <span style={{ display: "block", fontSize: 11.5, color: "#6b7280" }}>{sous}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {modeAuto ? (
+        <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "flex-start" }}>
+          <div style={{ flex: "1 1 520px", minWidth: 0 }}>
+            {apercuAuto ? <img src={apercuAuto} alt="Aperçu de l'étiquette" style={{ width: "100%", maxWidth: 680, display: "block", boxShadow: "0 4px 18px rgba(0,0,0,.18)", borderRadius: 4 }} /> : <p style={{ color: "#9ca3af", fontSize: 12 }}>Préparation de l'aperçu…</p>}
+            <p style={{ fontSize: 11.5, color: "#6b7280", margin: "8px 0 0", lineHeight: 1.5 }}>
+              À gauche : nom du produit (1 ou 2 lignes), nombre de colis, lot fournisseur, date d'arrivée et lot Moorea. À droite : DLC en haut, QR code en dessous.
+              Chaque texte prend automatiquement la plus grande taille possible dans sa zone.
+            </p>
+          </div>
+          <div style={{ flex: "1 1 260px", display: "flex", flexDirection: "column", gap: 8 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: "#374151" }}>Essayer avec d'autres valeurs</span>
+            {([["produit", "Produit"], ["qte", "Colis"], ["dlc", "DLC"], ["lotFournisseur", "Lot fournisseur"], ["ar", "Date d'arrivée"]] as const).map(([k, lib]) => (
+              <label key={k} style={{ fontSize: 11.5, color: "#6b7280" }}>{lib}
+                <input value={(exemple as any)[k]} onChange={e => setExemple(x => ({ ...x, [k]: e.target.value }))} style={input} />
+              </label>
+            ))}
+            <button type="button" onClick={imprimerTest} style={btn("#305a55")}>🖨️ Imprimer une étiquette de test</button>
+          </div>
+        </div>
+      ) : (<>
+
       <div style={{ display: "flex", gap: 20, flexWrap: "wrap", alignItems: "flex-start" }}>
         <div style={{ flex: "1 1 560px", minWidth: 0 }}>
           <div ref={zoneRef} style={{ width: LARGEUR_MM * PX_PAR_MM * echelle, height: HAUTEUR_MM * PX_PAR_MM * echelle, overflow: "hidden", boxShadow: "0 4px 18px rgba(0,0,0,.18)", borderRadius: 4 }}>
@@ -309,6 +359,7 @@ export function ReglageEtiquetteArrivage({ onRetour, userName }: { onRetour: () 
           </div>
         </div>
       </div>
+      </>)}
     </div>
   );
 }
