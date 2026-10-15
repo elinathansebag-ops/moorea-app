@@ -17,7 +17,7 @@ import { NotificationsPush, AttributionNotifications, alerterPush, EtatNotificat
 import { ReglagesImpression } from "./Imprimantes";
 import { SousComptesAcces, useRefusProfils, refusDuProfil } from "./SousComptesAcces";
 import { LogoMoorea, PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F, ChargementEcran, calculerAcces, cleEmail, AccesRole, AccesUser, AccesRefuse, ADMIN_BOOTSTRAP, toutesLesClesModules, compteEnAttente } from "./shared";
-import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, lireMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC, envoyerEtiquettesPalettesPC } from "./ArrivageModule";
+import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, lireMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC, envoyerEtiquettesPalettesPC, familleProduit } from "./ArrivageModule";
 
 // 29/09/2026 — Demande d'Elinathan (vitesse) : chaque module est maintenant téléchargé à part,
 // seulement quand on l'ouvre (avant : un seul fichier de ~5 Mo avec toute l'appli pour tout le
@@ -4089,24 +4089,35 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     </CarteReglage>
                     {/* 13/10/2026 — Messagerie en veille : sa configuration est masquée aussi (code gardé). */}
                     {/* 16/10/2026 — Liste de tous les fournisseurs des rapports qualité, avec import du logo. */}
-                    <CarteReglage titre="🏭 Fournisseurs : logos et familles" desc="Logo affiché sur les tuiles « Par fournisseur » des rapports (sans logo : les initiales). Famille = où ses arrivages sont rangés dans Pointer arrivage (Auto = selon le produit).">
+                    <div style={{ gridColumn: "1 / -1" }}>
+                    <CarteReglage titre="🏭 Fournisseurs : logos et familles" desc="Logo affiché sur les tuiles « Par fournisseur » des rapports (sans logo : les initiales). Famille = où ses arrivages sont rangés dans Pointer arrivage (choisie d'après ses produits, modifiable).">
                       {(() => {
                         // 16/10/2026 — Tous les fournisseurs (arrivages + rapports), du plus d'arrivages au moins.
                         const nbArr = new Map<string, number>(), nbRap = new Map<string, number>(), noms = new Map<string, string>();
+                        const famProduits = new Map<string, Record<string, number>>(); // famille détectée d'après les produits
                         const compter = (m: Map<string, number>, f: any) => { const nom = String(f || "").trim(); if (!nom) return; const k = cleLogoFourn(nom); noms.set(k, noms.get(k) || nom); m.set(k, (m.get(k) || 0) + 1); };
-                        arrivages.forEach(a => { if (!a?.test && !a?.hors_liste) compter(nbArr, a?.fournisseur); });
+                        arrivages.forEach(a => {
+                          if (a?.test || a?.hors_liste) return;
+                          compter(nbArr, a?.fournisseur);
+                          const k = cleLogoFourn(a?.fournisseur); if (!k) return;
+                          const c = famProduits.get(k) || {}; const fp = familleProduit(a?.produit); c[fp] = (c[fp] || 0) + 1; famProduits.set(k, c);
+                        });
                         rapports.forEach(r => compter(nbRap, r.fournisseur));
                         const liste = [...noms.keys()].map(k => ({ k, f: noms.get(k)!, a: nbArr.get(k) || 0, r: nbRap.get(k) || 0 }))
                           .sort((x, y) => y.a - x.a || y.r - x.r || x.f.localeCompare(y.f, "fr"));
                         const avec = liste.filter(x => logosFourn[x.k]).length;
-                        const FAM: [string, string, string][] = [["", "Auto", "#6b7280"], ["verts", "🫛 Haricots & pois", "#0284c7"], ["export", "🌍 Grand export", "#ea580c"], ["autres", "🧺 Le reste", "#a21caf"]];
+                        const FAM: [string, string, string][] = [["verts", "🫛 Haricots & pois", "#0284c7"], ["export", "🌍 Grand export", "#ea580c"], ["autres", "🧺 Le reste", "#a21caf"]];
                         return (
                           <div>
                             <p style={{ fontSize: 11.5, color: "#6b7280", margin: "0 0 8px" }}>{liste.length} fournisseurs · {avec} avec logo · triés par nombre d'arrivages</p>
                             <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 460, overflowY: "auto", paddingRight: 4 }}>
                               {liste.map(({ k, f, a: nA, r: n }) => {
                                 const logo = logosFourn[k];
-                                const fam = famillesFourn[k] || "";
+                                // Famille actuelle : choisie à la main, sinon celle de la majorité de ses produits.
+                                const detect = famProduits.get(k) || {};
+                                const majoritaire = (Object.entries(detect).sort((x, y) => y[1] - x[1])[0]?.[0]) || familleProduit(f);
+                                const fam = famillesFourn[k] || majoritaire;
+                                const mixte = Object.keys(detect).length > 1 && !famillesFourn[k];
                                 const couleurFam = FAM.find(x => x[0] === fam)?.[2] || "#6b7280";
                                 return (
                                   <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 8px", borderRadius: 8, background: "#faf8f3", border: "1px solid #eee8dc", flexWrap: "wrap" }}>
@@ -4117,10 +4128,14 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                                       <span style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "#1a2e1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={f}>{f}</span>
                                       <span style={{ display: "block", fontSize: 11, color: "#9ca3af" }}>{nA} arrivage{nA > 1 ? "s" : ""} · {n ? <span style={{ color: "#15803d", fontWeight: 700 }}>{n} rapport{n > 1 ? "s" : ""}</span> : "aucun rapport"}</span>
                                     </span>
-                                    <select value={fam} onChange={e => update(ref(db, "config/familles_fournisseurs"), { [k]: e.target.value || null })} title="Famille dans Pointer arrivage"
-                                      style={{ flexShrink: 0, maxWidth: 150, padding: "5px 6px", borderRadius: 8, border: `1.5px solid ${couleurFam}`, color: couleurFam, fontSize: 11.5, fontWeight: 800, background: "#fff" }}>
-                                      {FAM.map(([v, lib]) => <option key={v} value={v}>{lib}</option>)}
-                                    </select>
+                                    <span style={{ display: "inline-flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0 }}>
+                                      <select value={fam} onChange={e => update(ref(db, "config/familles_fournisseurs"), { [k]: e.target.value })} title="Famille dans Pointer arrivage"
+                                        style={{ maxWidth: 170, padding: "5px 6px", borderRadius: 8, border: `1.5px solid ${couleurFam}`, color: couleurFam, fontSize: 11.5, fontWeight: 800, background: "#fff" }}>
+                                        {FAM.map(([v, lib]) => <option key={v} value={v}>{lib}</option>)}
+                                      </select>
+                                      {mixte && <span style={{ fontSize: 10, color: "#9ca3af", marginTop: 2 }} title="Sans choix, chaque produit va dans sa famille">produits mélangés : {FAM.filter(([v]) => detect[v]).map(([v, lib]) => `${detect[v]} ${lib.split(" ").slice(1).join(" ").toLowerCase()}`).join(", ")}</span>}
+                                      {famillesFourn[k] && <button type="button" onClick={() => update(ref(db, "config/familles_fournisseurs"), { [k]: null })} style={{ fontSize: 10, color: "#9ca3af", background: "none", border: "none", cursor: "pointer", padding: 0, marginTop: 2, textDecoration: "underline" }}>revenir au classement par produit</button>}
+                                    </span>
                                     <label style={{ flexShrink: 0, padding: "5px 10px", borderRadius: 8, border: "1.5px solid #305a55", background: logo ? "#fff" : "#305a55", color: logo ? "#305a55" : "#fff", fontSize: 11.5, fontWeight: 800, cursor: "pointer", whiteSpace: "nowrap" }}>
                                       {logo ? "Changer" : "📤 Importer le logo"}
                                       <input type="file" accept="image/*" style={{ display: "none" }} onChange={e => { const fi = e.target.files?.[0]; e.target.value = ""; if (fi) importerLogoFournisseur(f, fi); }} />
@@ -4135,6 +4150,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                         );
                       })()}
                     </CarteReglage>
+                    </div>
                     </div>
 
                     {/* 10/10/2026 — Demande d'Elinathan : être prévenue sur son téléphone même
