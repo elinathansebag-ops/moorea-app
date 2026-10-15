@@ -8,6 +8,8 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 72, date: "15/10", pages: ["qualite"], texte: "📋 Rapports qualité PDF aux couleurs de Moorea : bandeau vert avec logo et adresse, sections et pied de page verts, n° de page." },
+  { id: 71, date: "15/10", pages: ["qualite", "qualite.ecarts"], texte: "📦 Récap qualité › Écarts de colis : chaque livraison avec un écart entre colis attendus et reçus, et son rapport PDF Moorea en français, en anglais ou bilingue (choix des produits, commentaire)." },
   { id: 70, date: "15/10", pages: ["admin.materiel"], texte: "✨ Modèle automatique d'étiquette agrandi : nom du produit sur toute la largeur en haut (beaucoup plus gros), nombre de colis et lot plus grands, DLC et QR à droite en dessous — moins de place perdue." },
   { id: 69, date: "15/10", pages: ["admin.materiel"], texte: "✨ Modèle automatique d'étiquette : le lot fournisseur est remplacé par le lot Moorea à 4 chiffres avec le n° de palette (« LOT 8270 · PALETTE 1 »), en gros." },
   { id: 68, date: "15/10", pages: ["admin.materiel"], texte: "✨ Étiquette d'arrivage : « Modèle automatique » (Admin › Imprimantes › Dessin de l'étiquette) — nom, colis, lot fournisseur, AR et lot Moorea à gauche, DLC en haut à droite au-dessus du QR ; tout se dimensionne tout seul. Le réglage à la main reste disponible." },

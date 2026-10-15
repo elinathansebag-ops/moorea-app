@@ -78,6 +78,7 @@ const ChargementModule = chargerModule(() => import("./ChargementModule"), "Char
 // 13/10/2026 — RH, Pointeuse (écran mural + espace employé) et QR Code Leofresh supprimés (demande d'Elinathan).
 const RecopiePhotos = chargerModule(() => import("./RecopiePhotos"), "default");
 const RecapQualiteModule = chargerModule(() => import("./RecapQualiteModule"), "RecapQualiteModule");
+const RapportsEcartsColis = chargerModule(() => import("./RapportsEcartsColis"), "RapportsEcartsColis");
 
 // ─── Précharge une image distante (photo hébergée sur imgBB) en data URL avant de la
 // passer à jsPDF — doc.addImage() ne sait pas aller chercher une URL http(s) tout seul,
@@ -1063,6 +1064,7 @@ export default function App() {
   // date (voir src/RecapQualiteModule.tsx). Réutilise directement les "rapports" déjà chargés
   // ici, aucune nouvelle donnée Firebase nécessaire.
   const [showRecapQualite, setShowRecapQualite] = useState(false);
+  const [showEcartsColis, setShowEcartsColis] = useState(false); // 15/10/2026 — rapports d'écart de colis (FR / EN)
   const [showScanner, setShowScanner] = useState(false);
   const [scannerMode, setScannerMode] = useState<"palette" | "rapport">("palette");
   const [stockPage, setStockPage] = useState<"home"|"comptage"|"ecarts"|"config">("home");
@@ -2963,21 +2965,25 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     const W = 210; const M = 14; const CW = W - M * 2;
     let y = 0;
     const addPage = () => { doc.addPage(); y = 14; };
-    const checkY = (needed = 10) => { if (y + needed > 275) addPage(); };
+    const checkY = (needed = 10) => { if (y + needed > 280) addPage(); };
 
-    doc.setFillColor(10, 10, 10); doc.rect(0, 0, W, 22, "F");
-    doc.setFillColor(200, 168, 75); doc.rect(0, 22, W, 2, "F");
-    doc.setTextColor(200, 168, 75); doc.setFont("helvetica", "bold"); doc.setFontSize(14);
-    doc.text("MOOREA", M, 14);
-    doc.setTextColor(255, 255, 255); doc.setFontSize(10);
-    doc.text("Rapport Qualite - Arrivages", M + 32, 14);
-    doc.setTextColor(150, 150, 150); doc.setFontSize(8);
-    doc.text(`${r.date} a ${r.heure}`, W - M, 14, { align: "right" });
+    // 15/10/2026 — Mise en page aux couleurs de Moorea (bandeau vert, logo, adresse), comme les
+    // rapports d'écart de colis et les exports (demande d'Elinathan).
+    const { chargerLogoMoorea, VERT_MOOREA } = await import("./logoMoorea");
+    const logo = await chargerLogoMoorea();
+    doc.setFillColor(...VERT_MOOREA); doc.rect(0, 0, W, 30, "F");
+    if (logo) { try { doc.addImage(logo, "PNG", M, 5, 20, 20); } catch { /* logo facultatif */ } }
+    doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(15);
+    doc.text("Rapport Qualite - Arrivages", M + 25, 13);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(217, 231, 225);
+    doc.text(["MOOREA COMMERCE FRUITS - 69 rue de Perpignan - 94632 Rungis Cedex - FRANCE", "+33 1 56 70 62 40 - commercial@moorea.fr"], M + 25, 19);
     if (r.numeroRapport) {
-      doc.setTextColor(200, 168, 75); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
-      doc.text(r.numeroRapport, W - M, 9, { align: "right" });
+      doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
+      doc.text(r.numeroRapport, W - M, 12, { align: "right" });
     }
-    y = 32;
+    doc.setTextColor(217, 231, 225); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
+    doc.text(`${r.date} a ${r.heure}`, W - M, 18, { align: "right" });
+    y = 38;
 
     const dc = decisionColor(r.decision);
     doc.setFillColor(dc[0], dc[1], dc[2]);
@@ -3004,9 +3010,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
     const section = (title: string) => {
       checkY(14);
-      doc.setFillColor(245, 243, 238); doc.rect(M, y, CW, 8, "F");
-      doc.setFillColor(200, 168, 75); doc.rect(M, y, 3, 8, "F");
-      doc.setTextColor(138, 111, 46); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+      doc.setFillColor(234, 242, 238); doc.rect(M, y, CW, 8, "F");
+      doc.setFillColor(...VERT_MOOREA); doc.rect(M, y, 3, 8, "F");
+      doc.setTextColor(...VERT_MOOREA); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
       doc.text(title, M + 6, y + 5.5); y += 12;
     };
 
@@ -3136,8 +3142,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         { id: "sanitaire", label: "Sanitaire" },
       ];
       const colW2 = CW / 3;
-      doc.setFillColor(245, 243, 238); doc.rect(M, y, CW, 8, "F");
-      doc.setTextColor(138, 111, 46); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
+      doc.setFillColor(234, 242, 238); doc.rect(M, y, CW, 8, "F");
+      doc.setTextColor(...VERT_MOOREA); doc.setFont("helvetica", "bold"); doc.setFontSize(8);
       doc.text("Critere", M + 4, y + 5.5);
       doc.setTextColor(22, 163, 74); doc.text("C", M + colW2 * 1.5, y + 5.5, { align: "center" });
       doc.setTextColor(220, 38, 38); doc.text("NC", M + colW2 * 2.5, y + 5.5, { align: "center" });
@@ -3206,10 +3212,15 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       y += 4;
     }
 
-    doc.setFillColor(10,10,10); doc.rect(0,285,W,12,"F");
-    doc.setFillColor(200,168,75); doc.rect(0,285,W,1,"F");
-    doc.setTextColor(150,150,150); doc.setFont("helvetica","normal"); doc.setFontSize(7);
-    doc.text(`Genere par Moorea - Agreage Rungis - ${r.date}${r.lotMoorea?" - Lot "+r.lotMoorea:""}`,W/2,291,{align:"center"});
+    // Pied de page vert sur chaque page.
+    const nbPages = doc.getNumberOfPages();
+    for (let p = 1; p <= nbPages; p++) {
+      doc.setPage(p);
+      doc.setFillColor(...VERT_MOOREA); doc.rect(0, 287, W, 10, "F");
+      doc.setTextColor(217, 231, 225); doc.setFont("helvetica", "normal"); doc.setFontSize(7);
+      doc.text(`Genere par Moorea - Agreage Rungis - ${r.date}${r.lotMoorea ? " - Lot " + r.lotMoorea : ""}`, M, 293);
+      doc.text(`${r.numeroRapport ? r.numeroRapport + " - " : ""}${p}/${nbPages}`, W - M, 293, { align: "right" });
+    }
 
     return doc.output("datauristring");
   };
@@ -3821,6 +3832,11 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   // 22/09/2026 -- Nouveau module "Pointeuse" (écran mural + configuration des employés), séparé
   // du module RH existant -- voir la note plus haut. Réservé aux admins (créer/supprimer des
   // employés, changer les codes de pointage n'est pas anodin).
+  if (showEcartsColis) {
+    if (!monAcces.hasModule("qualite") && !monAcces.hasModule("rapports")) return <AccesRefuse onRetour={() => { setShowEcartsColis(false); versAccueilOuRubrique(); }} />;
+    return <>{invitationNotif}<RapportsEcartsColis arrivages={arrivages} auteur={nomSignataire() || user?.displayName || ""} onClose={() => { setShowEcartsColis(false); versAccueilOuRubrique(); }} /></>;
+  }
+
   if (showRecapQualite) {
     return <>{fabScanner}{invitationNotif}<RecapQualiteModule rapports={rapports} arrivages={arrivages} onClose={() => { setShowRecapQualite(false); versAccueilOuRubrique(); }} /></>;
   }
@@ -4609,6 +4625,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     const raccourcis = [
       ...(monAcces.hasModule("rapports") ? [{ cle: "qualite.rapports", icone: "📋", titre: "Rapports d'agréage", detail: `${rapports.length} rapports · recherche, filtres, PDF`, couleur: "#305a55", onClick: () => versRapports() }] : []),
       ...(monAcces.hasModule("qualite") ? [{ cle: "qualite.traca", icone: "🧪", titre: "Traçabilité & mesures", detail: "Lots, températures et poids pesés", couleur: "#0891b2", onClick: ouvrir(() => setShowRecapQualite(true)) }] : []),
+      ...(monAcces.hasModule("qualite") || monAcces.hasModule("rapports") ? [{ cle: "qualite.ecarts", icone: "📦", titre: "Écarts de colis", detail: "Rapports PDF Moorea en français / anglais", couleur: "#b45309", onClick: ouvrir(() => setShowEcartsColis(true)) }] : []),
       ...(monAcces.hasModule("lidl_consultation") ? [{ cle: "qualite.lidl", icone: "🔎", titre: "Traçabilité Lidl", detail: "Lots, producteurs, envois à Lidl", couleur: "#0050aa", onClick: ouvrir(() => setShowConsultLidl(true)) }] : []),
       // 14/10/2026 — « Refus à faire signer » : module à part (carte d'accueil), plus dans le Récap qualité.
       // 14/10/2026 — Page Litiges retirée (demande d'Elinathan : « sert à rien ») ; code gardé.
