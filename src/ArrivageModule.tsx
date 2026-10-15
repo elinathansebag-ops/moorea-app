@@ -1175,7 +1175,23 @@ function PointageGroupeNLT({ groupe, produits, onValidate, date, paletteAnnonceI
   );
 }
 
-export function FournisseurBlock({ ouvert, onBasculer, enGrille = false, fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, onReporterGroupe, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
+// 16/10/2026 — Demande d'Elinathan : ranger les arrivages par famille (haricots & pois / grand export /
+// le reste), avec une couleur par famille. Pour ne jamais avoir une colonne interminable à côté d'une
+// colonne vide, chaque famille est une SECTION dont les cartes s'étalent sur toutes les colonnes.
+export type FamilleArrivage = "verts" | "export" | "autres";
+export const FAMILLES_ARRIVAGE: Record<FamilleArrivage, { titre: string; couleur: string; fond: string }> = {
+  verts: { titre: "🫛 Haricots & pois", couleur: "#16a34a", fond: "#f0fdf4" },
+  export: { titre: "🌍 Grand export", couleur: "#ea580c", fond: "#fff7ed" },
+  autres: { titre: "🧺 Le reste", couleur: "#6366f1", fond: "#eef2ff" },
+};
+export function familleProduit(produit: string): FamilleArrivage {
+  const p = String(produit || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+  if (/HARICOT|\bPOIS\b|PETITS? POIS|SUGAR ?SNAP|SNAP PEA|MANGE.?TOUT/.test(p)) return "verts";
+  if (/PASSION|GINGEMBRE|PATATE|\bLIMES?\b|CITRON VERT|MANIOC|GRENADILLE|PATISSON|MANGUE|PAPAYE|IGNAME|TARO|PITAYA|LITCHI|RAMBOUTAN|GOYAVE|COROSSOL|PLANTAIN|CHAYOT|KUMQUAT|PHYSALIS|MINI (COURGETTE|CAROTTE|MAIS|LEGUME)|BABY|ASPERGE/.test(p)) return "export";
+  return "autres";
+}
+
+export function FournisseurBlock({ couleurFamille, ouvert, onBasculer, enGrille = false, fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, onReporterGroupe, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
   // 15/10/2026 — Un seul fournisseur ouvert à la fois : si le jour fournit ouvert/onBasculer,
   // c'est lui qui décide (ouvrir un fournisseur referme le précédent).
   const [openLocal, setOpenLocal] = useState(false);
@@ -1306,7 +1322,7 @@ export function FournisseurBlock({ ouvert, onBasculer, enGrille = false, fournis
     {/* 14/10/2026 — En grille : la case reste à sa place ; le détail s'ouvre en dessous, sur toute la largeur. */}
     {/* 15/10/2026 — Ouverte en grille : contour vert sur 3 côtés ; la case descend de 12 px
         (écart de la grille + bordure) pour recouvrir le haut du détail → une seule forme. */}
-    <div ref={caseRef} style={{ gridColumn: open && !enGrille ? "1 / -1" : undefined, background: "#fff", borderRadius: open && enGrille ? "14px 14px 0 0" : 14, marginBottom: open && enGrille ? -12 : 0, paddingBottom: open && enGrille ? 12 : 0, overflow: "hidden", boxShadow: open && enGrille ? "none" : "0 2px 12px rgba(0,0,0,0.06)", border: open && enGrille ? "2px solid #22c55e" : allDone ? "2px solid #bbf7d0" : "2px solid transparent", borderBottom: open && enGrille ? "none" : undefined, alignSelf: "stretch", position: "relative", zIndex: open && enGrille ? 1 : undefined }}>
+    <div ref={caseRef} style={{ gridColumn: open && !enGrille ? "1 / -1" : undefined, background: "#fff", borderRadius: open && enGrille ? "14px 14px 0 0" : 14, marginBottom: open && enGrille ? -12 : 0, paddingBottom: open && enGrille ? 12 : 0, overflow: "hidden", boxShadow: open && enGrille ? "none" : "0 2px 12px rgba(0,0,0,0.06)", border: open && enGrille ? "2px solid #22c55e" : allDone ? "2px solid #bbf7d0" : "2px solid transparent", borderLeft: couleurFamille && !(open && enGrille) ? `6px solid ${couleurFamille}` : undefined, borderBottom: open && enGrille ? "none" : undefined, alignSelf: "stretch", position: "relative", zIndex: open && enGrille ? 1 : undefined }}>
       <div onClick={() => setOpen(!open)} style={{ minHeight: enGrille ? 52 : undefined, boxSizing: "border-box", height: enGrille ? "100%" : undefined, padding: enGrille ? "7px 14px" : "11px 16px", display: "flex", flexWrap: open && !enGrille ? "wrap" : undefined, rowGap: 6, justifyContent: "space-between", alignItems: "center", cursor: "pointer", background: open && enGrille ? "#fff" : headerBg, borderBottom: open && enGrille ? "none" : open ? "1px solid #e8e0d0" : headerBorder }}>
         {/* 14/10/2026 — Nom à gauche ; « en attente » / « traités » toujours au même endroit, à droite. */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
@@ -3082,12 +3098,41 @@ export function DateBlock({ enColonnes = true, date, arrivages, arrivagesArchive
               "Scanner une étiquette" restent retirés (demandes précédentes d'Elinathan) — leurs
               fonctions restent définies plus haut, juste non appelées ici. */}
           {/* Fournisseurs - en attente + traités regroupés — 14/10/2026 : sur 2 ou 3 colonnes. */}
-          <div style={{ display: "grid", gridTemplateColumns: enColonnes ? "repeat(auto-fill, minmax(min(320px, 100%), 1fr))" : "1fr", gridAutoFlow: "row dense", gap: 10 }}>
-          {allFourn.map(f => (
-            <FournisseurBlock key={f} enGrille={enColonnes} fournisseur={f}
-              ouvert={fournOuvert === f} onBasculer={(v: boolean) => setFournOuvert(v ? f : null)}
-              produits={byFournisseur[f] || []}
-              traites={byFournisseurTraites[f] || []}
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {(() => {
+            // Une grille par famille : le remplissage « dense » (qui place le détail d'un fournisseur ouvert)
+            // ne doit pas faire remonter les cartes d'une famille au-dessus du titre de la suivante.
+            const grille = (enfants: any) => <div style={{ display: "grid", gridTemplateColumns: enColonnes ? "repeat(auto-fill, minmax(min(320px, 100%), 1fr))" : "1fr", gridAutoFlow: "row dense", gap: 10 }}>{enfants}</div>;
+            // Une carte par (famille, fournisseur) : un fournisseur qui envoie haricots ET limes apparaît
+            // dans les deux familles, chaque fois avec ses seuls produits de cette famille.
+            const cartes: { cle: string; f: string; fam: FamilleArrivage; produits: any[]; traites: any[] }[] = [];
+            allFourn.forEach(f => {
+              (Object.keys(FAMILLES_ARRIVAGE) as FamilleArrivage[]).forEach(fam => {
+                const produits = (byFournisseur[f] || []).filter((a: any) => familleProduit(a.produit) === fam);
+                const traites = (byFournisseurTraites[f] || []).filter((a: any) => familleProduit(a.produit) === fam);
+                if (produits.length || traites.length) cartes.push({ cle: `${fam}|${f}`, f, fam, produits, traites });
+              });
+            });
+            const familles = (Object.keys(FAMILLES_ARRIVAGE) as FamilleArrivage[]).filter(fam => cartes.some(c => c.fam === fam));
+            const plusieurs = familles.length > 1;
+            return familles.flatMap(fam => {
+              const lot = cartes.filter(c => c.fam === fam)
+                .sort((x, y) => (y.produits.length ? 1 : 0) - (x.produits.length ? 1 : 0) || triAlpha(x.f, y.f));
+              const enAttenteFam = lot.reduce((n, c) => n + c.produits.length, 0);
+              const F = FAMILLES_ARRIVAGE[fam];
+              return [
+                plusieurs ? (
+                  <div key={`titre-${fam}`} style={{ display: "flex", alignItems: "center", gap: 8, marginTop: fam === familles[0] ? 0 : 6 }}>
+                    <span style={{ fontSize: 13, fontWeight: 800, color: F.couleur, background: F.fond, border: `1.5px solid ${F.couleur}`, borderRadius: 20, padding: "3px 12px", whiteSpace: "nowrap" }}>{F.titre}</span>
+                    <span style={{ fontSize: 11.5, fontWeight: 700, color: "rgba(255,255,255,.75)" }}>{lot.length} fournisseur{lot.length > 1 ? "s" : ""}{enAttenteFam ? ` · ${enAttenteFam} en attente` : ""}</span>
+                    <span style={{ flex: 1, height: 1, background: "rgba(255,255,255,.18)" }} />
+                  </div>
+                ) : null,
+                <div key={`grille-${fam}`}>{grille(lot.map(({ cle, f, produits, traites }) => (
+            <FournisseurBlock key={cle} enGrille={enColonnes} fournisseur={f} couleurFamille={plusieurs ? F.couleur : undefined}
+              ouvert={fournOuvert === cle} onBasculer={(v: boolean) => setFournOuvert(v ? cle : null)}
+              produits={produits}
+              traites={traites}
               onValidate={onValidate} onDelete={onDelete} onOuvreRapport={onOuvreRapport}
               onImprimerMulti={onImprimerMulti}
               onReporterDate={onReporterDate}
@@ -3099,7 +3144,10 @@ export function DateBlock({ enColonnes = true, date, arrivages, arrivagesArchive
               canValider={canValider}
               onReserveGroupe={onReserveGroupe}
               onEcartDetecte={onEcartDetecte} />
-          ))}
+                )))}</div>,
+              ];
+            });
+          })()}
           </div>
         </div>
       )}
