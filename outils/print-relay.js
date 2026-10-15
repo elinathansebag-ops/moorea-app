@@ -1,9 +1,12 @@
 // ═══════════════════════════════════════════════════════════════════════════
 // RELAIS D'IMPRESSION MOOREA
 // NOM DE VERSION : lidl-imprimantes
-// NUMERO DE VERSION : V8.4
+// NUMERO DE VERSION : V8.5
 // ═══════════════════════════════════════════════════════════════════════════
 //
+// V8.5 (15/10/2026) — Acrobat ne rend jamais la main après avoir imprimé : le relais attendait 15,5 s
+//   (délai maximum) avant l'étiquette suivante. Pour les étiquettes déjà dessinées par l'appli, on
+//   n'attend plus que 7 s (+0,5 s par page). Titre affiché au démarrage corrigé (affichait V8.2).
 // V8.4 (15/10/2026) — Étiquettes d'arrivage aussi rapides que les étiquettes Lidl : NOUVEAU type
 //   « etiquette_arrivage_pdf » = PDF 180 × 110 mm déjà dessiné par l'appli (mêmes réglages
 //   config/etiquette_arrivage). Imprimé TOUT DE SUITE (pas d'attente de 7 s, pas de navigateur caché
@@ -62,7 +65,7 @@ const path = require("path");
 const os = require("os");
 
 console.log("═══════════════════════════════════════════════════════════");
-console.log("  RELAIS D'IMPRESSION MOOREA — VERSION : lidl-imprimantes (V8.2)");
+console.log("  RELAIS D'IMPRESSION MOOREA — VERSION : lidl-imprimantes (V8.5)");
 console.log("═══════════════════════════════════════════════════════════");
 
 // ─── CONFIGURATION ───────────────────────────────────────────────────────
@@ -672,9 +675,9 @@ async function imprimerLot(jobs) {
 
 // V8.4 — Impression d'un PDF d'étiquettes d'arrivage déjà sur disque (dessiné ici ou par l'appli),
 // selon la façon choisie dans l'appli (config/imprimantes/modeArrivage).
-async function imprimerPdfEtiquettesArrivage(tmpFile, nbEtiquettes) {
+async function imprimerPdfEtiquettesArrivage(tmpFile, nbEtiquettes, attenteBaseMs = 15000) {
   // Timeout DYNAMIQUE selon la taille du lot: base 15s + 500ms par étiquette (inchangé)
-  const timeoutMs = 15000 + (nbEtiquettes * 500);
+  const timeoutMs = attenteBaseMs + (nbEtiquettes * 500);
   const mode = await modeArrivage();
   const reglageSumatra = { "sumatra-reel": "noscale", "sumatra-reduire": "shrink", "sumatra-ajuster": "fit" }[mode];
   console.log(`   ⚙️  Mode d'impression des étiquettes d'arrivage : ${mode}`);
@@ -729,7 +732,7 @@ async function imprimerEtiquetteArrivagePdf(job, key) {
     const tmpFile = path.join(os.tmpdir(), `etiquette_arrivage_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.pdf`);
     fs.writeFileSync(tmpFile, Buffer.from(base64, "base64"));
     fs.copyFile(tmpFile, path.join(os.tmpdir(), "moorea-derniere-etiquette.pdf"), () => {});
-    await imprimerPdfEtiquettesArrivage(tmpFile, Number(job.nb) || 1); // plusieurs pages = plusieurs palettes
+    await imprimerPdfEtiquettesArrivage(tmpFile, Number(job.nb) || 1, 7000); // plusieurs pages = plusieurs palettes ; V8.5 : 7 s d'attente Acrobat
     await update(ref(db, `printQueue/${key}`), { status: "done", printedAt: Date.now(), pdfBase64: null });
     console.log(`✅ Étiquette d'arrivage imprimée : ${nomAffiche}`);
   } catch (err) {
@@ -890,7 +893,7 @@ onChildAdded(pendingQuery, (snap) => {
 const statusRef = ref(db, "printRelayStatus");
 function envoyerSignalDeVie() {
   // V8 : update (et plus set) pour ne pas effacer la liste des imprimantes à chaque signal.
-  update(statusRef, { online: true, lastSeen: Date.now(), version: "V8.4" }).catch(() => {});
+  update(statusRef, { online: true, lastSeen: Date.now(), version: "V8.5" }).catch(() => {});
 }
 envoyerSignalDeVie();
 setInterval(envoyerSignalDeVie, 15000);
