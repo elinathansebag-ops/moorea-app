@@ -141,13 +141,15 @@ function htmlEtiquetteAuto(job: JobEtiquette, qrDataUrl: string): string {
     .etq .nom .txt{white-space:normal;overflow-wrap:break-word;width:100%}
     .etq .qte{align-items:flex-end}
     .etq .qte .txt{line-height:.8}
-    .etq .qte small{font-size:.16em;margin-left:.15em;letter-spacing:.02em}
+    .etq .qte small{font-size:22px;margin-left:2mm;letter-spacing:.02em}
     .etq .lot{background:#e6e6e6;border-radius:1.5mm;padding:0 2.5mm}
     .etq .dlc{background:#000;color:#fff;border-radius:2mm;flex-direction:column;justify-content:center;align-items:center}
-    .etq .dlc .lib{font-size:16px;font-weight:700;letter-spacing:2px;margin-bottom:1mm}
+    .etq .dlc .lib{font-size:14px;font-weight:700;letter-spacing:2px;margin-bottom:.5mm}
     .etq .dlc .txt{color:#fff}
   `;
-  const dlc = job.dlcLabel ? `<div class="zone dlc" style="left:113mm;top:4mm;width:63mm;height:30mm"><div class="lib">DLC</div><div class="txt" data-max="80">${echapper(job.dlcLabel)}</div></div>` : "";
+  // 15/10/2026 (bis) — « beaucoup de place perdue, nom trop petit » : le nom prend TOUTE la largeur en
+  // haut (jusqu'à 2 lignes), DLC et QR passent dessous à droite.
+  const dlc = job.dlcLabel ? `<div class="zone dlc" style="left:113mm;top:31mm;width:63mm;height:21mm"><div class="lib">DLC</div><div class="txt">${echapper(job.dlcLabel)}</div></div>` : "";
   // 15/10/2026 — Elinathan : « le lot fournisseur je m'en fous, je veux le lot Moorea à 4 chiffres ».
   // lotLabel = « MRA.8270-1 » (lot 8270, palette 1) → encadré « LOT 8270 · PALETTE 1 ».
   const m = String(job.lotLabel || "").match(/(\d+)(?:-(\d+))?\s*$/);
@@ -156,23 +158,25 @@ function htmlEtiquetteAuto(job: JobEtiquette, qrDataUrl: string): string {
   const bas = job.dateArriveeLabel ? `AR : ${echapper(job.dateArriveeLabel)}` : "";
   return `<style>${css}</style>
     <div class="etq" data-modele="auto">
-      ${zone("nom", 5, 4, 104, 23, echapper(job.produit || ""))}
-      ${zone("qte", 5, 28, 104, 47, `${echapper(job.qte || "-")}<small>${echapper(job.unite || "COLIS")}</small>`)}
+      ${zone("nom", 5, 3, 171, 26, echapper(job.produit || ""))}
+      ${zone("qte", 5, 31, 104, 44, `${echapper(job.qte || "-")}<small>${echapper(job.unite || "COLIS")}</small>`)}
       ${lotMoorea ? zone("lot", 5, 77, 104, 15, `LOT ${lotMoorea}${palette ? `&nbsp;&nbsp;·&nbsp;&nbsp;PALETTE ${echapper(palette)}` : ""}`) : ""}
       ${bas ? zone("bas", 5, 94, 104, 11, bas) : ""}
       ${dlc}
-      <img src="${qrDataUrl}" style="position:absolute;left:113mm;top:${job.dlcLabel ? 40 : 4}mm;width:${job.dlcLabel ? 63 : 70}mm;height:${job.dlcLabel ? 63 : 70}mm;display:block" />
+      <img src="${qrDataUrl}" style="position:absolute;left:${job.dlcLabel ? 120.5 : 113}mm;top:${job.dlcLabel ? 56 : 33}mm;width:${job.dlcLabel ? 50 : 63}mm;height:${job.dlcLabel ? 50 : 63}mm;display:block" />
     </div>`;
 }
 // Plus grande taille de police (px) pour que le texte tienne dans sa zone (recherche par dichotomie).
 function ajusterZonesAuto(hote: HTMLElement) {
-  const maxParZone: Record<string, number> = { nom: 64, qte: 330, lot: 52, bas: 30, dlc: 80 };
+  const maxParZone: Record<string, number> = { nom: 110, qte: 330, lot: 52, bas: 30, dlc: 80 };
   hote.querySelectorAll<HTMLElement>(".zone").forEach(z => {
     const cle = Object.keys(maxParZone).find(k => z.classList.contains(k));
     const t = z.querySelector(".txt") as HTMLElement | null;
     if (!cle || !t) return;
-    const largeur = z.clientWidth - (cle === "lot" ? 19 : 0), hauteur = cle === "dlc" ? z.clientHeight - 30 : z.clientHeight;
-    const tient = () => t.scrollWidth <= largeur + 0.5 && t.scrollHeight <= hauteur + 0.5 && (cle !== "nom" || t.offsetHeight <= hauteur);
+    const largeur = z.clientWidth - (cle === "lot" ? 19 : cle === "dlc" ? 20 : 0), hauteur = cle === "dlc" ? z.clientHeight - 26 : z.clientHeight;
+    // Hauteur des lignes (offsetHeight) et pas scrollHeight : avec Arial Black, la zone « encre » déclarée
+    // par la police déborde largement de la ligne et faisait choisir des textes 2× trop petits.
+    const tient = () => t.scrollWidth <= largeur + 0.5 && t.offsetHeight <= hauteur + 0.5;
     let bas = 10, haut = maxParZone[cle];
     while (haut - bas > 1) {
       const m = Math.floor((bas + haut) / 2);

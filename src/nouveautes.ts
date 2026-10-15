@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 70, date: "15/10", pages: ["admin.materiel"], texte: "✨ Modèle automatique d'étiquette agrandi : nom du produit sur toute la largeur en haut (beaucoup plus gros), nombre de colis et lot plus grands, DLC et QR à droite en dessous — moins de place perdue." },
   { id: 69, date: "15/10", pages: ["admin.materiel"], texte: "✨ Modèle automatique d'étiquette : le lot fournisseur est remplacé par le lot Moorea à 4 chiffres avec le n° de palette (« LOT 8270 · PALETTE 1 »), en gros." },
   { id: 68, date: "15/10", pages: ["admin.materiel"], texte: "✨ Étiquette d'arrivage : « Modèle automatique » (Admin › Imprimantes › Dessin de l'étiquette) — nom, colis, lot fournisseur, AR et lot Moorea à gauche, DLC en haut à droite au-dessus du QR ; tout se dimensionne tout seul. Le réglage à la main reste disponible." },
   { id: 67, date: "15/10", pages: ["admin.materiel"], texte: "🎛️ Admin › Imprimantes : « Dessin de l'étiquette d'arrivage » pour placer et agrandir chaque élément (le module Étiquettes est en veille). L'étiquette de test sort comme les vraies." },
