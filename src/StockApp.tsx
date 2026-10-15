@@ -1522,16 +1522,28 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       };
 
       // Envoie le PDF d'un stock spécifique à Jordan (utilise generateStockPDF qui retourne HTML)
-      (window as any).sEnvoyerStockJordan = async (sid: string, team: string) => {
+      // 16/10/2026 — Fenêtre de confirmation dans la page (les boîtes du navigateur peuvent être
+      // bloquées par une extension, cf. Rack). Renvoie la valeur du bouton choisi, ou "" si fermée.
+      const demander = (titre: string, corps: string, boutons: { valeur: string; libelle: string; principal?: boolean }[]): Promise<string> => new Promise(ok => {
+        const fond = document.createElement("div");
+        fond.style.cssText = "position:fixed;inset:0;z-index:10050;background:rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;padding:16px";
+        fond.innerHTML = `<div style="background:#fff;border-radius:16px;padding:20px 22px;width:min(460px,100%);max-height:90vh;overflow:auto;box-sizing:border-box;font-family:inherit">
+          <div style="font-size:16px;font-weight:800;color:#1a2e1a;margin-bottom:8px">${titre}</div>
+          <div style="font-size:13.5px;color:#4b5563;line-height:1.55">${corps}</div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:16px">${boutons.map(b => `<button data-v="${b.valeur}" style="padding:10px 16px;border-radius:10px;font-weight:800;font-size:13.5px;cursor:pointer;${b.principal ? "border:none;background:#305a55;color:#fff" : "border:1.5px solid #e5e7eb;background:#fff;color:#374151"}">${b.libelle}</button>`).join("")}</div>
+        </div>`;
+        const fermer = (v: string) => { fond.remove(); ok(v); };
+        fond.addEventListener("click", e => { const t = e.target as HTMLElement; if (t === fond) { fermer(""); return; } const v = t.closest("button")?.getAttribute("data-v"); if (v != null) fermer(v); });
+        document.body.appendChild(fond);
+      });
+      // Comptés d'un comptage, article → nombre (pour repérer les changements après un envoi).
+      const comptesDe = (data: any) => { const m: Record<string, number> = {}; Object.entries(data || {}).forEach(([k, v]: [string, any]) => { if (v === null || v === undefined) return; const c = typeof v === "object" ? v.c : v; if (c !== null && c !== undefined) m[k] = Number(c) || 0; }); return m; };
+
+      (window as any).sEnvoyerStockJordan = async (sid: string, team: string, opts: { corrections?: { article: string; avant: number | null; apres: number | null }[] } = {}) => {
         try {
-          const btn = document.querySelector(`button[onclick*="sEnvoyerStockJordan('${sid.replace(/'/g, "\\'")}']`) as HTMLButtonElement | null;
-          if (btn) { btn.disabled = true; btn.textContent = "⏳ Envoi..."; }
-
-          const result = await generateStockPDF(sid, team);
-          if (!result) { toast("Stock introuvable"); return; }
-
           const stockSnap = await getDoc(doc(db, "stocks", sid));
           const s = stockSnap.data() as any;
+          if (!s) { toast("Stock introuvable"); return; }
 
           // Récupère les stats pour le mail
           const comptSnap = await getDoc(doc(db, "comptages", sid + "_" + team));
@@ -1542,6 +1554,31 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           const manq = arts.filter((a: any) => isCounted(a) && ecartFn(a)! < 0).length;
           const exc = arts.filter((a: any) => isCounted(a) && ecartFn(a)! > 0).length;
           const nc = arts.filter((a: any) => !isCounted(a)).length;
+
+          // 16/10/2026 — Demande d'Elinathan : valider « comptage terminé » avant d'envoyer à Jordan.
+          if (!opts.corrections) {
+            const deja = s.envois?.[team];
+            // Déjà envoyé puis modifié : le nouvel envoi sera un « stock corrigé » avec la liste des changements.
+            if (deja?.comptes) {
+              const avant: Record<string, number> = deja.comptes, apres = comptesDe(comptData);
+              const corr = [...new Set([...Object.keys(avant), ...Object.keys(apres)])].filter(k => (avant[k] ?? null) !== (apres[k] ?? null)).sort((x, y) => x.localeCompare(y, "fr")).map(k => ({ article: k, avant: avant[k] ?? null, apres: apres[k] ?? null }));
+              if (corr.length) opts = { ...opts, corrections: corr };
+            }
+            const rep = await demander(opts.corrections ? "🔁 Envoyer le stock corrigé à Jordan ?" : "📧 Envoyer l'inventaire à Jordan ?",
+              `Stock <b>${team === "PRESTIGE" ? "Prestige" : "GMS"}</b> du <b>${s.dateLabel || ""}</b><br>
+               ${arts.length} articles · <b>${arts.length - nc}</b> comptés${nc ? ` · <span style="color:#b45309;font-weight:700">${nc} non comptés</span>` : ""}<br>
+               ${deja ? `<span style="color:#6b7280">Déjà envoyé le ${deja.le || ""}${deja.par ? ` par ${deja.par}` : ""}.</span><br>` : ""}
+               ${opts.corrections ? `<span style="color:#c2410c;font-weight:700">${opts.corrections.length} article${opts.corrections.length > 1 ? "s modifiés" : " modifié"} depuis : le mail à Jordan les listera.</span><br>` : ""}
+               <br>Le comptage est-il <b>terminé</b> ?`,
+              [{ valeur: "", libelle: "Annuler" }, { valeur: "ok", libelle: "✓ Terminé, envoyer", principal: true }]);
+            if (rep !== "ok") return;
+          }
+
+          const btn = document.querySelector(`button[onclick*="sEnvoyerStockJordan('${sid.replace(/'/g, "\\'")}']`) as HTMLButtonElement | null;
+          if (btn) { btn.disabled = true; btn.textContent = "⏳ Envoi..."; }
+
+          const result = await generateStockPDF(sid, team);
+          if (!result) { toast("Stock introuvable"); return; }
 
           // Rend le VRAI HTML (même que sPrintPDF) dans un container caché, puis convertit en image
           const container = document.createElement("div");
@@ -1593,10 +1630,17 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
               sender: "entrepot", envoi: "inventaire_stock",
               to: ["jordan.jouanest@moorea.fr"],
               cc: ["commercial@moorea.fr"],
-              subject: `📦 Inventaire ${team} - ${s.dateLabel}`,
+              subject: opts.corrections ? `🔁 Inventaire ${team} CORRIGÉ - ${s.dateLabel}` : `📦 Inventaire ${team} - ${s.dateLabel}`,
               html: `<div style="font-family:Arial,sans-serif;color:#333;line-height:1.8;max-width:600px">
                 <p>Bonjour Jordan,</p>
-                <p>Voici l'inventaire du stock <b>${team}</b> du <b>${s.dateLabel}</b>.</p>
+                ${opts.corrections ? `<p>Le stock <b>${team}</b> du <b>${s.dateLabel}</b> a été <b>rouvert et modifié</b>${s.rouvertPar ? ` par ${s.rouvertPar}` : ""} après l'envoi du ${s.envois?.[team]?.le || "précédent"}. <b>Voici la version corrigée</b> — merci de remplacer l'ancienne.</p>
+                <div style="background:#fff7ed;border-left:5px solid #ea580c;padding:14px 16px;margin:18px 0;border-radius:8px">
+                  <p style="margin:0 0 8px 0;font-size:15px"><b>✏️ ${opts.corrections.length} article${opts.corrections.length > 1 ? "s" : ""} modifié${opts.corrections.length > 1 ? "s" : ""}</b></p>
+                  <table style="border-collapse:collapse;width:100%;font-size:13px">
+                    <tr style="color:#6b7280;text-align:left"><th style="padding:4px 6px">Article</th><th style="padding:4px 6px;text-align:right">Avant</th><th style="padding:4px 6px;text-align:right">Après</th></tr>
+                    ${opts.corrections.map(c => `<tr style="border-top:1px solid #fed7aa"><td style="padding:4px 6px">${String(c.article).replace(/</g, "&lt;")}</td><td style="padding:4px 6px;text-align:right;color:#6b7280">${c.avant ?? "—"}</td><td style="padding:4px 6px;text-align:right;font-weight:700">${c.apres ?? "—"}</td></tr>`).join("")}
+                  </table>
+                </div>` : `<p>Voici l'inventaire du stock <b>${team}</b> du <b>${s.dateLabel}</b>.</p>`}
 
                 <div style="background:#f5f3ee;border-left:5px solid #c8a84b;padding:16px;margin:20px 0;border-radius:8px">
                   <p style="margin:0 0 12px 0;font-size:15px"><b>📊 Résumé</b></p>
@@ -1621,7 +1665,10 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
             throw new Error(err.error || err.message || (typeof err === "object" ? JSON.stringify(err) : String(err)) || `Erreur envoi (HTTP ${resp.status})`);
           }
 
-          toast("✉️ PDF envoyé à Jordan");
+          // 16/10/2026 — Trace de l'envoi + comptés envoyés : si le stock est rouvert et modifié, on
+          // saura quoi signaler à Jordan.
+          await setDoc(doc(db, "stocks", sid), { envois: { [team]: { le: new Date().toLocaleString("fr-FR").slice(0, 16), par: nomSignataire() || "", ts: Date.now(), comptes: comptesDe(comptData), corrige: !!opts.corrections } } }, { merge: true }).catch(() => {});
+          toast(opts.corrections ? "✉️ Stock corrigé envoyé à Jordan" : "✉️ PDF envoyé à Jordan");
         } catch (err: any) {
           toast("Erreur envoi : " + (err?.message || String(err)));
         } finally {
@@ -1646,6 +1693,30 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           }
           toast("Stock clôturé" + dureeMsg);
           renderStockList();
+          // 16/10/2026 — Stock déjà envoyé à Jordan, rouvert puis modifié : proposer d'envoyer la
+          // version corrigée avec la liste des changements.
+          if (snap.exists()) {
+            const sdata = snap.data() as any;
+            const team = sdata.team === "PRESTIGE" ? "PRESTIGE" : "GMS";
+            const envoi = sdata.envois?.[team];
+            if (envoi?.comptes) {
+              const cs = await getDoc(doc(db, "comptages", sid + "_" + team));
+              const maintenant = comptesDe(cs.exists() ? (cs.data() as any).data : {});
+              const avant: Record<string, number> = envoi.comptes || {};
+              const corrections = [...new Set([...Object.keys(avant), ...Object.keys(maintenant)])]
+                .filter(k => (avant[k] ?? null) !== (maintenant[k] ?? null))
+                .sort((a, b) => a.localeCompare(b, "fr"))
+                .map(k => ({ article: k, avant: avant[k] ?? null, apres: maintenant[k] ?? null }));
+              if (corrections.length) {
+                const rep = await demander("🔁 Prévenir Jordan des modifications ?",
+                  `Ce stock avait déjà été envoyé à Jordan le <b>${envoi.le || ""}</b>. Depuis, <b>${corrections.length} article${corrections.length > 1 ? "s ont" : " a"}</b> changé :<br>
+                   <div style="max-height:180px;overflow:auto;margin-top:8px;font-size:12.5px">${corrections.slice(0, 50).map(c => `• ${String(c.article).replace(/</g, "&lt;")} : ${c.avant ?? "—"} → <b>${c.apres ?? "—"}</b>`).join("<br>")}${corrections.length > 50 ? "<br>…" : ""}</div>
+                   <br>Envoyer le stock corrigé à Jordan, avec la liste des changements ?`,
+                  [{ valeur: "", libelle: "Plus tard" }, { valeur: "ok", libelle: "📧 Envoyer à Jordan", principal: true }]);
+                if (rep === "ok") await (window as any).sEnvoyerStockJordan(sid, team, { corrections });
+              }
+            }
+          }
         } catch { toast("Erreur"); }
       };
 
