@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 66, date: "15/10", pages: ["arrivages"], texte: "🏷️ Étiquette d'arrivage dessinée par l'appli : un nom de produit sur 2 lignes ne s'imprime plus par-dessus le nombre de colis (il est réduit seulement si besoin)." },
   { id: 65, date: "15/10", pages: ["arrivages"], texte: "🖨️ Plusieurs palettes d'un même arrivage : les étiquettes partent en une seule impression (plus d'attente entre la 1ʳᵉ et la 2ᵉ) quand l'étiquette est dessinée par l'appli." },
   { id: 64, date: "15/10", texte: "📱 Toute l'appli vérifiée pour téléphone : tableaux qui défilent dans leur carte, fenêtres qui tiennent dans l'écran, boutons et textes qui passent à la ligne au lieu de déborder (Rapports, Accueil, Stats, Lidl, Reconditionnement, Préparation, Chargement, Prestataires, Appro, Stock, Rack, Retours, Étiquettes, Catalogue, Gencodes, Qualité, Admin…). Rien ne change sur ordinateur." },
   { id: 63, date: "15/10", pages: ["qualite"], texte: "🧪 Récap qualité › Poids : en haut, nombre de pesées, d'arrivages pesés et date de la dernière pesée (plus de moyenne qui mélangeait 250 g et 5 kg) ; chaque carte montre toutes ses pesées." },

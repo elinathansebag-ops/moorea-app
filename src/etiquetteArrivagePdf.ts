@@ -103,6 +103,28 @@ export async function etiquetteParAppliActive(): Promise<boolean> {
   return ok;
 }
 
+// 15/10/2026 — Photo d'Elinathan : « GRENADE ISRAEL CAL.8 » passait sur 2 lignes et la 2ᵉ ligne
+// s'imprimait PAR-DESSUS le nombre de colis. Le nom garde sa taille et va à la ligne comme avant ;
+// il n'est réduit QUE s'il descendrait sur un élément placé en dessous (colis, DLC…).
+function ajusterNomProduit(hote: HTMLElement, cfgApp: any) {
+  const nom = hote.querySelector(".produit") as HTMLElement | null;
+  if (!nom) return;
+  const PX = 96 / 25.4;
+  const pos = { ...POSITIONS_DEFAUT, ...((cfgApp && cfgApp.positions) || {}) };
+  const p = pos.produit, largeur = (cfgApp?.produitLargeur || CONFIG_DEFAUT.produitLargeur);
+  // Élément le plus haut situé sous le nom et qui le chevauche horizontalement.
+  let limiteMm = 110 - 2;
+  hote.querySelectorAll<HTMLElement>(".item").forEach(el => {
+    if (el === nom) return;
+    const y = parseFloat(el.style.top), x = parseFloat(el.style.left);
+    if (!isFinite(y) || !isFinite(x) || y <= p.y + 1) return;
+    if (x < p.x + largeur) limiteMm = Math.min(limiteMm, y - 2.5); // marge : les grands chiffres dépassent un peu de leur boîte
+  });
+  const hauteurMax = (limiteMm - p.y) * PX;
+  let taille = parseFloat(getComputedStyle(nom).fontSize) || 36;
+  while (nom.offsetHeight > hauteurMax && taille > 14) { taille -= 1; nom.style.fontSize = taille + "px"; }
+}
+
 let cfgCache: { v: any; at: number } | null = null;
 async function lireConfig() {
   if (cfgCache && Date.now() - cfgCache.at < 60000) return cfgCache.v;
@@ -135,6 +157,7 @@ export async function fabriquerPdfEtiquettesArrivage(jobs: JobEtiquette[]): Prom
       const img = hote.querySelector("img");
       if (img && !img.complete) await new Promise(r => { img.onload = r; img.onerror = r; });
       if ((document as any).fonts?.ready) await (document as any).fonts.ready;
+      ajusterNomProduit(hote, cfgApp);
       const cible = hote.querySelector(".etq") as HTMLElement;
       // ≈ 300 dpi : 180 mm = 680 px CSS → ×3,1.
       const canvas = await html2canvas(cible, { scale: 3.1, backgroundColor: "#ffffff", logging: false, useCORS: true });
