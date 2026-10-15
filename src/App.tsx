@@ -716,6 +716,50 @@ export default function App() {
       showToast(`✅ Logo ajouté pour ${f}`);
     } catch (err: any) { showToast("❌ Logo non enregistré : " + (err?.message || "erreur"), "error"); }
   };
+  // 16/10/2026 — Import groupé : chaque fichier (ex. « Kenya_Fresh.png ») est associé au(x) fournisseur(s)
+  // dont le nom contient tous ses mots (ou les mêmes lettres collées : « AthiFarm » = « ATHI FARM … »).
+  const [importLogos, setImportLogos] = useState<{ fichier: File; apercu: string; cibles: string[] }[] | null>(null);
+  const [importLogosEnCours, setImportLogosEnCours] = useState("");
+  const motsNom = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase().replace(/\.[A-Z0-9]+$/, "").replace(/[^A-Z0-9]+/g, " ").split(" ").filter(m => m && !["NEW", "SHOP", "LTD", "SA", "SAS", "SASU", "BV", "SARL", "SRL", "CO", "COMPANY", "LIMITED", "THE", "L", "LE", "LA", "DE"].includes(m));
+  const preparerImportLogos = (fichiers: File[], fournisseurs: { k: string; f: string }[]) => {
+    const parFichier = fichiers.map(fichier => ({ fichier, apercu: URL.createObjectURL(fichier), mots: motsNom(fichier.name), cibles: [] as string[] }));
+    // Pour chaque fournisseur : le fichier le plus précis qui lui correspond (« Maceo_Distribution » avant « Maceo »).
+    fournisseurs.forEach(({ k, f }) => {
+      const mf = motsNom(f), colle = mf.join("");
+      let meilleur: typeof parFichier[number] | null = null;
+      parFichier.forEach(pf => {
+        if (!pf.mots.length) return;
+        const ok = pf.mots.every(m => mf.includes(m)) || (pf.mots.join("").length >= 4 && colle.includes(pf.mots.join("")));
+        if (ok && (!meilleur || pf.mots.length > meilleur.mots.length)) meilleur = pf;
+      });
+      if (meilleur) (meilleur as any).cibles.push(k);
+    });
+    setImportLogos(parFichier.map(({ fichier, apercu, cibles }) => ({ fichier, apercu, cibles })));
+  };
+  const lancerImportLogos = async (noms: Map<string, string>) => {
+    if (!importLogos) return;
+    const aFaire = importLogos.filter(x => x.cibles.length);
+    let n = 0;
+    for (const x of aFaire) {
+      n++; setImportLogosEnCours(`${n}/${aFaire.length}`);
+      try {
+        const img = await createImageBitmap(x.fichier);
+        const k = Math.min(1, 600 / Math.max(img.width, img.height));
+        const c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+        const url = await envoyerPhoto(c.toDataURL("image/png"), "rapports/logos");
+        const maj: Record<string, string> = {}; x.cibles.forEach(cle => { maj[cle] = url; });
+        await update(ref(db, "config/logos_fournisseurs"), maj);
+      } catch (err: any) { showToast(`❌ ${x.fichier.name} : ${err?.message || "erreur"}`, "error"); }
+    }
+    setImportLogosEnCours("");
+    importLogos.forEach(x => URL.revokeObjectURL(x.apercu));
+    setImportLogos(null);
+    showToast(`✅ ${aFaire.reduce((t, x) => t + x.cibles.length, 0)} fournisseurs ont maintenant leur logo`);
+    void noms;
+  };
+  // Fond des logos : vert-gris foncé (les logos blancs — Torres, Frutex… — restent lisibles).
+  const FOND_LOGO = "#52655d";
   // Visuel générique quand un fournisseur n'a pas (encore) de logo : ses initiales sur fond vert clair.
   const initialesFourn = (f: string) => String(f || "?").replace(/\b(LTD|SARL|SAS|BV|SA|CO|COMPANY|LIMITED|GMBH|SL|SRL)\b/gi, "").trim().split(/\s+/).filter(Boolean).slice(0, 2).map(m => m[0]).join("").toUpperCase() || "?";
   // 14/10/2026 — Demande d'Elinathan : ranger soi-même ses modules et leur donner une couleur
@@ -4109,7 +4153,47 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                         const FAM: [string, string, string][] = [["verts", "🫛 Haricots & pois", "#0284c7"], ["export", "🌍 Grand export", "#ea580c"], ["autres", "🧺 Le reste", "#a21caf"]];
                         return (
                           <div>
-                            <p style={{ fontSize: 11.5, color: "#6b7280", margin: "0 0 8px" }}>{liste.length} fournisseurs · {avec} avec logo · triés par nombre d'arrivages</p>
+                            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", margin: "0 0 8px" }}>
+                              <p style={{ fontSize: 11.5, color: "#6b7280", margin: 0, flex: 1 }}>{liste.length} fournisseurs · {avec} avec logo · triés par nombre d'arrivages</p>
+                              <label style={{ padding: "8px 14px", borderRadius: 10, background: "#305a55", color: "#fff", fontSize: 12.5, fontWeight: 800, cursor: "pointer" }}>
+                                📦 Importer tous les logos d'un coup
+                                <input type="file" accept="image/*" multiple style={{ display: "none" }} onChange={e => { const fs = Array.from(e.target.files || []); e.target.value = ""; if (fs.length) preparerImportLogos(fs, liste.map(x => ({ k: x.k, f: x.f }))); }} />
+                              </label>
+                            </div>
+                            {importLogos && (
+                              <div style={{ border: "2px solid #305a55", borderRadius: 12, padding: 12, marginBottom: 10, background: "#fff" }}>
+                                <p style={{ margin: "0 0 8px", fontSize: 13, fontWeight: 800, color: "#1a2e1a" }}>
+                                  {importLogos.filter(x => x.cibles.length).length} logo(s) reconnu(s) sur {importLogos.length} — vérifiez puis importez
+                                </p>
+                                <div style={{ display: "flex", flexDirection: "column", gap: 5, maxHeight: 360, overflowY: "auto" }}>
+                                  {importLogos.map((x, i) => (
+                                    <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "4px 6px", borderRadius: 8, background: x.cibles.length ? "#f0fdf4" : "#fef2f2" }}>
+                                      <span style={{ width: 64, height: 34, flexShrink: 0, borderRadius: 6, background: FOND_LOGO, display: "flex", alignItems: "center", justifyContent: "center", padding: 3, boxSizing: "border-box" }}>
+                                        <img src={x.apercu} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+                                      </span>
+                                      <span style={{ fontSize: 11.5, color: "#6b7280", width: 150, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={x.fichier.name}>{x.fichier.name}</span>
+                                      <span style={{ fontSize: 12, fontWeight: 700, color: "#1a2e1a", flex: "1 1 200px", minWidth: 0 }}>
+                                        → {x.cibles.length ? x.cibles.map(c => liste.find(l => l.k === c)?.f || c).join(" · ") : <span style={{ color: "#dc2626" }}>pas trouvé</span>}
+                                      </span>
+                                      <select value="" onChange={e => { const v = e.target.value; if (!v) return; setImportLogos(t => t && t.map((y, j) => j === i ? { ...y, cibles: v === "__aucun" ? [] : [...new Set([...y.cibles, v])] } : y)); }}
+                                        style={{ maxWidth: 190, padding: "4px 6px", borderRadius: 7, border: "1px solid #e5e7eb", fontSize: 11.5 }}>
+                                        <option value="">+ associer à…</option>
+                                        <option value="__aucun">✕ ne pas importer</option>
+                                        {liste.map(l => <option key={l.k} value={l.k}>{l.f}</option>)}
+                                      </select>
+                                    </div>
+                                  ))}
+                                </div>
+                                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 10, flexWrap: "wrap" }}>
+                                  <button type="button" disabled={!!importLogosEnCours} onClick={() => { importLogos.forEach(x => URL.revokeObjectURL(x.apercu)); setImportLogos(null); }}
+                                    style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>Annuler</button>
+                                  <button type="button" disabled={!!importLogosEnCours || !importLogos.some(x => x.cibles.length)} onClick={() => lancerImportLogos(new Map(liste.map(l => [l.k, l.f])))}
+                                    style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: "#305a55", color: "#fff", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>
+                                    {importLogosEnCours ? `⏳ Import ${importLogosEnCours}…` : `✓ Importer ${importLogos.reduce((t, x) => t + x.cibles.length, 0)} logo(s)`}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
                             <div style={{ display: "flex", flexDirection: "column", gap: 4, maxHeight: 460, overflowY: "auto", paddingRight: 4 }}>
                               {liste.map(({ k, f, a: nA, r: n }) => {
                                 const logo = logosFourn[k];
@@ -4121,7 +4205,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                                 const couleurFam = FAM.find(x => x[0] === fam)?.[2] || "#6b7280";
                                 return (
                                   <div key={k} style={{ display: "flex", alignItems: "center", gap: 10, padding: "5px 8px", borderRadius: 8, background: "#faf8f3", border: "1px solid #eee8dc", flexWrap: "wrap" }}>
-                                    <span style={{ width: 52, height: 30, flexShrink: 0, borderRadius: 6, background: logo ? "#fff" : "#eaf2ee", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
+                                    <span style={{ width: 52, height: 30, flexShrink: 0, borderRadius: 6, background: logo ? FOND_LOGO : "#eaf2ee", padding: logo ? 3 : 0, boxSizing: "border-box", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}>
                                       {logo ? <img src={logo} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} /> : <b style={{ fontSize: 12, color: "#305a55" }}>{initialesFourn(f)}</b>}
                                     </span>
                                     <span style={{ flex: "1 1 160px", minWidth: 0 }}>
@@ -7037,7 +7121,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                           style={{ padding: 0, border: "none", borderRadius: 16, overflow: "hidden", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.07)", cursor: "pointer", textAlign: "left", display: "flex", flexDirection: "column" }}>
                           {/* 16/10/2026 — « que toutes les photos aient le même format » : image en position absolue
                               dans un cadre 16/9 fixe (une photo en hauteur agrandissait sa tuile). */}
-                          <div style={{ position: "relative", aspectRatio: "16/9", overflow: "hidden", flexShrink: 0, background: logo ? "#fff" : "#eaf2ee", display: "flex", alignItems: "center", justifyContent: "center", borderBottom: "1px solid #f0ebe0" }}>
+                          <div style={{ position: "relative", aspectRatio: "16/9", overflow: "hidden", flexShrink: 0, background: logo ? FOND_LOGO : "#eaf2ee", display: "flex", alignItems: "center", justifyContent: "center", borderBottom: "1px solid #f0ebe0" }}>
                             {logo ? <img src={logo} alt={f} loading="lazy" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", padding: "10px 14px", boxSizing: "border-box" }} />
                               : <span style={{ fontSize: 44, fontWeight: 900, color: "#305a55", letterSpacing: 2, fontFamily: "'Syne', sans-serif" }}>{initialesFourn(f)}</span>}
 
