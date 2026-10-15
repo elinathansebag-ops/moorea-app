@@ -193,6 +193,7 @@ export function ReglageEtiquetteArrivage({ onRetour, userName }: { onRetour: () 
   const enregistrer = async () => {
     try {
       await set(ref(db, "config/etiquette_arrivage"), { ...cfg, updatedAt: Date.now(), updatedBy: userName || "" });
+      import("./etiquetteArrivagePdf").then(m => m.oublierConfigEtiquette()).catch(() => {});
       flash(true, "✅ Enregistré — la prochaine étiquette imprimée utilisera ce réglage");
     } catch (e: any) { flash(false, "❌ Erreur : " + (e?.message || "enregistrement impossible")); }
   };
@@ -200,6 +201,16 @@ export function ReglageEtiquetteArrivage({ onRetour, userName }: { onRetour: () 
   const imprimerTest = async () => {
     try {
       if (modifie) await enregistrer();
+      // 15/10/2026 — Même chemin que les vraies étiquettes : dessinée par l'appli si c'est activé.
+      const donnees = { lotLabel: exemple.lotMoorea, produit: exemple.produit.toUpperCase(), qte: parseInt(exemple.qte) || 0, unite: "COLIS", lotFournisseur: exemple.lotFournisseur.toUpperCase(), dlcLabel: exemple.dlc, dateArriveeLabel: exemple.ar, url: `${window.location.origin}/?id=test` };
+      const m = await import("./etiquetteArrivagePdf");
+      m.oublierConfigEtiquette();
+      if (await m.etiquetteParAppliActive()) {
+        const pdfBase64 = await m.fabriquerPdfEtiquetteArrivage(donnees);
+        await push(ref(db, "printQueue"), { type: "etiquette_arrivage_pdf", ...donnees, pdfBase64, status: "pending", createdAt: Date.now(), test: true });
+        flash(true, "🖨️ Étiquette de test envoyée à l'imprimante");
+        return;
+      }
       await push(ref(db, "printQueue"), {
         type: "etiquette_palette", lotLabel: exemple.lotMoorea, produit: exemple.produit.toUpperCase(),
         qte: parseInt(exemple.qte) || 0, unite: "COLIS", lotFournisseur: exemple.lotFournisseur.toUpperCase(),

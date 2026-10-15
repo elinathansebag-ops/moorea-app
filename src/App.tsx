@@ -52,6 +52,7 @@ const RetoursModule = chargerModule(() => import("./RetoursModule"), "default");
 const GencodeModule = chargerModule(() => import("./GencodeModule"), "default");
 const CatalogueModule = chargerModule(() => import("./CatalogueModule"), "default");
 const DroitsAccesModule = chargerModule(() => import("./DroitsAccesModule"), "default");
+const ReglageEtiquetteArrivage = chargerModule(() => import("./ReglageEtiquetteArrivage"), "ReglageEtiquetteArrivage");
 const StockApp = chargerModule(() => import("./StockApp"), "StockApp");
 const EtiquetteModule = chargerModule(() => import("./EtiquetteModule"), "EtiquetteModule");
 const YukonApp = chargerModule(() => import("./YukonApp"), "YukonApp");
@@ -856,6 +857,7 @@ export default function App() {
   });
   const setAdminTab = (r: RubriqueAdmin) => { setAdminTabEtat(r); try { localStorage.setItem("moorea-admin-rubrique", r); } catch { /* stockage bloqué */ } };
   const [showNotifsAppareil, setShowNotifsAppareil] = useState(false); // 10/10/2026 — notifications push
+  const [reglageEtiquetteOuvert, setReglageEtiquetteOuvert] = useState(false); // 15/10/2026 — dessin de l'étiquette d'arrivage
   const [activityLog, setActivityLog] = useState<any[]>([]);
   const [rackModePlacementAdmin, setRackModePlacementAdmin] = useState<"manuel" | "scan">("manuel");
   useEffect(() => {
@@ -4134,6 +4136,17 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     {/* 12/10/2026 — Tous les réglages d'impression ici + une page test par imprimante (src/Imprimantes.tsx). */}
                     <CarteReglage titre="🖨️ Impression" desc="Imprimantes du PC du bureau, page test, et quelle imprimante pour quel document.">
                       <ReglagesImpression darkMode={darkMode} />
+                    </CarteReglage>
+                    {/* 15/10/2026 — Le module Étiquettes est en veille : le réglage du dessin de l'étiquette
+                        d'arrivage (positions, tailles) est accessible ici. */}
+                    <CarteReglage titre="🎛️ Dessin de l'étiquette d'arrivage" desc="Placer et agrandir le nom, le nombre de colis, la DLC, le lot fournisseur, le QR… Ce qu'on voit = ce qui s'imprime.">
+                      {reglageEtiquetteOuvert ? (
+                        <Suspense fallback={<p style={{ color: "#9ca3af", fontSize: 12 }}>Chargement…</p>}>
+                          <ReglageEtiquetteArrivage onRetour={() => setReglageEtiquetteOuvert(false)} userName={nomSignataire() || user?.displayName || ""} />
+                        </Suspense>
+                      ) : (
+                        <BoutonReglage label="Ouvrir le réglage de l'étiquette →" onClick={() => setReglageEtiquetteOuvert(true)} />
+                      )}
                     </CarteReglage>
                     </>)}
                   </div>

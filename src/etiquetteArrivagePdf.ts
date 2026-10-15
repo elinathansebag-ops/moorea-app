@@ -126,6 +126,7 @@ function ajusterNomProduit(hote: HTMLElement, cfgApp: any) {
 }
 
 let cfgCache: { v: any; at: number } | null = null;
+export function oublierConfigEtiquette() { cfgCache = null; } // après « Enregistrer » dans le réglage
 async function lireConfig() {
   if (cfgCache && Date.now() - cfgCache.at < 60000) return cfgCache.v;
   let v: any = null;
