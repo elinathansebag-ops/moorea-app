@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 77, date: "16/10", pages: ["rapports"], texte: "📋 Rapports qualité : s'il y a plus de 4 rapports aujourd'hui, ils sont tous affichés en haut (sinon les 4 derniers). Tuiles « Par fournisseur » toutes au même format, et un admin peut y mettre le logo du fournisseur (bouton 🖼️)." },
   { id: 76, date: "16/10", pages: ["stock"], texte: "📦 Stock : « Envoyer » demande d'abord de valider que le comptage est terminé. Si un stock déjà envoyé est rouvert puis modifié, à la clôture l'appli propose de prévenir Jordan : mail « Inventaire CORRIGÉ » avec la liste des articles changés (avant → après) et le PDF à jour." },
   { id: 75, date: "16/10", pages: ["rapports"], texte: "📷 Rapport qualité : « Prendre des photos » ouvre l'appareil photo qui reste ouvert — on en prend plusieurs d'affilée puis « Terminé » ; « Photothèque » pour les photos déjà prises. Aussi sur chaque produit d'un rapport groupé." },
   { id: 74, date: "16/10", pages: ["lidl", "reconditionnement"], texte: "🎨 Bons Lidl (Geslot) et bons de reconditionnement / bordereaux IFCO : bandeau vert Moorea avec logo, à la place du noir et or." },

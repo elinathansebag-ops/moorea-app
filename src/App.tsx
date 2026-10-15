@@ -697,6 +697,10 @@ export default function App() {
   // 15/10/2026 — Réglage pour TOUT LE MONDE dans Admin › Modules (config/arrivage_vue), colonnes par défaut.
   const [arrivageColonnes, setArrivageColonnes] = useState(true);
   useEffect(() => onValue(ref(db, "config/arrivage_vue"), snap => setArrivageColonnes(snap.val() !== "liste")), []);
+  // 16/10/2026 — Logos des fournisseurs (tuiles « Par fournisseur » des rapports qualité), à la place
+  // d'une photo de produit prise au hasard. Ajoutés par un admin directement sur la tuile.
+  const [logosFourn, setLogosFourn] = useState<Record<string, string>>({});
+  useEffect(() => onValue(ref(db, "config/logos_fournisseurs"), snap => setLogosFourn(snap.val() || {})), []);
   // 14/10/2026 — Demande d'Elinathan : ranger soi-même ses modules et leur donner une couleur
   // pastel. Même principe que accueil_masques : par compte, et par prénom sur un compte partagé.
   // { ordre: [clés…], couleurs: { clé: id } }. Un module masqué garde sa place dans « ordre ».
@@ -6904,7 +6908,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     </div>
                     {photos.length > 0 ? (
                       <div style={{ display: "grid", gridTemplateColumns: `repeat(${photos.length}, 1fr)`, gap: 3, padding: "0 14px" }}>
-                        {photos.map((u: string, k: number) => <img key={k} src={srcPhoto(u)} alt="" loading="lazy" style={{ width: "100%", aspectRatio: "4/3", objectFit: "cover", borderRadius: 8, display: "block" }} />)}
+                        {photos.map((u: string, k: number) => <div key={k} style={{ position: "relative", aspectRatio: "4/3", overflow: "hidden", borderRadius: 8, background: "#eef2f0" }}><img src={srcPhoto(u)} alt="" loading="lazy" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", display: "block" }} /></div>)}
                       </div>
                     ) : r.photosPerdues ? <div style={{ margin: "0 14px", padding: "8px", borderRadius: 8, background: "#fffbeb", color: "#92400e", fontSize: 12, fontWeight: 700, textAlign: "center" }}>📷 Photos perdues — à remettre avec ✏️</div> : null}
                     {r.observations && <div style={{ padding: "8px 14px 0", fontSize: 12.5, fontStyle: "italic", color: "#6b7280", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>« {r.observations} »</div>}
@@ -6930,18 +6934,54 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               const fourns = [...parFourn].sort((a, b) => (b[1][0]?.timestamp || 0) - (a[1][0]?.timestamp || 0));
               return (
                 <>
-                  <p style={{ fontSize: 12.5, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".06em", margin: "4px 0 10px" }}>🕒 Derniers rapports</p>
-                  {grilleCartes(sorted.slice(0, 4))}
-                  <p style={{ fontSize: 12.5, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".06em", margin: "26px 0 10px" }}>🏭 Par fournisseur ({fourns.length})</p>
+                  {/* 16/10/2026 — Plus de 4 rapports aujourd'hui : on les montre tous ; sinon les 4 derniers. */}
+                  {(() => {
+                    const auj = new Date().toLocaleDateString("fr-FR");
+                    const duJour = sorted.filter(r => r.date === auj);
+                    const tous = duJour.length > 4;
+                    return <>
+                      <p style={{ fontSize: 12.5, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".06em", margin: "4px 0 10px" }}>{tous ? `📅 Rapports d'aujourd'hui (${duJour.length})` : "🕒 Derniers rapports"}</p>
+                      {grilleCartes(tous ? duJour : sorted.slice(0, 4))}
+                    </>;
+                  })()}
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, margin: "26px 0 10px", flexWrap: "wrap" }}>
+                    <p style={{ fontSize: 12.5, fontWeight: 800, color: "#6b7280", textTransform: "uppercase", letterSpacing: ".06em", margin: 0 }}>🏭 Par fournisseur ({fourns.length})</p>
+                    {monAccesReel.isAdmin && <span style={{ fontSize: 11.5, color: "#9ca3af" }}>Touchez 🖼️ sur une tuile pour ajouter le logo du fournisseur.</span>}
+                  </div>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(210px, 100%), 1fr))", gap: 12 }}>
                     {fourns.map(([f, l]) => {
+                      const cleLogo = String(f).trim().toUpperCase().replace(/[.#$/\[\]]/g, "_");
+                      const logo = logosFourn[cleLogo];
                       const photo = l.map(r => (r.photoUrls || [])[0]).find(Boolean);
                       const nRes = l.filter(r => r.decision === "reserve").length, nRef = l.filter(r => r.decision === "refus").length;
                       return (
                         <button key={f} type="button" onClick={() => { setFilterFournisseur(f); window.scrollTo(0, 0); }}
                           style={{ padding: 0, border: "none", borderRadius: 16, overflow: "hidden", background: "#fff", boxShadow: "0 1px 4px rgba(0,0,0,.07)", cursor: "pointer", textAlign: "left", display: "flex", flexDirection: "column" }}>
-                          <div style={{ aspectRatio: "16/9", background: "#eef2f0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>
-                            {photo ? <img src={srcPhoto(photo)} alt="" loading="lazy" style={{ width: "100%", height: "100%", objectFit: "cover" }} /> : "🏭"}
+                          {/* 16/10/2026 — « que toutes les photos aient le même format » : image en position absolue
+                              dans un cadre 16/9 fixe (une photo en hauteur agrandissait sa tuile). */}
+                          <div style={{ position: "relative", aspectRatio: "16/9", overflow: "hidden", flexShrink: 0, background: logo ? "#fff" : "#eef2f0", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, borderBottom: logo ? "1px solid #f0ebe0" : undefined }}>
+                            {logo ? <img src={logo} alt={f} loading="lazy" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "contain", padding: "10px 14px", boxSizing: "border-box" }} />
+                              : photo ? <img src={srcPhoto(photo)} alt="" loading="lazy" style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }} /> : "🏭"}
+                            {monAccesReel.isAdmin && (
+                              <label onClick={e => e.stopPropagation()} title={logo ? "Changer le logo" : "Ajouter le logo du fournisseur"}
+                                style={{ position: "absolute", top: 6, right: 6, width: 32, height: 32, borderRadius: 9, background: "rgba(255,255,255,.92)", border: "1px solid #e5e7eb", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 15, cursor: "pointer" }}>
+                                🖼️
+                                <input type="file" accept="image/*" style={{ display: "none" }} onChange={async e => {
+                                  const fichier = e.target.files?.[0]; e.target.value = "";
+                                  if (!fichier) return;
+                                  try {
+                                    // Logo réduit (600 px max) en PNG pour garder la transparence.
+                                    const img = await createImageBitmap(fichier);
+                                    const k = Math.min(1, 600 / Math.max(img.width, img.height));
+                                    const c = document.createElement("canvas"); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+                                    c.getContext("2d")!.drawImage(img, 0, 0, c.width, c.height);
+                                    const url = await envoyerPhoto(c.toDataURL("image/png"), "rapports/logos");
+                                    await update(ref(db, "config/logos_fournisseurs"), { [cleLogo]: url });
+                                    showToast(`✅ Logo ajouté pour ${f}`);
+                                  } catch (err: any) { showToast("❌ Logo non enregistré : " + (err?.message || "erreur"), "error"); }
+                                }} />
+                              </label>
+                            )}
                           </div>
                           <div style={{ padding: "10px 12px 12px" }}>
                             <div style={{ fontSize: 13.5, fontWeight: 900, color: "#1a2e1a", lineHeight: 1.2, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{f}</div>
