@@ -645,6 +645,7 @@ const styles: Record<string, React.CSSProperties> = {
     backgroundColor: "#f0f7ff",
   },
   fileInput: {
+    maxWidth: "100%",
     padding: "8px",
     marginBottom: "10px",
     cursor: "pointer",
@@ -756,6 +757,7 @@ const styles: Record<string, React.CSSProperties> = {
   textInput: {
     width: "100%",
     maxWidth: "300px",
+    boxSizing: "border-box" as const,
     padding: "8px 10px",
     border: "1px solid #ddd",
     borderRadius: "4px",

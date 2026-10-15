@@ -113,7 +113,7 @@ export default function RecopiePhotos() {
           <summary style={{ cursor: "pointer", fontWeight: 700 }}>Détail des échecs ({erreurs.length})</summary>
           <div style={{ maxHeight: 260, overflowY: "auto", marginTop: 6, display: "grid", gap: 4 }}>
             {erreurs.map((e, i) => (
-              <div key={i} style={{ background: "#fef2f2", borderRadius: 6, padding: "5px 8px" }}>
+              <div key={i} style={{ background: "#fef2f2", borderRadius: 6, padding: "5px 8px", overflowWrap: "anywhere" }}>
                 <b>{e.raison}</b> — {e.rapport || "rapport sans numéro"}<br />
                 <a href={e.url} target="_blank" rel="noreferrer" style={{ color: "#2563eb", wordBreak: "break-all" }}>{e.url}</a>
               </div>

@@ -796,9 +796,9 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     // « Prêt » sur deux étages : base + transporteur + colis en haut, producteur / lot / palettes
     // en pastilles et « prêt par » en dessous, bouton « annuler » toujours à droite.
     if (pret) {
-      const pastilleP = (t: string) => <span style={{ background: "#fff", border: "1px solid #bbf7d0", borderRadius: 999, padding: "2px 9px", fontSize: 12, fontWeight: 700, color: "#374151", whiteSpace: "nowrap" }}>{t}</span>;
+      const pastilleP = (t: string) => <span style={{ background: "#fff", border: "1px solid #bbf7d0", borderRadius: 999, padding: "2px 9px", fontSize: 12, fontWeight: 700, color: "#374151", maxWidth: "100%", overflowWrap: "anywhere" }}>{t}</span>;
       return (
-        <div key={l.id} style={{ display: "grid", gridTemplateColumns: "26px 1fr auto", columnGap: 10, rowGap: 6, alignItems: "center", padding: "11px 14px", borderTop: "1px solid #dcfce7", background: "#f0fdf4", color: "#374151" }}>
+        <div key={l.id} style={{ display: "grid", gridTemplateColumns: "26px minmax(0, 1fr) auto", columnGap: 10, rowGap: 6, alignItems: "center", padding: "11px 14px", borderTop: "1px solid #dcfce7", background: "#f0fdf4", color: "#374151" }}>
           <span style={{ color: "#15803d", fontWeight: 900, fontSize: 18, gridRow: "1 / span 2", alignSelf: "start", marginTop: 1 }}>✅</span>
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "baseline", gap: "2px 12px", minWidth: 0 }}>
             <span style={{ fontWeight: 900, fontSize: 15, color: "#111827" }}>{inf?.nom || l.base}</span>
@@ -902,11 +902,11 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   }
   const fenetreEdition = edition && (
     <div onClick={() => !editionBusy && setEdition(null)} style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div onClick={e => e.stopPropagation()} role="dialog" aria-label="Modifier la commande" style={{ background: "#fff", borderRadius: 16, padding: 20, width: "100%", maxWidth: 400, boxSizing: "border-box", boxShadow: "0 20px 50px rgba(0,0,0,.25)" }}>
+      <div onClick={e => e.stopPropagation()} role="dialog" aria-label="Modifier la commande" style={{ background: "#fff", borderRadius: 16, padding: 20, width: "100%", maxWidth: 400, maxHeight: "92vh", overflowY: "auto", boxSizing: "border-box", boxShadow: "0 20px 50px rgba(0,0,0,.25)" }}>
         <div style={{ fontWeight: 900, fontSize: 17, marginBottom: 4, color: "#111827" }}>✏️ Modifier la commande</div>
         <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 14 }}>{libReference(edition.l)} · livraison du {dateFr(edition.l.date)}{edition.l.camion ? ` · camion ${edition.l.camion}` : ""}</div>
         <div style={{ fontSize: 12.5, fontWeight: 800, color: "#374151", marginBottom: 6 }}>Base</div>
-        <select value={edition.base} onChange={e => setEdition(x => x && { ...x, base: e.target.value })} style={{ padding: "9px 10px", borderRadius: 10, border: "1.5px solid #d1d5db", fontSize: 14, width: "100%" }}>
+        <select value={edition.base} onChange={e => setEdition(x => x && { ...x, base: e.target.value })} style={{ padding: "9px 10px", borderRadius: 10, border: "1.5px solid #d1d5db", fontSize: 14, width: "100%", boxSizing: "border-box" }}>
           {!BASES_LIDL[edition.base] && <option value={edition.base}>{edition.base}</option>}
           {Object.entries(BASES_LIDL).sort((a, b) => a[1].num - b[1].num).map(([k, b]) => <option key={k} value={k}>{b.nom} (n° {b.num})</option>)}
         </select>
@@ -925,7 +925,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
 
   // ── Module commercial : tableau du jour (toutes les commandes, Sud et Paris)
   const tableauCommercial = (ls: LigneLidl[]) => (
-    <div style={{ overflowX: "auto" }}>
+    <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
         <thead>
           <tr style={{ background: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>
@@ -1123,7 +1123,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
         <div onClick={() => basculer(setSemainesOuvertes, lun)} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "11px 14px", cursor: "pointer" }}>
           <span style={{ fontWeight: 900, fontSize: 14, color: "#111827" }}>📅 Semaine {n} · {annee}</span>
           <span style={{ fontSize: 12.5, color: "#6b7280", fontWeight: 600 }}>({js.length} jour{js.length > 1 ? "s" : ""} · {ls.length} commande{ls.length > 1 ? "s" : ""})</span>
-          <span style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center" }}>
+          <span style={{ marginLeft: "auto", display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
             {prets < ls.length && pastille(`⏳ ${ls.length - prets} à préparer`, "#b45309", "#fef3c7")}
             {prets > 0 && pastille(`✅ ${prets} prêtes`, "#15803d", "#dcfce7")}
             <span style={{ fontSize: 14, color: couleur, transform: ouverte ? "rotate(90deg)" : "none", transition: "transform .15s", display: "inline-block" }}>›</span>
@@ -1186,8 +1186,9 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
           </>
         ) : (
           <>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 8 }}>
-              <select value={l.ferme || ""} onChange={e => choisirFerme(l, e.target.value)} aria-label="Ferme de production" style={{ ...gros, fontSize: 16, fontWeight: 700, padding: "0 10px", border: `2px solid ${l.ferme ? "#d1d5db" : "#f59e0b"}`, background: "#fff" }}>
+            {/* 15/10/2026 — téléphone : minmax(0, 1fr), sinon un nom de ferme long élargit la liste hors de l'écran */}
+            <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 8, marginBottom: 8 }}>
+              <select value={l.ferme || ""} onChange={e => choisirFerme(l, e.target.value)} aria-label="Ferme de production" style={{ ...gros, width: "100%", minWidth: 0, boxSizing: "border-box", fontSize: 16, fontWeight: 700, padding: "0 10px", border: `2px solid ${l.ferme ? "#d1d5db" : "#f59e0b"}`, background: "#fff" }}>
                 <option value="">Ferme…</option>
                 {[...new Set([...fermes, ...(l.ferme ? [l.ferme] : [])])].sort((a, b) => a.localeCompare(b)).map(f => <option key={f} value={f}>{f}</option>)}
                 <option value="__new">Il manque un producteur — prévenir</option>
@@ -1215,9 +1216,9 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   const restantsScan = lignesParis.filter(l => l.statut !== "pret" && l.date === jourAffiche).length;
   const fenetreScan = scanOuvert && (
     <div style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,.6)", zIndex: 1050, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 12, overflowY: "auto" }}>
-      <div role="dialog" aria-label="Scanner les étiquettes palettes" style={{ background: "#fff", borderRadius: 18, padding: 12, width: "100%", maxWidth: 560, boxShadow: "0 20px 50px rgba(0,0,0,.3)" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-          <div style={{ fontWeight: 900, fontSize: 16 }}>📷 Scan des étiquettes <span style={{ fontWeight: 600, fontSize: 13, color: "#6b7280" }}>· {restantsScan} à préparer</span></div>
+      <div role="dialog" aria-label="Scanner les étiquettes palettes" style={{ background: "#fff", borderRadius: 18, padding: 12, width: "100%", maxWidth: 560, boxSizing: "border-box", boxShadow: "0 20px 50px rgba(0,0,0,.3)" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, marginBottom: 8 }}>
+          <div style={{ fontWeight: 900, fontSize: 16, minWidth: 0 }}>📷 Scan des étiquettes <span style={{ fontWeight: 600, fontSize: 13, color: "#6b7280" }}>· {restantsScan} à préparer</span></div>
           <button type="button" onClick={() => { setScanOuvert(false); setFicheId(null); }} style={{ height: 40, padding: "0 14px", borderRadius: 10, border: "1.5px solid #d1d5db", background: "#fff", fontWeight: 800, cursor: "pointer" }}>Fermer</button>
         </div>
         <LidlScanner enPause={!!ficheId} onCode={id => setFicheId(id)} />
@@ -1227,7 +1228,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
   );
   const modale = (titre: string, contenu: any, boutons: any) => (
     <div style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,.55)", zIndex: 1080, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div role="alertdialog" aria-label={titre} style={{ background: "#fff", borderRadius: 16, padding: 18, width: "100%", maxWidth: 520, boxShadow: "0 20px 50px rgba(0,0,0,.3)", borderTop: "6px solid #dc2626" }}>
+      <div role="alertdialog" aria-label={titre} style={{ background: "#fff", borderRadius: 16, padding: 18, width: "100%", maxWidth: 520, maxHeight: "90vh", overflowY: "auto", boxSizing: "border-box", boxShadow: "0 20px 50px rgba(0,0,0,.3)", borderTop: "6px solid #dc2626" }}>
         <div style={{ fontWeight: 900, fontSize: 17, color: "#b91c1c", marginBottom: 10 }}>{titre}</div>
         {contenu}
         <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 14, flexWrap: "wrap" }}>{boutons}</div>
@@ -1266,7 +1267,7 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
       <button type="button" onClick={() => update(ref(db, `lidl_changements/${alerte.id}`), { vu: true, vuPar: userName || "", vuLe: new Date().toLocaleString("fr-FR") })} style={{ padding: "10px 18px", borderRadius: 10, border: "none", background: "#dc2626", color: "#fff", fontWeight: 900, cursor: "pointer" }}>J'ai vu</button>
     </>);
   const zoneNotifs = notifs.length > 0 && (
-    <div style={{ position: "fixed", right: 16, bottom: 16, zIndex: 1100, display: "flex", flexDirection: "column", gap: 8, maxWidth: 380 }}>
+    <div style={{ position: "fixed", right: 16, bottom: 16, zIndex: 1100, display: "flex", flexDirection: "column", gap: 8, maxWidth: "min(380px, calc(100vw - 32px))" }}>
       {notifs.map(n => (
         <div key={n.id} role="status" style={{ display: "flex", gap: 10, alignItems: "flex-start", padding: "10px 12px", borderRadius: 12, fontSize: 13, fontWeight: 700, boxShadow: "0 6px 20px rgba(0,0,0,.15)", background: n.type === "ok" ? "#f0fdf4" : n.type === "err" ? "#fef2f2" : "#eff6ff", border: `1.5px solid ${n.type === "ok" ? "#86efac" : n.type === "err" ? "#fca5a5" : "#bfdbfe"}`, color: n.type === "ok" ? "#166534" : n.type === "err" ? "#b91c1c" : "#1e40af" }}>
           <span style={{ flex: 1 }}>{n.texte}</span>
@@ -1311,7 +1312,8 @@ export function LidlCommandes({ userName, couleur = "#0050aa", mode = "preparati
     });
     const choisir = (ids: number[], c: ChoixDepart) => setChoixDepart(x => { const n = { ...x }; ids.forEach(i => { n[i] = c; }); return n; });
     const segment = (actif: ChoixDepart | undefined, onChoix: (c: ChoixDepart) => void, petit: boolean) => (
-      <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+      // 15/10/2026 — téléphone : les 3 boutons passent à la ligne au lieu de dépasser de la fenêtre
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap", minWidth: 0 }}>
         {OPTIONS_DEPART.map(o => {
           const on = actif === o.k;
           return (

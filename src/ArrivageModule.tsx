@@ -552,7 +552,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
 
       {isRetourRecond && (
         <div style={{ marginBottom: 8 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: litige ? 6 : 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: litige ? 6 : 0, flexWrap: "wrap" }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>Qualité du retour</span>
             <button onClick={() => setLitige(false)} style={{ padding: "5px 10px", borderRadius: 8, border: `1.5px solid ${!litige ? "#27ae60" : "#e5e7eb"}`, background: !litige ? "#27ae6018" : "#fff", color: !litige ? "#27ae60" : "#9ca3af", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>✓ Conforme</button>
             <button onClick={() => setLitige(true)} style={{ padding: "5px 10px", borderRadius: 8, border: `1.5px solid ${litige ? "#dc2626" : "#e5e7eb"}`, background: litige ? "#dc262618" : "#fff", color: litige ? "#dc2626" : "#9ca3af", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>⚠️ Problème</button>
@@ -795,7 +795,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
                 </div>
               ))}
               <button onClick={() => ajouterMesure(sec.setter)}
-                style={{ alignSelf: "flex-start", background: "none", border: "1px dashed #9ca3af", color: "#6b7280", borderRadius: 7, padding: "5px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
+                style={{ alignSelf: "flex-start", maxWidth: "100%", background: "none", border: "1px dashed #9ca3af", color: "#6b7280", borderRadius: 7, padding: "5px 10px", cursor: "pointer", fontSize: 11, fontWeight: 700 }}>
                 + Ajouter {sec.libelle}
               </button>
             </div>
@@ -914,7 +914,7 @@ export function ProduitRow({ arrivage, onValidate, onDelete, onOuvreRapport, onR
       )}
       {showReport && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.45)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 300 }} onClick={() => setShowReport(false)}>
-          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, padding: 20, width: 300, maxWidth: "90vw", boxShadow: "0 10px 40px rgba(0,0,0,0.25)" }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, padding: 20, width: 300, maxWidth: "90vw", boxSizing: "border-box", boxShadow: "0 10px 40px rgba(0,0,0,0.25)" }}>
             <p style={{ margin: "0 0 10px", fontSize: 14, fontWeight: 800, color: "#1a2e1a" }}>📅 Reporter à une autre date</p>
             <input type="date" value={dateReportIso} onChange={e => setDateReportIso(e.target.value)}
               style={{ width: "100%", padding: "9px 10px", borderRadius: 9, border: "1.5px solid #e5e7eb", fontSize: 14, fontWeight: 700, color: "#1a2e1a", marginBottom: 14 }} />
@@ -1261,7 +1261,7 @@ export function FournisseurBlock({ ouvert, onBasculer, enGrille = false, fournis
 
   // 14/10/2026 — « Décaler tout l'arrivage » et « Tout mettre en réserve » sur la ligne du fournisseur.
   const actionsGroupe = (
-    <span onClick={e => e.stopPropagation()} style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "nowrap", justifyContent: "flex-end" }}>
+    <span onClick={e => e.stopPropagation()} style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "100%" }}>
           {/* 10/10/2026 — Demande d'Elinathan : mettre en réserve d'un coup TOUS les produits de cet
               arrivage du fournisseur. Ouvre un seul rapport de réserve pour l'ensemble, qui exige au
               moins une photo par produit (voir ouvrirRapportGroupeReserve dans App.tsx). */}
@@ -1307,17 +1307,17 @@ export function FournisseurBlock({ ouvert, onBasculer, enGrille = false, fournis
     {/* 15/10/2026 — Ouverte en grille : contour vert sur 3 côtés ; la case descend de 12 px
         (écart de la grille + bordure) pour recouvrir le haut du détail → une seule forme. */}
     <div ref={caseRef} style={{ gridColumn: open && !enGrille ? "1 / -1" : undefined, background: "#fff", borderRadius: open && enGrille ? "14px 14px 0 0" : 14, marginBottom: open && enGrille ? -12 : 0, paddingBottom: open && enGrille ? 12 : 0, overflow: "hidden", boxShadow: open && enGrille ? "none" : "0 2px 12px rgba(0,0,0,0.06)", border: open && enGrille ? "2px solid #22c55e" : allDone ? "2px solid #bbf7d0" : "2px solid transparent", borderBottom: open && enGrille ? "none" : undefined, alignSelf: "stretch", position: "relative", zIndex: open && enGrille ? 1 : undefined }}>
-      <div onClick={() => setOpen(!open)} style={{ minHeight: enGrille ? 52 : undefined, boxSizing: "border-box", height: enGrille ? "100%" : undefined, padding: enGrille ? "7px 14px" : "11px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", background: open && enGrille ? "#fff" : headerBg, borderBottom: open && enGrille ? "none" : open ? "1px solid #e8e0d0" : headerBorder }}>
+      <div onClick={() => setOpen(!open)} style={{ minHeight: enGrille ? 52 : undefined, boxSizing: "border-box", height: enGrille ? "100%" : undefined, padding: enGrille ? "7px 14px" : "11px 16px", display: "flex", flexWrap: open && !enGrille ? "wrap" : undefined, rowGap: 6, justifyContent: "space-between", alignItems: "center", cursor: "pointer", background: open && enGrille ? "#fff" : headerBg, borderBottom: open && enGrille ? "none" : open ? "1px solid #e8e0d0" : headerBorder }}>
         {/* 14/10/2026 — Nom à gauche ; « en attente » / « traités » toujours au même endroit, à droite. */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
           <span>{allDone ? "✅" : "🏭"}</span>
-          <span style={{ fontWeight: 700, fontSize: 14, color: nomColor, fontFamily: "'Syne', sans-serif" }}>{fournisseur}</span>
+          <span style={{ fontWeight: 700, fontSize: 14, color: nomColor, fontFamily: "'Syne', sans-serif", minWidth: 0, overflowWrap: "anywhere" }}>{fournisseur}</span>
         </div>
         <div style={{ display: "flex", flexDirection: open && !enGrille ? "row" : "column", alignItems: open && !enGrille ? "center" : "flex-end", gap: 4, margin: "0 8px 0 10px", flexShrink: 0, ...(open && !enGrille ? { flex: 1, justifyContent: "center" } : {}) }}>
           {produits.length > 0 && <span style={{ fontSize: 12, background: "#fffbeb", color: "#d97706", padding: "2px 8px", borderRadius: 20, fontWeight: 600, whiteSpace: "nowrap" }}>{produits.length} en attente</span>}
           {nbTraites > 0 && <span style={{ fontSize: 12, background: "#f0fdf4", color: "#16a34a", padding: "2px 8px", borderRadius: 20, fontWeight: 600, whiteSpace: "nowrap" }}>{nbTraites} traité{nbTraites > 1 ? "s" : ""}</span>}
         </div>
-        {open && !enGrille && <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", marginRight: 8 }}>{actionsGroupe}</div>}
+        {open && !enGrille && <div style={{ flex: 1, minWidth: 0, display: "flex", justifyContent: "flex-end", marginRight: 8 }}>{actionsGroupe}</div>}
         <span style={{ fontSize: 18, color: allDone ? "#16a34a" : "#c8a84b", fontWeight: 700, transform: open ? "rotate(90deg)" : "none", transition: "transform 0.2s", display: "inline-block" }}>›</span>
       </div>
       {open && !enGrille && (
@@ -1379,7 +1379,7 @@ export function FournisseurBlock({ ouvert, onBasculer, enGrille = false, fournis
       // il ne reste que les boutons d'action et ✕, sur fond blanc.
       <div style={{ gridColumn: "1 / -1", background: "#fff", border: "2px solid #22c55e", borderRadius: `${bordsCase.gauche ? 0 : 14}px ${bordsCase.droite ? 0 : 14}px 14px 14px`, overflow: "hidden" }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 10, padding: "8px 14px 0", flexWrap: "wrap" }}>
-          <span style={{ display: "flex", justifyContent: "flex-end" }}>{actionsGroupe}</span>
+          <span style={{ display: "flex", justifyContent: "flex-end", flex: "1 1 0", minWidth: 0 }}>{actionsGroupe}</span>
           <button type="button" onClick={() => setOpen(false)} title="Fermer" style={{ border: "none", background: "transparent", fontSize: 18, color: "#c8a84b", fontWeight: 800, cursor: "pointer", padding: "0 2px" }}>✕</button>
         </div>
         <div style={{ padding: "12px 14px" }}>
@@ -1444,7 +1444,29 @@ export function FournisseurBlock({ ouvert, onBasculer, enGrille = false, fournis
 // avec exactement les mêmes infos que l'étiquette normale — un petit programme tournant
 // en permanence sur le PC Windows (déjà connecté à l'imprimante) écoute cette file et
 // imprime automatiquement dès qu'une entrée apparaît, sans aucune action côté PC.
-export async function envoyerEtiquettePourImpressionPC(arrivage: any, paletteIndex?: number, colisCount?: number) {
+// 15/10/2026 — Plusieurs palettes d'un même arrivage en UNE impression (« la 1ʳᵉ étiquette sort,
+// puis un temps de latence avant la 2ᵉ ») : avec l'étiquette dessinée par l'appli, un seul PDF de
+// plusieurs pages ; sinon, envoi classique palette par palette (le PC les regroupe déjà lui-même).
+export async function envoyerEtiquettesPalettesPC(arrivage: any, palettes: { index: number; colis: number }[]) {
+  const liste = palettes.filter(p => p.colis > 0);
+  if (!liste.length) return;
+  if (liste.length > 1) {
+    try {
+      const { etiquetteParAppliActive, fabriquerPdfEtiquettesArrivage } = await import("./etiquetteArrivagePdf");
+      if (await etiquetteParAppliActive()) {
+        const pages = liste.map(p => donneesEtiquetteArrivage(arrivage, p.index, p.colis));
+        const pdfBase64 = await fabriquerPdfEtiquettesArrivage(pages);
+        await push(ref(db, "printQueue"), { type: "etiquette_arrivage_pdf", ...pages[0], lotLabel: pages.map(p => p.lotLabel).join(", "), nb: pages.length, pdfBase64, status: "pending", createdAt: Date.now() });
+        return;
+      }
+    } catch (e) {
+      console.warn("Étiquettes groupées dessinées par l'appli impossibles, envoi classique :", e);
+    }
+  }
+  for (const p of liste) await envoyerEtiquettePourImpressionPC(arrivage, p.index, p.colis);
+}
+
+function donneesEtiquetteArrivage(arrivage: any, paletteIndex?: number, colisCount?: number) {
   const lot = arrivage.lot_interne || arrivage.id;
   const palRef = paletteIndex != null ? `${paletteIndex}` : null;
   // 12/10/2026 — Bug trouvé avec Elinathan : le QR ne contenait que l'arrivage (?id=…), le même
@@ -1467,10 +1489,15 @@ export async function envoyerEtiquettePourImpressionPC(arrivage: any, paletteInd
     dateArriveeLabel = isNaN(d.getTime()) ? String(arrivage.date) : d.toLocaleDateString("fr-FR");
   }
 
+  return { lotLabel, produit: (arrivage.produit || "-").toUpperCase(), qte: qte || 0, unite: (arrivage.unite || "COLIS").toUpperCase(), lotFournisseur: (arrivage.lot_fournisseur || "").toUpperCase(), dlcLabel, dateArriveeLabel, url };
+}
+
+export async function envoyerEtiquettePourImpressionPC(arrivage: any, paletteIndex?: number, colisCount?: number) {
   // 15/10/2026 — Étiquette dessinée par l'appli (PDF prêt, sortie immédiate comme Lidl) si c'est
   // activé dans Admin › Imprimantes ET que le relais du PC est en V8.4+. Sinon (ou en cas
   // d'erreur), envoi comme avant : le PC dessine l'étiquette.
-  const donnees = { lotLabel, produit: (arrivage.produit || "-").toUpperCase(), qte: qte || 0, unite: (arrivage.unite || "COLIS").toUpperCase(), lotFournisseur: (arrivage.lot_fournisseur || "").toUpperCase(), dlcLabel, dateArriveeLabel, url };
+  const donnees = donneesEtiquetteArrivage(arrivage, paletteIndex, colisCount);
+  const { lotLabel, produit, qte, unite, lotFournisseur, dlcLabel, dateArriveeLabel, url } = donnees;
   try {
     const { etiquetteParAppliActive, fabriquerPdfEtiquetteArrivage } = await import("./etiquetteArrivagePdf");
     if (await etiquetteParAppliActive()) {
@@ -1484,10 +1511,10 @@ export async function envoyerEtiquettePourImpressionPC(arrivage: any, paletteInd
   await push(ref(db, "printQueue"), {
     type: "etiquette_palette",
     lotLabel,
-    produit: (arrivage.produit || "-").toUpperCase(),
-    qte: qte || 0,
-    unite: (arrivage.unite || "COLIS").toUpperCase(),
-    lotFournisseur: (arrivage.lot_fournisseur || "").toUpperCase(),
+    produit,
+    qte,
+    unite,
+    lotFournisseur,
     dlcLabel,
     dateArriveeLabel,
     url,
@@ -1570,9 +1597,7 @@ export function PopupEtiquetteMulti({ arrivage, onClose }: { arrivage: any; onCl
     if (sendingPC) return;
     setSendingPC(true);
     try {
-      for (let i = 0; i < nbPalettes; i++) {
-        await envoyerEtiquettePourImpressionPC(arrivage, i + 1, repartition[i]);
-      }
+      await envoyerEtiquettesPalettesPC(arrivage, repartition.slice(0, nbPalettes).map((colis, i) => ({ index: i + 1, colis })));
       onClose();
     } catch {
       setSendingPC(false);
@@ -1925,7 +1950,7 @@ export function GencodeChecker({ onClose, expectedEan, expectedArticle }: { onCl
 
   return (
     <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,.85)', zIndex: 900, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 20 }}>
-      <div style={{ background: '#fff', borderRadius: 20, padding: 24, maxWidth: 420, width: '100%' }}>
+      <div style={{ background: '#fff', borderRadius: 20, padding: 24, maxWidth: 420, width: '100%', maxHeight: '90vh', overflowY: 'auto', boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
           <span style={{ fontSize: 15, fontWeight: 800 }}>🏷️ Vérifier un gencode</span>
           <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: 20, cursor: 'pointer', color: '#aaa' }}>✕</button>
@@ -2435,7 +2460,7 @@ export function PalettePublique({ id }: { id: string }) {
               )}
             </div>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: 10 }}>
             {[
               { label: "Date arrivée", value: arrivage.date },
               { label: "Quantité", value: `${arrivage.quantite} ${arrivage.unite}` },
@@ -2448,7 +2473,7 @@ export function PalettePublique({ id }: { id: string }) {
             ].map(f => (
               <div key={f.label} style={{ background: "#f9fafb", borderRadius: 10, padding: "10px 12px" }}>
                 <p style={{ margin: "0 0 2px", fontSize: 10, color: "#9ca3af", textTransform: "uppercase", letterSpacing: "0.5px" }}>{f.label}</p>
-                <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: "#1a2e1a" }}>{f.value}</p>
+                <p style={{ margin: 0, fontWeight: 700, fontSize: 15, color: "#1a2e1a", overflowWrap: "anywhere" }}>{f.value}</p>
               </div>
             ))}
           </div>
@@ -2673,7 +2698,8 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
   return (
     <div style={{ marginBottom: 6, borderRadius: 10, overflow: "hidden", border: "1px solid #e8e0d0", borderLeft: `3px solid ${borderColor}` }}>
       {/* Header */}
-      <div style={{ background: "#f9fafb", padding: "9px 12px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+      {/* 15/10/2026 — téléphone : si les boutons ne tiennent pas à côté du nom, ils passent dessous (sur ordinateur : une seule ligne, inchangé). */}
+      <div style={{ background: "#f9fafb", padding: "9px 12px", display: "flex", flexWrap: "wrap", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#1a2e1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {a.produit || a.article || a.nom || a.designation || a.libelle || a.description ||
@@ -2708,9 +2734,9 @@ export function ArrivageTraiteRow({ arrivage: a, onDelete, onOuvreRapport, onImp
             </div>
           )}
         </div>
-        <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end" }}>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexShrink: 0, flexWrap: "wrap", justifyContent: "flex-end", maxWidth: "100%" }}>
           {/* 15/10/2026 — Rapport de réserve sur la même ligne que le nom du produit. */}
-          <span onClick={e => e.stopPropagation()} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+          <span onClick={e => e.stopPropagation()} style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
             <button onClick={() => onOuvreRapport(a, true)}
               style={{ padding: "5px 10px", borderRadius: 8, border: "none", background: "#d97706", color: "#fff", cursor: "pointer", fontSize: 11, fontWeight: 700, whiteSpace: "nowrap" }}>
               📋 Rapport de réserve
@@ -3004,7 +3030,7 @@ export function DateBlock({ enColonnes = true, date, arrivages, arrivagesArchive
 
   return (
     <div style={{ marginBottom: 16 }}>
-      <div onClick={() => setOpen(!open)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", userSelect: "none", background: open ? "#1a2e1a" : "#2d3a2d", borderRadius: open ? "14px 14px 0 0" : 14, padding: "12px 16px", boxShadow: "0 2px 10px rgba(0,0,0,0.12)", transition: "all 0.2s" }}>
+      <div onClick={() => setOpen(!open)} style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "space-between", alignItems: "center", cursor: "pointer", userSelect: "none", background: open ? "#1a2e1a" : "#2d3a2d", borderRadius: open ? "14px 14px 0 0" : 14, padding: "12px 16px", boxShadow: "0 2px 10px rgba(0,0,0,0.12)", transition: "all 0.2s" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <div style={{ width: 34, height: 34, borderRadius: 9, background: "#c8a84b22", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, flexShrink: 0 }}>📅</div>
           <div>
@@ -3012,7 +3038,7 @@ export function DateBlock({ enColonnes = true, date, arrivages, arrivagesArchive
             <p style={{ margin: 0, fontSize: 11, color: "rgba(255,255,255,0.5)" }}>{nbFourn} fournisseur{nbFourn > 1 ? "s" : ""}</p>
           </div>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", marginLeft: "auto" }}>
           {/* 09/09/2026 — Demande d'Elinathan : "le bouton Traçabilité mets-le à côté de en
               attente" — déplacé ici, à côté des badges du jour, au lieu d'être tout seul sur sa
               propre ligne dans le panneau déplié (voir "Barre d'actions" plus bas, désormais
@@ -3219,12 +3245,13 @@ export function HistoriqueMesures({ arrivages, onClose }: { arrivages: any[]; on
             <p style={{ margin: 0, fontWeight: 700, color: "#6b7280", fontFamily: "'Syne', sans-serif" }}>{lignes.length === 0 ? "Aucun relevé enregistré" : "Aucun relevé ne correspond aux filtres"}</p>
           </div>
         ) : (
-          <div style={{ background: "#fff", border: "1px solid #e8e0d0", borderRadius: 14, overflow: "hidden" }}>
-            <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 120px 100px 80px", gap: 0, fontSize: 11, fontWeight: 700, color: "#6b7280", padding: "8px 14px", background: "#f9fafb", borderBottom: "1px solid #e8e0d0", textTransform: "uppercase", letterSpacing: "0.5px" }}>
+          <div style={{ background: "#fff", border: "1px solid #e8e0d0", borderRadius: 14, overflow: "auto" }}>
+            {/* 15/10/2026 — téléphone : largeur mini pour garder les colonnes alignées, défilement horizontal dans la carte. */}
+            <div style={{ display: "grid", gridTemplateColumns: "80px 1fr 120px 100px 80px", minWidth: 540, gap: 0, fontSize: 11, fontWeight: 700, color: "#6b7280", padding: "8px 14px", background: "#f9fafb", borderBottom: "1px solid #e8e0d0", textTransform: "uppercase", letterSpacing: "0.5px" }}>
               <div>Valeur</div><div>Produit · Fournisseur</div><div>Traçabilité</div><div>DLC / Statut</div><div>Heure</div>
             </div>
             {filtrees.map((l, i) => (
-              <div key={i} style={{ display: "grid", gridTemplateColumns: "80px 1fr 120px 100px 80px", gap: 0, padding: "10px 14px", borderBottom: i === filtrees.length - 1 ? "none" : "1px solid #f5f3ee", background: i % 2 === 0 ? "#fff" : "#fdfcfa", alignItems: "start" }}>
+              <div key={i} style={{ display: "grid", gridTemplateColumns: "80px 1fr 120px 100px 80px", minWidth: 540, gap: 0, padding: "10px 14px", borderBottom: i === filtrees.length - 1 ? "none" : "1px solid #f5f3ee", background: i % 2 === 0 ? "#fff" : "#fdfcfa", alignItems: "start" }}>
                 <div style={{ fontSize: 16, fontWeight: 800, color: type === "poids" ? "#1a2e1a" : "#1d4ed8", fontFamily: "'Syne', sans-serif" }}>{l.valeur} {unite}</div>
                 <div>
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#1a2e1a" }}>{l.a?.produit || "—"}</div>

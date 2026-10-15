@@ -104,8 +104,8 @@ export function LidlProducteurs() {
       </div>
       <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
         {liste.map(p => { const masque = !!masques[cleProducteur(p.pn)]; return (
-          <div key={p.pn} style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", border: "1px solid #e5e7eb", borderRadius: 10, background: masque ? "#f3f4f6" : "#fafafa", opacity: masque ? 0.6 : 1 }}>
-            <div style={{ flex: 1, minWidth: 0 }}>
+          <div key={p.pn} style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, padding: "8px 10px", border: "1px solid #e5e7eb", borderRadius: 10, background: masque ? "#f3f4f6" : "#fafafa", opacity: masque ? 0.6 : 1 }}>
+            <div style={{ flex: "1 1 180px", minWidth: 0, overflowWrap: "anywhere" }}>
               <div style={{ fontWeight: 800, fontSize: 13.5, color: "#111827" }}>{p.pn}{masque && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 800, background: "#e5e7eb", color: "#4b5563", borderRadius: 999, padding: "1px 8px" }}>MASQUÉ</span>} <span style={{ fontFamily: "monospace", fontWeight: 400, fontSize: 11.5, color: "#6b7280" }}>GGN {p.pg}</span></div>
               {ligneCoord("Fournisseur", p.fn, p.fg)}
               {ligneCoord("Emballeur", p.en, p.eg)}
@@ -122,7 +122,7 @@ export function LidlProducteurs() {
       {edition && (
         <div onClick={() => !busy && setEdition(null)} style={{ position: "fixed", inset: 0, background: "rgba(17,24,39,.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
           <div onClick={e => e.stopPropagation()} role="dialog" aria-label="Producteur" style={{ background: "#fff", borderRadius: 16, padding: 20, width: "100%", maxWidth: 440, maxHeight: "92vh", overflowY: "auto", boxSizing: "border-box" }}>
-            <div style={{ fontWeight: 900, fontSize: 17, marginBottom: 12 }}>{edition.origine ? `✏️ ${edition.origine}` : "＋ Nouveau producteur"}</div>
+            <div style={{ fontWeight: 900, fontSize: 17, marginBottom: 12, overflowWrap: "anywhere" }}>{edition.origine ? `✏️ ${edition.origine}` : "＋ Nouveau producteur"}</div>
             {CHAMPS.map(c => (
               <label key={c.k} style={{ display: "block", marginBottom: 10 }}>
                 <span style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>{c.lib}</span>

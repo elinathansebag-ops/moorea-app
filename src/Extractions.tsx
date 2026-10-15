@@ -215,7 +215,7 @@ function RechercheIntelligente({ options, placeholder, onChoisir, c, grand, auto
                 : <span style={{ width: 26 }} />)}
               <span style={{ fontSize: 16 }}>{iconeOption(o)}</span>
               <span style={{ flex: 1, minWidth: 0 }}>
-                <span style={{ display: "block", fontWeight: 700 }}>{o.valeur}</span>
+                <span style={{ display: "block", fontWeight: 700, overflowWrap: "anywhere" }}>{o.valeur}</span>
                 {o.detail && <span style={{ display: "block", fontSize: 11.5, color: c.gris }}>{o.detail}</span>}
               </span>
               {(multi || onCocher) && estChoisi?.(o) && <span style={{ fontSize: 11.5, fontWeight: 900, color: "#15803d", whiteSpace: "nowrap" }}>✓ {multi ? "compris dans le calcul" : "sélectionné"}</span>}
@@ -242,7 +242,7 @@ function Bloc({ titre, c, children, droite }: { titre: string; c: Couleurs; chil
   return (
     <div style={{ background: c.carte, border: `1px solid ${c.bord}`, borderRadius: 12, padding: "12px 14px", marginBottom: 12 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-        <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: c.texte, flex: 1 }}>{titre}</p>
+        <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: c.texte, flex: "1 1 200px", minWidth: 0, overflowWrap: "anywhere" }}>{titre}</p>
         {droite}
       </div>
       {children}
@@ -288,7 +288,7 @@ function ListeChoix({ c, items, onChoisir, choisi, max = 400, hauteur = 320 }: {
 
 function Choisi({ libelle, onRetirer, c }: { libelle: string; onRetirer: () => void; c: Couleurs }) {
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 6px 6px 12px", borderRadius: 999, background: c.vert, color: "#fff", fontSize: 13, fontWeight: 800 }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 6px 6px 12px", borderRadius: 999, background: c.vert, color: "#fff", fontSize: 13, fontWeight: 800, maxWidth: "100%", boxSizing: "border-box", overflowWrap: "anywhere" }}>
       {libelle}
       <button type="button" onClick={onRetirer} aria-label="Retirer" style={{ border: "none", background: "rgba(255,255,255,.2)", color: "#fff", borderRadius: 999, width: 22, height: 22, cursor: "pointer", fontWeight: 900 }}>×</button>
     </span>
@@ -302,7 +302,7 @@ function Tableau({ entetes, lignes, total, c, droite = [] }: { entetes: string[]
   const td = { padding: "7px 10px", fontSize: 13, borderBottom: `1px solid ${c.bord}` };
   return (
     <>
-      <div style={{ overflowX: "auto", background: c.carte, border: `1px solid ${c.bord}`, borderRadius: 12, maxHeight: "65vh" }}>
+      <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", background: c.carte, border: `1px solid ${c.bord}`, borderRadius: 12, maxHeight: "65vh" }}>
         <table style={{ borderCollapse: "collapse", width: "100%" }}>
           <thead><tr>{entetes.map((h, i) => <th key={h} style={{ ...th, textAlign: droite.includes(i) ? "right" : "left" }}>{h}</th>)}</tr></thead>
           <tbody>
@@ -430,7 +430,7 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
                     placeholder={ventes === null ? "Chargement de la base…" : "🔍 Un client, un fournisseur, un article, une famille, une date (15/09), une semaine (S42), « refus »…"} />
                   {selection.length > 0 && (
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
-                      {selection.map(o => <span key={cleOpt(o)} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 4px 4px 10px", borderRadius: 999, background: "rgba(255,255,255,.18)", fontSize: 12.5, fontWeight: 800 }}>{iconeOption(o)} {o.valeur}<button type="button" onClick={() => cocher(o)} style={{ border: "none", background: "rgba(255,255,255,.25)", color: "#fff", borderRadius: 999, width: 20, height: 20, cursor: "pointer", fontWeight: 900 }}>×</button></span>)}
+                      {selection.map(o => <span key={cleOpt(o)} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 4px 4px 10px", borderRadius: 999, background: "rgba(255,255,255,.18)", fontSize: 12.5, fontWeight: 800, maxWidth: "100%", boxSizing: "border-box", overflowWrap: "anywhere" }}>{iconeOption(o)} {o.valeur}<button type="button" onClick={() => cocher(o)} style={{ border: "none", background: "rgba(255,255,255,.25)", color: "#fff", borderRadius: 999, width: 20, height: 20, cursor: "pointer", fontWeight: 900 }}>×</button></span>)}
                       <button type="button" onClick={ouvrirSelection} style={{ padding: "6px 14px", borderRadius: 999, border: "none", background: "#fff", color: "#1f4440", fontWeight: 900, cursor: "pointer" }}>📈 Voir les ventes ({selection.length})</button>
                     </div>
                   )}
@@ -451,7 +451,7 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
             {voirExtractions && email && <MesRapports c={c} email={email} ouvrir={r => { setPreset({ rapport: r }); setOnglet("produits"); }} />}
             {voirExtractions && ventes && ventes.length > 0 && <TableauBordStats c={c} ventes={ventes} voirMarge={voirMarge} voirEuros={voirEuros} ouvrir={(o, p) => { setPreset(p); setOnglet(o); }} />}
             {voirExtractions && <CalendrierJournee c={c} ventes={ventes} arrivages={arrivages} voirEuros={voirEuros} ouvrir={(o, p) => { setPreset(p); setOnglet(o); }} />}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 12 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(260px, 100%), 1fr))", gap: 12 }}>
               {cartes.map(x => {
                 const t = TEINTES[x.k] || TEINTES.config;
                 return (
@@ -825,14 +825,15 @@ function Calendrier({ c, mois, setMois, marque, onJour, jourChoisi }: { c: Coule
         <span style={{ flex: 1, textAlign: "center", fontWeight: 800, fontSize: 15 }}>{MOIS_FR[m - 1]} {a}</span>
         <button type="button" onClick={() => changer(1)} style={puce(c, false)}>›</button>
       </div>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 4 }}>
+      {/* 15/10/2026 — téléphone : minmax(0, 1fr), sinon le texte des cases (« 12 arr. · 8 cl. ») élargit la grille hors de l'écran */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", gap: 4 }}>
         {["L", "M", "M", "J", "V", "S", "D"].map((j, i) => <div key={i} style={{ textAlign: "center", fontSize: 11, fontWeight: 800, color: c.gris }}>{j}</div>)}
         {cases.map((d, i) => {
           if (!d) return <div key={i} />;
           const mq = marque(d);
           return (
             <button key={d} type="button" onClick={() => onJour(d)} title={mq?.info || ""}
-              style={{ minHeight: 46, borderRadius: 8, border: `2px solid ${jourChoisi === d ? c.vert : d === auj ? "#c8a84b" : "transparent"}`, background: mq ? mq.fond : (c.sombre ? "#111" : "#f9fafb"), color: mq ? mq.texte : c.gris, cursor: "pointer", padding: 2, fontSize: 12.5, fontWeight: 800 }}>
+              style={{ minHeight: 46, minWidth: 0, overflow: "hidden", borderRadius: 8, border: `2px solid ${jourChoisi === d ? c.vert : d === auj ? "#c8a84b" : "transparent"}`, background: mq ? mq.fond : (c.sombre ? "#111" : "#f9fafb"), color: mq ? mq.texte : c.gris, cursor: "pointer", padding: 2, fontSize: 12.5, fontWeight: 800 }}>
               {Number(d.slice(8))}
               {mq?.info && <div style={{ fontSize: 9.5, fontWeight: 600, lineHeight: 1.1, marginTop: 1, overflow: "hidden", whiteSpace: "nowrap", textOverflow: "ellipsis" }}>{mq.info}</div>}
             </button>
@@ -1101,7 +1102,7 @@ function ReglagesAffichage({ c }: { c: Couleurs }) {
           const euros = acces.hasModule("euros"), marge = acces.hasModule("marge"), stats = acces.hasModule("extractions");
           return (
             <div key={u.email} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 0", borderTop: `1px solid ${c.bord}` }}>
-              <span style={{ flex: 1, minWidth: 200, fontSize: 13.5, fontWeight: 700 }}>{u.email}{!stats && !acces.isAdmin && <span style={{ fontSize: 11, color: c.gris, fontWeight: 500 }}> · n'a pas 📊 Stats</span>}</span>
+              <span style={{ flex: 1, minWidth: "min(200px, 100%)", fontSize: 13.5, fontWeight: 700, overflowWrap: "anywhere" }}>{u.email}{!stats && !acces.isAdmin && <span style={{ fontSize: 11, color: c.gris, fontWeight: 500 }}> · n'a pas 📊 Stats</span>}</span>
               {acces.isAdmin ? <span style={{ fontSize: 12, fontWeight: 800, color: c.gris }}>Admin — voit tout</span> : (
                 <>
                   {groupe(<>{bouton(euros, "€ Montants", () => !euros && regler(u.email, "euros", true))}{bouton(!euros, "📦 Colis", () => euros && regler(u.email, "euros", false))}</>)}
@@ -1137,13 +1138,13 @@ function MesRapports({ c, email, ouvrir }: { c: Couleurs; email: string; ouvrir:
   return (
     <div style={{ marginBottom: 16 }}>
       <p style={{ margin: "0 0 8px", fontSize: 14, fontWeight: 900 }}>⭐ Mes rapports</p>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(250px, 1fr))", gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(250px, 100%), 1fr))", gap: 10 }}>
         {visibles.map(r => {
           const fav = !!r.favoris?.[moi], aMoi = r.auteurEmail === email, res = resumeRapport(r);
           return (
             <div key={r.id} style={{ position: "relative", background: fav ? (c.sombre ? "#2a2410" : "#fffbeb") : c.carte, border: `1.5px solid ${fav ? "#f5d77a" : c.bord}`, borderRadius: 14, padding: "12px 14px" }}>
               <button type="button" onClick={() => ouvrir(r)} style={{ display: "block", width: "100%", textAlign: "left", border: "none", background: "none", color: c.texte, cursor: "pointer", padding: "0 26px 0 0" }}>
-                <span style={{ display: "block", fontSize: 14.5, fontWeight: 900 }}>{r.nom}</span>
+                <span style={{ display: "block", fontSize: 14.5, fontWeight: 900, overflowWrap: "anywhere" }}>{r.nom}</span>
                 <span style={{ display: "block", fontSize: 12, color: c.gris, marginTop: 2 }}>📅 {res.p} · {res.vue}</span>
                 <span style={{ display: "block", fontSize: 12, color: c.gris, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{res.quoi}</span>
                 <span style={{ display: "block", fontSize: 11, color: c.gris, marginTop: 4 }}>{aMoi ? (r.partage === "moi" ? "🔒 Pour moi" : r.partage === "tous" ? "👥 Partagé avec tous" : `👥 Partagé avec ${Object.keys(r.partageAvec || {}).length} compte(s)`) : `👤 De ${r.auteur || r.auteurEmail}`}</span>
@@ -1195,7 +1196,7 @@ function EnregistrerRapport({ c, email, auteur, existant, config, periodeLib, on
         </div>
       )}
       {erreur && <p style={{ margin: "0 0 8px", fontSize: 12.5, fontWeight: 700, color: "#b91c1c" }}>{erreur}</p>}
-      <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button type="button" onClick={enregistrer} style={{ padding: "10px 16px", borderRadius: 10, border: "none", background: c.vert, color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>{existant ? "💾 Mettre à jour" : "⭐ Enregistrer"}</button>
         <button type="button" onClick={onFin} style={{ padding: "10px 16px", borderRadius: 10, border: `1.5px solid ${c.bord}`, background: c.carte, color: c.texte, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
       </div>
@@ -1239,9 +1240,9 @@ function ChoixPeriode({ c, debut, fin, min, max, onChange }: { c: Couleurs; debu
     const nb = new Date(a, mm, 0).getDate(), decal = (new Date(a, mm - 1, 1).getDay() + 6) % 7;
     const cases: (string | null)[] = [...Array(decal).fill(null), ...Array.from({ length: nb }, (_, i) => `${m}-${String(i + 1).padStart(2, "0")}`)];
     return (
-      <div style={{ flex: "1 1 260px", minWidth: 250 }}>
+      <div style={{ flex: "1 1 260px", minWidth: "min(250px, 100%)" }}>
         <p style={{ margin: "0 0 6px", textAlign: "center", fontWeight: 900, fontSize: 14 }}>{MOIS_FR[mm - 1]} {a}</p>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", rowGap: 3 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, minmax(0, 1fr))", rowGap: 3 }}>
           {["L", "M", "M", "J", "V", "S", "D"].map((j, i) => <div key={i} style={{ textAlign: "center", fontSize: 10.5, fontWeight: 800, color: c.gris }}>{j}</div>)}
           {cases.map((j, i) => {
             if (!j) return <div key={i} />;
@@ -1327,7 +1328,7 @@ function ChoixPeriode({ c, debut, fin, min, max, onChange }: { c: Couleurs; debu
               </div>
             </>
           )}
-          <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "flex-end" }}>
+          <div style={{ display: "flex", gap: 8, marginTop: 12, justifyContent: "flex-end", flexWrap: "wrap" }}>
             {min && max && <button type="button" onClick={() => { setEnCours(null); setSemEnCours(null); onChange(min, max); }} style={puce(c, false)}>Toute la base</button>}
             <button type="button" onClick={() => setOuvert(false)} style={{ ...puce(c, true), padding: "7px 16px" }}>OK</button>
           </div>
@@ -1442,9 +1443,9 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
       <div style={{ borderRadius: 18, padding: "18px 20px", marginBottom: 12, background: estClient ? "linear-gradient(135deg, #1e3a8a, #2563eb)" : "linear-gradient(135deg, #92400e, #d97706)", color: "#fff" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
           <span style={{ fontSize: 34 }}>{estClient ? "👤" : "🏭"}</span>
-          <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ flex: 1, minWidth: "min(200px, 100%)" }}>
             <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.8, textTransform: "uppercase", letterSpacing: ".06em" }}>Fiche {estClient ? "client" : "fournisseur"}</div>
-            <div style={{ fontSize: 22, fontWeight: 900 }}>{nom}</div>
+            <div style={{ fontSize: 22, fontWeight: 900, overflowWrap: "anywhere" }}>{nom}</div>
             <div style={{ fontSize: 12.5, opacity: 0.85 }}>{d.jours.length ? `${estClient ? "Livré" : "Vendu"} du ${dateFr(d.jours[0])} au ${dateFr(d.jours[d.jours.length - 1])} · ${d.jours.length} jour${d.jours.length > 1 ? "s" : ""}` : (debut || fin ? "Aucune vente sur la période choisie" : "Aucune vente dans la base")}</div>
           </div>
           <button type="button" onClick={() => choisir(undefined as any)} style={{ padding: "8px 12px", borderRadius: 10, border: "1.5px solid rgba(255,255,255,.5)", background: "rgba(255,255,255,.12)", color: "#fff", fontWeight: 800, cursor: "pointer" }}>Changer</button>
@@ -1481,7 +1482,7 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
           </div>
         </Bloc>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 12 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))", gap: 12 }}>
         <div>{liste(`🥬 ${estClient ? "Ce qu'il achète" : "Ses articles vendus"}`, d.articles, a => ouvrir("produits", { articles: [a] }))}</div>
         <div>{liste(estClient ? "🏭 Ses fournisseurs" : "👤 Ses clients", d.autres, k => choisir({ type: estClient ? "fournisseur" : "client", nom: k }))}</div>
       </div>
@@ -1497,7 +1498,7 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
             {litigesFiche.slice(0, 60).map(x => (
               <div key={x.id} style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", padding: "7px 0", borderTop: `1px solid ${c.bord}`, fontSize: 13 }}>
                 <span style={{ minWidth: 86, fontWeight: 800 }}>{dateFr(x.dateLivraison)}</span>
-                <span style={{ flex: 1, minWidth: 200 }}>{x.article}<span style={{ color: c.gris }}>{x.site ? ` · ${x.site}` : ""} · {x.bl}</span></span>
+                <span style={{ flex: 1, minWidth: "min(200px, 100%)", overflowWrap: "anywhere" }}>{x.article}<span style={{ color: c.gris }}>{x.site ? ` · ${x.site}` : ""} · {x.bl}</span></span>
                 <BadgeLitigeClient litige={x} />
               </div>
             ))}
@@ -1530,7 +1531,7 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
               return (
                 <div key={r.id} style={{ display: "flex", gap: 10, flexWrap: "wrap", padding: "7px 0", borderTop: `1px solid ${c.bord}`, fontSize: 13, alignItems: "center" }}>
                   <span style={{ minWidth: 86, fontWeight: 800 }}>{r.date || ""}</span>
-                  <span style={{ flex: 1, minWidth: 180 }}>{r.produit || ""}{r.lotMoorea ? ` · lot ${r.lotMoorea}` : ""}</span>
+                  <span style={{ flex: 1, minWidth: "min(180px, 100%)", overflowWrap: "anywhere" }}>{r.produit || ""}{r.lotMoorea ? ` · lot ${r.lotMoorea}` : ""}</span>
                   {r.temperature && <span style={{ color: c.gris }}>🌡️ {r.temperature}°</span>}
                   {r.score ? <span style={{ color: c.gris }}>⭐ {r.score}</span> : null}
                   <span style={{ fontWeight: 900, color: coul }}>{dec === "refus" ? "Refus" : dec === "reserve" ? "Réserve" : "Conforme"}</span>
@@ -1594,7 +1595,7 @@ export function FicheRapport({ c, rapport: r, onClose, onVoirRapport, actions = 
         <div style={{ padding: "16px 20px", background: st.f, color: "#fff", borderRadius: "20px 20px 0 0", display: "flex", alignItems: "flex-start", gap: 10, position: "sticky", top: 0, zIndex: 1 }}>
           <div style={{ flex: 1, minWidth: 0 }}>
             <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.85 }}>{st.t}{r.numeroRapport ? ` · Rapport ${r.numeroRapport}` : ""}</div>
-            <div style={{ fontSize: 19, fontWeight: 900, lineHeight: 1.2 }}>{r.produit || ""}</div>
+            <div style={{ fontSize: 19, fontWeight: 900, lineHeight: 1.2, overflowWrap: "anywhere" }}>{r.produit || ""}</div>
             <div style={{ fontSize: 13, opacity: 0.92, marginTop: 2 }}>{r.fournisseur || ""} · {r.date || ""}{r.heure ? ` à ${r.heure}` : ""}{r.agreeur ? ` · ${r.agreeur}` : ""}</div>
           </div>
           <button type="button" onClick={onClose} style={{ border: "none", background: "rgba(255,255,255,.2)", color: "#fff", width: 34, height: 34, borderRadius: 17, fontSize: 18, cursor: "pointer", flexShrink: 0 }}>×</button>
@@ -1642,7 +1643,7 @@ export function FicheRapport({ c, rapport: r, onClose, onVoirRapport, actions = 
             </div>
           )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", columnGap: 20 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(200px, 100%), 1fr))", columnGap: 20 }}>
             {champ("Lot Moorea", r.lotMoorea)}{champ("Lot fournisseur", r.lotFournisseur)}
             {champ("N° de traçabilité", r.numeroTracabilite)}{champ("Origine", r.origine)}
             {champ("Calibre / conditionnement", [r.calibre, r.conditionnement].filter(Boolean).join(" · "))}

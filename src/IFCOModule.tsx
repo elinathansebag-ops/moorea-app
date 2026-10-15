@@ -82,7 +82,7 @@ function fmtDate(val: any): string {
 }
 
 export default function IFCOModule({ onClose, userName }: { onClose: () => void; userName: string }) {
-  const S: React.CSSProperties = { padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, background: "#fff", fontSize: 13, outline: "none", width: "100%", fontFamily: "inherit" };
+  const S: React.CSSProperties = { padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, background: "#fff", fontSize: 13, outline: "none", width: "100%", fontFamily: "inherit", boxSizing: "border-box" };
 
   // ── State ──
   const [histo, setHisto] = useState<HistoEntry[]>([]);
@@ -783,8 +783,8 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
                   <p style={{ margin: 0, fontSize: 12, color: "#92400e" }}>Ces clients sont exclu de l'export. Entrez le code IFCO pour les valider.</p>
                 </div>
                 {pendingClients.map(c => (
-                  <div key={c} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, background: "#fff", border: "1.5px solid #fde68a", borderRadius: 8, padding: "10px 12px" }}>
-                    <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: "#92400e" }}>⏳ {c}</span>
+                  <div key={c} style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 8, background: "#fff", border: "1.5px solid #fde68a", borderRadius: 8, padding: "10px 12px" }}>
+                    <span style={{ flex: "1 1 140px", minWidth: 0, overflowWrap: "anywhere", fontSize: 12, fontWeight: 600, color: "#92400e" }}>⏳ {c}</span>
                     <input
                       type="number"
                       placeholder="Code IFCO"
@@ -1039,17 +1039,17 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
                   </div>
                 ) : (
                   Object.entries(clients).filter(([k, v]) => !clientSearch || k.toLowerCase().includes(clientSearch.toLowerCase()) || String(v).includes(clientSearch)).map(([name, code]) => (
-                    <div key={name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 16px", borderBottom: "1px solid #f4f4f4", background: editKey === name ? "#f8fffe" : "#fff" }}>
+                    <div key={name} style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, padding: "12px 16px", borderBottom: "1px solid #f4f4f4", background: editKey === name ? "#f8fffe" : "#fff" }}>
                       {editKey === name ? (
                         <>
-                          <input value={newName} onChange={e => setNewName(e.target.value)} style={{ flex: 2, padding: "6px 10px", border: "1.5px solid #27ae60", borderRadius: 6, fontSize: 12, fontFamily: "inherit", outline: "none" }} />
+                          <input value={newName} onChange={e => setNewName(e.target.value)} style={{ flex: 2, minWidth: 0, padding: "6px 10px", border: "1.5px solid #27ae60", borderRadius: 6, fontSize: 12, fontFamily: "inherit", outline: "none" }} />
                           <input value={newCode} onChange={e => setNewCode(e.target.value)} type="number" style={{ width: 100, padding: "6px 10px", border: "1.5px solid #27ae60", borderRadius: 6, fontSize: 12, fontFamily: "inherit", outline: "none" }} />
                           <button onClick={() => { const m = {...clients}; delete m[editKey]; m[newName.trim()] = parseInt(newCode); saveClients(m); setEditKey(null); setNewName(""); setNewCode(""); }} style={{ background: "#27ae60", border: "none", borderRadius: 6, padding: "4px 12px", fontSize: 11, cursor: "pointer", color: "#fff", fontWeight: 700 }}>✓</button>
                           <button onClick={() => setEditKey(null)} style={{ background: "#f5f5f5", border: "none", borderRadius: 6, padding: "4px 12px", fontSize: 11, cursor: "pointer", color: "#555", fontWeight: 700 }}>✕</button>
                         </>
                       ) : (
                         <>
-                          <span style={{ flex: 2, fontSize: 12, fontWeight: 700, color: "#2c3e50" }}>{name}</span>
+                          <span style={{ flex: 2, minWidth: 0, overflowWrap: "anywhere", fontSize: 12, fontWeight: 700, color: "#2c3e50" }}>{name}</span>
                           <span style={{ fontSize: 13, color: "#27ae60", fontWeight: 800, fontFamily: "monospace", background: "#f0fff6", padding: "4px 10px", borderRadius: 6 }}>{code}</span>
                           <button onClick={() => { setEditKey(name); setNewName(name); setNewCode(String(code)); }} style={{ background: "#f0fff6", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer", color: "#1a6b3a", fontWeight: 700 }}>✏️</button>
                           <button onClick={() => { if(confirm(`Supprimer "${name}" ?`)) { const m = {...clients}; delete m[name]; saveClients(m); } }} style={{ background: "#fdedec", border: "none", borderRadius: 6, padding: "4px 10px", fontSize: 12, cursor: "pointer", color: "#c0392b", fontWeight: 700 }}>🗑️</button>
@@ -1117,7 +1117,7 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
         };
         return (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-            <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 500, width: "100%", borderTop: "7px solid #f59e0b", maxHeight: "85vh", overflowY: "auto" }}>
+            <div style={{ background: "#fff", borderRadius: 18, padding: "24px clamp(16px, 5vw, 28px)", maxWidth: 500, width: "100%", borderTop: "7px solid #f59e0b", maxHeight: "85vh", overflowY: "auto" }}>
               <div style={{ textAlign: "center", marginBottom: 18 }}>
                 <div style={{ fontSize: 32, marginBottom: 6 }}>⏳</div>
                 <p style={{ fontSize: 15, fontWeight: 800, color: "#b45309", margin: 0 }}>Clients en attente IFCO</p>
@@ -1183,7 +1183,7 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
         };
         return (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-            <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 460, width: "100%", borderTop: "7px solid #e74c3c" }}>
+            <div style={{ background: "#fff", borderRadius: 18, padding: "24px clamp(16px, 5vw, 28px)", maxWidth: 460, width: "100%", borderTop: "7px solid #e74c3c", maxHeight: "90vh", overflowY: "auto" }}>
               <div style={{ textAlign: "center", marginBottom: 16 }}>
                 <div style={{ fontSize: 32, marginBottom: 6 }}>🚨</div>
                 <p style={{ fontSize: 15, fontWeight: 800, color: "#c0392b", margin: 0 }}>Codes IFCO manquants !</p>
@@ -1223,7 +1223,7 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
       {/* MODAL CAISSES */}
       {showPalettesForm && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 450, width: "100%", borderTop: "7px solid #27ae60" }}>
+          <div style={{ background: "#fff", borderRadius: 18, padding: "24px clamp(16px, 5vw, 28px)", maxWidth: 450, width: "100%", borderTop: "7px solid #27ae60", maxHeight: "90vh", overflowY: "auto" }}>
             <div style={{ textAlign: "center", marginBottom: 20 }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>📦</div>
               <p style={{ fontSize: 16, fontWeight: 800, color: "#1a6b3a", margin: 0 }}>Déclarer les caisses IFCO</p>
@@ -1281,7 +1281,7 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
       {/* MODAL RECONDITIONNEMENT */}
       {showReconForm && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 450, width: "100%", borderTop: "7px solid #3b82f6" }}>
+          <div style={{ background: "#fff", borderRadius: 18, padding: "24px clamp(16px, 5vw, 28px)", maxWidth: 450, width: "100%", borderTop: "7px solid #3b82f6", maxHeight: "90vh", overflowY: "auto" }}>
             <div style={{ textAlign: "center", marginBottom: 20 }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>🔄</div>
               <p style={{ fontSize: 16, fontWeight: 800, color: "#1a6b3a", margin: 0 }}>Reconditionnement</p>
@@ -1330,7 +1330,7 @@ export default function IFCOModule({ onClose, userName }: { onClose: () => void;
       {/* MODAL ENTRÉE IFCO */}
       {showEntreeForm && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 450, width: "100%", borderTop: "7px solid #f59e0b" }}>
+          <div style={{ background: "#fff", borderRadius: 18, padding: "24px clamp(16px, 5vw, 28px)", maxWidth: 450, width: "100%", borderTop: "7px solid #f59e0b", maxHeight: "90vh", overflowY: "auto" }}>
             <div style={{ textAlign: "center", marginBottom: 20 }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>📦</div>
               <p style={{ fontSize: 16, fontWeight: 800, color: "#1a6b3a", margin: 0 }}>Entrée IFCO</p>

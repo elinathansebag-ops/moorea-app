@@ -730,7 +730,7 @@ export function StattModule({ onClose, userName }: { onClose: () => void; userNa
                     ? <>📅 Données disponibles du <b style={{ color: "#1a2e1a" }}>{new Date(periodeCouverte.min).toLocaleDateString("fr-FR")}</b> au <b style={{ color: "#1a2e1a" }}>{new Date(periodeCouverte.max).toLocaleDateString("fr-FR")}</b></>
                     : "Aucune donnée de vente chargée."}
                 </p>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
                   {importStatus && <span style={{ fontSize: 11.5, color: "#555" }}>{importStatus}</span>}
                   <input type="file" id="pa-import-file" accept=".xlsx,.xls,.csv" style={{ display: "none" }}
                     onChange={e => { const f = e.target.files?.[0]; if (f) importerFichierVentes(f); e.target.value = ""; }} />
@@ -914,7 +914,7 @@ export function StattModule({ onClose, userName }: { onClose: () => void; userNa
                   background: "#fff", borderRadius: 10, padding: "12px 14px", marginBottom: 8, cursor: "pointer",
                   display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 1px 3px rgba(0,0,0,0.06)",
                 }}>
-                  <div>
+                  <div style={{ minWidth: 0, overflowWrap: "anywhere" }}>
                     <p style={{ margin: 0, fontWeight: 700, fontSize: 14.5, color: "#1a2e1a" }}>{p.nom}</p>
                     <p style={{ margin: "2px 0 0", fontSize: 12, color: "#888" }}>
                       {p.dateDebut ? new Date(p.dateDebut).toLocaleDateString("fr-FR") : "?"} → {p.dateFin ? new Date(p.dateFin).toLocaleDateString("fr-FR") : "?"}
@@ -1114,7 +1114,7 @@ export function StattModule({ onClose, userName }: { onClose: () => void; userNa
               Coche les {vueObjectifs === "produit" ? "articles" : "clients"} à inclure dans ce programme — pas besoin de saisir une quantité sur tout le catalogue.
             </p>
 
-            <div style={{ background: "#fff", borderRadius: 10, padding: "8px 10px", marginBottom: 10, fontSize: 12.5, color: "#555", display: "flex", gap: 16 }}>
+            <div style={{ background: "#fff", borderRadius: 10, padding: "8px 10px", marginBottom: 10, fontSize: 12.5, color: "#555", display: "flex", gap: "4px 16px", flexWrap: "wrap" }}>
               <span>Total à acheter (produits) : <b style={{ color: "#1a2e1a" }}>{totaux.achat.toLocaleString("fr-FR")}</b> colis</span>
               <span>Total prévu vente (clients) : <b style={{ color: "#1a2e1a" }}>{totaux.vente.toLocaleString("fr-FR")}</b> colis</span>
             </div>

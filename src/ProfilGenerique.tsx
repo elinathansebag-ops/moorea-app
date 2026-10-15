@@ -106,7 +106,9 @@ export function ProfilGenerique() {
   if (actuel) return (
     <button type="button" onClick={() => definirProfil(null)} title="Changer de profil"
       style={{ position: "fixed", top: "calc(env(safe-area-inset-top, 0px) + 6px)", right: "calc(env(safe-area-inset-right, 0px) + 8px)", zIndex: 1900, display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 20, border: "1px solid rgba(255,255,255,.45)", background: "rgba(48,90,85,.95)", color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer", boxShadow: "0 2px 8px rgba(0,0,0,.25)" }}>
-      👤 {actuel} <span style={{ color: "#bfe0c8" }}>· Changer de profil</span>
+      {/* 15/10/2026 — téléphone : pastille réduite au prénom, pour moins cacher l'en-tête des pages. */}
+      <style>{`@media (max-width: 600px) { .profil-pastille-detail { display: none; } }`}</style>
+      👤 {actuel} <span className="profil-pastille-detail" style={{ color: "#bfe0c8" }}>· Changer de profil</span>
     </button>
   );
 
@@ -114,10 +116,11 @@ export function ProfilGenerique() {
   const favoris = liste?.favoris || [];
   const autres = personnes.filter(p => p !== dernier && !favoris.includes(p));
   return (
-    <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(10,10,10,.92)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16, overflowY: "auto", fontFamily: "system-ui, -apple-system, sans-serif" }}>
-      <div role="dialog" aria-label="Qui es-tu ?" style={{ background: "#fff", borderRadius: 20, padding: 20, width: "100%", maxWidth: 560 }}>
+    <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(10,10,10,.92)", display: "flex", padding: 16, overflowY: "auto", fontFamily: "system-ui, -apple-system, sans-serif" }}>
+      {/* 15/10/2026 — téléphone : centré par margin auto (et non alignItems center) pour que le haut de la fenêtre reste atteignable en défilant quand elle dépasse l'écran. */}
+      <div role="dialog" aria-label="Qui es-tu ?" style={{ background: "#fff", borderRadius: 20, padding: 20, width: "100%", maxWidth: 560, margin: "auto", boxSizing: "border-box" }}>
         <div style={{ fontSize: 24, fontWeight: 900, color: "#111827" }}>👋 Qui es-tu ?</div>
-        <div style={{ fontSize: 13, color: "#6b7280", marginTop: 2 }}>Compte partagé : <b>{email}</b> — tes actions seront enregistrées à ton nom.</div>
+        <div style={{ fontSize: 13, color: "#6b7280", marginTop: 2, overflowWrap: "anywhere" }}>Compte partagé : <b>{email}</b> — tes actions seront enregistrées à ton nom.</div>
         <div style={{ marginTop: 12, padding: "9px 12px", borderRadius: 12, background: "#fffbeb", border: "1.5px solid #fde68a", fontSize: 12.5, color: "#92400e", fontWeight: 600 }}>
           💡 Le mieux est de te connecter avec ta propre adresse @moorea.fr plutôt qu'avec un compte partagé : tout ce que tu fais est alors automatiquement à ton nom.
         </div>
@@ -140,7 +143,7 @@ export function ProfilGenerique() {
         </select>
         {autre !== null && (
           <form onSubmit={e => { e.preventDefault(); choisir(autre); }} style={{ display: "flex", gap: 8, marginTop: 10 }}>
-            <input autoFocus value={autre} onChange={e => setAutre(e.target.value)} placeholder="Ton prénom" aria-label="Ton prénom" style={{ flex: 1, height: 48, padding: "0 12px", borderRadius: 12, border: "1.5px solid #d1d5db", fontSize: 16 }} />
+            <input autoFocus value={autre} onChange={e => setAutre(e.target.value)} placeholder="Ton prénom" aria-label="Ton prénom" style={{ flex: 1, minWidth: 0, height: 48, padding: "0 12px", borderRadius: 12, border: "1.5px solid #d1d5db", fontSize: 16 }} />
             <button type="submit" disabled={!autre.trim()} style={{ height: 48, padding: "0 18px", borderRadius: 12, border: "none", background: autre.trim() ? "#111827" : "#9ca3af", color: "#fff", fontWeight: 900, cursor: "pointer" }}>OK</button>
           </form>
         )}

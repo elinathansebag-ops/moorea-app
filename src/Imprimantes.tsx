@@ -130,11 +130,11 @@ export function ReglagesImpression({ darkMode }: { darkMode?: boolean }) {
         const t = tests[nom];
         return (
           <div key={nom} style={ligne}>
-            <span style={{ flex: 1, minWidth: 180, fontSize: 13, fontWeight: 600, color: texte }}>
+            <span style={{ flex: 1, minWidth: "min(180px, 100%)", fontSize: 13, fontWeight: 600, color: texte, overflowWrap: "anywhere" }}>
               {nom} <span style={{ fontSize: 11, color: gris, fontWeight: 500 }}>· {LIBELLE_FORMAT[formatDe(nom)]}</span>
             </span>
             {t && (
-              <span style={{ fontSize: 11.5, fontWeight: 700, color: t.etat === "ok" ? "#15803d" : t.etat === "erreur" ? "#b91c1c" : gris }}>
+              <span style={{ fontSize: 11.5, fontWeight: 700, overflowWrap: "anywhere", color: t.etat === "ok" ? "#15803d" : t.etat === "erreur" ? "#b91c1c" : gris }}>
                 {t.etat === "envoi" ? "⏳ envoyée…" : t.etat === "ok" ? "✅ imprimée" : t.etat === "erreur" ? `❌ ${t.message || "erreur"}` : `⚠️ ${t.message}`}
               </span>
             )}
@@ -149,9 +149,9 @@ export function ReglagesImpression({ darkMode }: { darkMode?: boolean }) {
         const absente = pc.imprimantes.length > 0 && !pc.imprimantes.includes(choix[d.cle]);
         return (
           <label key={d.cle} style={ligne}>
-            <span style={{ flex: 1, minWidth: 200, fontSize: 13, fontWeight: 600, color: texte }}>{d.libelle}</span>
+            <span style={{ flex: 1, minWidth: "min(200px, 100%)", fontSize: 13, fontWeight: 600, color: texte }}>{d.libelle}</span>
             <select value={choix[d.cle]} onChange={e => update(ref(db, "config/imprimantes"), { [d.cle]: e.target.value })}
-              style={{ padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${absente ? "#fca5a5" : bord}`, fontSize: 12.5, minWidth: 200 }}>
+              style={{ padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${absente ? "#fca5a5" : bord}`, fontSize: 12.5, minWidth: "min(200px, 100%)", maxWidth: "100%" }}>
               {options.map(o => <option key={o} value={o}>{o}</option>)}
             </select>
             {absente && <span style={{ fontSize: 11, color: "#b91c1c" }}>introuvable sur le PC</span>}
@@ -159,15 +159,15 @@ export function ReglagesImpression({ darkMode }: { darkMode?: boolean }) {
         );
       })}
       <div style={ligne}>
-        <span style={{ flex: 1, minWidth: 200, fontSize: 13, fontWeight: 600, color: texte }}>🏷️ Étiquettes d'arrivage, refus, IFCO</span>
-        <span style={{ fontSize: 12.5, color: gris }}>{pc.parDefaut?.etiquettes || "Brother TD-4650TNWB"} (réglé dans le relais du PC)</span>
+        <span style={{ flex: 1, minWidth: "min(200px, 100%)", fontSize: 13, fontWeight: 600, color: texte }}>🏷️ Étiquettes d'arrivage, refus, IFCO</span>
+        <span style={{ fontSize: 12.5, color: gris, overflowWrap: "anywhere" }}>{pc.parDefaut?.etiquettes || "Brother TD-4650TNWB"} (réglé dans le relais du PC)</span>
       </div>
       {/* 13/10/2026 — Étiquettes d'arrivage sorties en tout petit avec le relais V8.2 : la façon
           d'imprimer se choisit ici (relais V8.3 et plus), à essayer avec « 🧪 Page test » de l'imprimante. */}
       <label style={ligne}>
-        <span style={{ flex: 1, minWidth: 200, fontSize: 13, fontWeight: 600, color: texte }}>📐 Impression des étiquettes d'arrivage</span>
+        <span style={{ flex: 1, minWidth: "min(200px, 100%)", fontSize: 13, fontWeight: 600, color: texte }}>📐 Impression des étiquettes d'arrivage</span>
         <select value={modeArrivage} onChange={e => update(ref(db, "config/imprimantes"), { modeArrivage: e.target.value })}
-          style={{ padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${bord}`, fontSize: 12.5, minWidth: 200 }}>
+          style={{ padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${bord}`, fontSize: 12.5, minWidth: "min(200px, 100%)", maxWidth: "100%" }}>
           <option value="acrobat">Acrobat — comme avant (recommandé)</option>
           <option value="sumatra-reel">SumatraPDF — taille réelle</option>
           <option value="sumatra-reduire">SumatraPDF — réduire seulement si trop grand</option>
@@ -177,17 +177,17 @@ export function ReglagesImpression({ darkMode }: { darkMode?: boolean }) {
       </label>
       {/* 15/10/2026 — Étiquette d'arrivage dessinée par l'appli (PDF prêt, sortie immédiate comme Lidl). */}
       <div style={{ ...ligne, alignItems: "flex-start" }}>
-        <span style={{ flex: 1, minWidth: 200, fontSize: 13, fontWeight: 600, color: texte }}>
+        <span style={{ flex: 1, minWidth: "min(200px, 100%)", fontSize: 13, fontWeight: 600, color: texte }}>
           ⚡ Qui dessine l'étiquette d'arrivage
           <span style={{ display: "block", fontSize: 11.5, fontWeight: 500, color: gris }}>« L'appli » = sortie immédiate, comme les étiquettes Lidl. Essayer d'abord avec l'étiquette d'essai.</span>
         </span>
-        <span style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end" }}>
+        <span style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-end", maxWidth: "100%", minWidth: 0 }}>
           <select value={parAppli ? "appli" : "pc"} onChange={e => update(ref(db, "config/imprimantes"), { etiquetteArrivageAppli: e.target.value === "appli" })}
-            style={{ padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${bord}`, fontSize: 12.5, minWidth: 200 }}>
+            style={{ padding: "6px 10px", borderRadius: 8, border: `1.5px solid ${bord}`, fontSize: 12.5, minWidth: "min(200px, 100%)", maxWidth: "100%" }}>
             <option value="pc">Le PC — comme avant (attente ~10 s)</option>
             <option value="appli">L'appli — plus rapide</option>
           </select>
-          {!relaisAccepteEtiquettePdf(pc.version) && <span style={{ fontSize: 11, color: "#b91c1c", maxWidth: 260, textAlign: "right" }}>relais {pc.version || "?"} : installer la V8.4 sur le PC (sinon les étiquettes continuent d'être dessinées par le PC)</span>}
+          {!relaisAccepteEtiquettePdf(pc.version) && <span style={{ fontSize: 11, color: "#b91c1c", maxWidth: "min(260px, 100%)", textAlign: "right" }}>relais {pc.version || "?"} : installer la V8.4 sur le PC (sinon les étiquettes continuent d'être dessinées par le PC)</span>}
           <button type="button" disabled={!relaisAccepteEtiquettePdf(pc.version) || essai === "…"}
             onClick={async () => {
               setEssai("…");
@@ -201,7 +201,7 @@ export function ReglagesImpression({ darkMode }: { darkMode?: boolean }) {
               } catch (e: any) { setEssai("❌ " + (e?.message || "erreur")); }
               setTimeout(() => setEssai(""), 5000);
             }}
-            style={{ padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${bord}`, background: "#fff", color: texte, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
+            style={{ maxWidth: "100%", padding: "6px 12px", borderRadius: 8, border: `1.5px solid ${bord}`, background: "#fff", color: texte, fontWeight: 700, fontSize: 12, cursor: "pointer" }}>
             {essai || "🧪 Étiquette d'essai (dessinée par l'appli)"}
           </button>
         </span>

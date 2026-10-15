@@ -364,7 +364,7 @@ export function ChargementModule({ onClose }: { onClose: () => void }) {
             <p>Aucun conteneur pour l'instant. Clique sur « Nouveau conteneur » pour commencer à poser des palettes.</p>
           </div>
         ) : (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(260px, 100%), 1fr))", gap: 14 }}>
             {conteneurs.map(c => {
               const stats = calculerStats(c, references, parametres.cartonL, parametres.cartonl, parametres.cartonH);
               const coche = selectionComparaison.has(c.id);
@@ -375,7 +375,7 @@ export function ChargementModule({ onClose }: { onClose: () => void }) {
                     <input type="checkbox" className="mrq-case-native" checked={coche} onChange={() => toggleComparaison(c.id)} />
                     <span className="mrq-case-visuelle" />
                   </label>
-                  <div style={{ fontWeight: 800, fontSize: 14, color: COLORS.gray700, marginBottom: 4, paddingRight: 24 }}>{c.nom}</div>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: COLORS.gray700, marginBottom: 4, paddingRight: 24, overflowWrap: "anywhere" }}>{c.nom}</div>
                   <div style={{ fontSize: 11, color: COLORS.gray400, marginBottom: 10 }}>{new Date(c.dateCreation).toLocaleDateString("fr-FR")}</div>
                   <div style={{ display: "flex", gap: 14, fontSize: 12, color: COLORS.gray600, flexWrap: "wrap" }}>
                     <span>🟦 {stats.nbPalettes} palette{stats.nbPalettes > 1 ? "s" : ""}</span>
@@ -570,12 +570,12 @@ function EditeurConteneur({ conteneur, references, parametres, onBack, onRenomme
 
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
           {editionNom ? (
-            <div style={{ display: "flex", gap: 8 }}>
-              <input value={nomTmp} onChange={e => setNomTmp(e.target.value)} style={{ padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 15, fontWeight: 700 }} autoFocus />
+            <div style={{ display: "flex", gap: 8, minWidth: 0, maxWidth: "100%" }}>
+              <input value={nomTmp} onChange={e => setNomTmp(e.target.value)} style={{ padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 15, fontWeight: 700, minWidth: 0, flex: "1 1 auto" }} autoFocus />
               <button onClick={() => { onRenommer(nomTmp); setEditionNom(false); }} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontWeight: 700, cursor: "pointer" }}>✓</button>
             </div>
           ) : (
-            <h2 onClick={() => setEditionNom(true)} style={{ margin: 0, fontSize: 18, fontWeight: 800, color: COLORS.gray700, cursor: "pointer" }} title="Cliquer pour renommer">{conteneur.nom} ✏️</h2>
+            <h2 onClick={() => setEditionNom(true)} style={{ margin: 0, fontSize: 18, fontWeight: 800, color: COLORS.gray700, cursor: "pointer", minWidth: 0, overflowWrap: "anywhere" }} title="Cliquer pour renommer">{conteneur.nom} ✏️</h2>
           )}
           <div style={{ display: "flex", gap: 8 }}>
             <button onClick={() => setShowReglagesCamion(true)} style={{ padding: "9px 14px", borderRadius: 10, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", cursor: "pointer", fontWeight: 700, fontSize: 12 }}>⚙️ Camion</button>
@@ -583,9 +583,11 @@ function EditeurConteneur({ conteneur, references, parametres, onBack, onRenomme
           </div>
         </div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 2fr) minmax(240px, 1fr)", gap: 16 }}>
+        {/* 15/10/2026 — téléphone : flex qui passe à la ligne (plan au-dessus, stats dessous) au lieu
+            d'une grille 2fr/1fr qui écrasait le plan à ~90 px de large ; même rendu ~2/3–1/3 sur ordinateur. */}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 16 }}>
           {/* ── PLAN DE CHARGEMENT (vue de dessus, cliquable) ── */}
-          <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 14, padding: 16, overflowX: "auto" }}>
+          <div style={{ flex: "2 1 420px", minWidth: 0, boxSizing: "border-box", background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 14, padding: 16, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
             <style>{`
               @keyframes chargementPopIn { 0% { transform: scale(0.4); opacity: 0; } 70% { transform: scale(1.08); opacity: 1; } 100% { transform: scale(1); } }
               .palette-pose { transition: filter 0.15s ease, transform 0.15s ease; transform-box: fill-box; transform-origin: center; }
@@ -652,7 +654,7 @@ function EditeurConteneur({ conteneur, references, parametres, onBack, onRenomme
           </div>
 
           {/* ── STATS ── */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ flex: "1 1 240px", minWidth: 0, display: "flex", flexDirection: "column", gap: 12 }}>
             <div style={{ background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 14, padding: 16 }}>
               <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>🟦 Palettes</div>
               <div style={{ fontSize: 24, fontWeight: 800, color: COLORS.gray700 }}>{stats.nbPalettes}</div>
@@ -710,7 +712,7 @@ function ModaleReglagesCamion({ truck, onClose, onSave }: { truck: TruckConfig; 
   const labelStyle: React.CSSProperties = { fontSize: 11, fontWeight: 700, color: COLORS.gray600, marginBottom: 4, display: "block" };
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, padding: 16 }} onClick={onClose}>
-      <div style={{ background: "#fff", borderRadius: 16, padding: 20, maxWidth: 420, width: "100%" }} onClick={e => e.stopPropagation()}>
+      <div style={{ background: "#fff", borderRadius: 16, padding: 20, maxWidth: 420, width: "100%", maxHeight: "88vh", overflowY: "auto" }} onClick={e => e.stopPropagation()}>
         <h3 style={{ margin: "0 0 14px", fontSize: 16, fontWeight: 800, color: COLORS.gray700 }}>⚙️ Camion de ce conteneur</h3>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 16 }}>
           <div><label style={labelStyle}>Longueur utile (cm)</label><input type="number" value={t.longueur} onChange={e => setT({ ...t, longueur: parseFloat(e.target.value) || 0 })} style={champStyle} /></div>
@@ -926,9 +928,9 @@ function ModalePalette({ mode, x, y, palette, references, truck, cartonL, carton
           <div><label style={labelStyle}>Position — largeur (cm)</label><input type="number" value={posY} onChange={e => setPosY(parseFloat(e.target.value) || 0)} style={champStyle} /></div>
         </div>
 
-        <div style={{ display: "flex", gap: 12, marginBottom: 12, alignItems: "stretch" }}>
+        <div style={{ display: "flex", gap: 12, marginBottom: 12, alignItems: "stretch", flexWrap: "wrap" }}>
           {modeEmpilage === "simple" ? (
-            <div style={{ background: COLORS.gray100, borderRadius: 8, padding: "10px 12px", fontSize: 12, color: COLORS.gray600, flex: 1 }}>
+            <div style={{ background: COLORS.gray100, borderRadius: 8, padding: "10px 12px", fontSize: 12, color: COLORS.gray600, flex: "1 1 200px", minWidth: 0 }}>
               {couche.n} colis/couche ({couche.detail}) → environ <b>{niveauxImpliques}</b> niveau{niveauxImpliques > 1 ? "x" : ""} pour {nbCartons || 0} colis.
               <div style={{ marginTop: 6, fontSize: 11, color: COLORS.gray400 }}>
                 Hauteur camion : ({truck.hauteurUtile} − {truck.hauteurPalette} cm de palette) ÷ {cartonH} cm/carton = <b>{niveauxHauteurCamion} niveaux</b> maxi possibles.
@@ -940,7 +942,7 @@ function ModalePalette({ mode, x, y, palette, references, truck, cartonL, carton
               </div>
             </div>
           ) : (
-            <div style={{ background: COLORS.tertiaryLight, border: `1px solid ${COLORS.tertiary}`, borderRadius: 8, padding: "10px 12px", fontSize: 12, color: "#78350f", flex: 1 }}>
+            <div style={{ background: COLORS.tertiaryLight, border: `1px solid ${COLORS.tertiary}`, borderRadius: 8, padding: "10px 12px", fontSize: 12, color: "#78350f", flex: "1 1 200px", minWidth: 0 }}>
               {couche.n} colis/couche possibles ({couche.detail}).
               {suiteDepassEcrasement && (
                 <div style={{ color: COLORS.danger, marginTop: 4 }}>⚠️ Tu as {pireSuite} couches d'affilée sans palette intermédiaire ({pireSuite * cartonH} cm) — ça dépasse ton réglage écrasement ({truck.hauteurEcrasementCm} cm, soit {niveauxEcrasement} niveaux max) : risque d'écraser les cartons du bas.</div>
@@ -962,7 +964,7 @@ function ModalePalette({ mode, x, y, palette, references, truck, cartonL, carton
               </div>
             </div>
           )}
-          <div style={{ flexShrink: 0 }}>
+          <div style={{ flexShrink: 0, margin: "0 auto" }}>
             <div style={{ fontSize: 10, fontWeight: 700, color: COLORS.gray400, textAlign: "center", marginBottom: 2 }}>Vue de face</div>
             <VueDeFace truck={truck} tranches={tranches} couleur={couleurRef} />
           </div>
@@ -1009,7 +1011,7 @@ function ComparaisonConteneurs({ conteneurs, references, parametres, onBack }: {
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee" }}>
       <PageHeader titre="📊 Comparaison conteneurs" couleur="#0891b2" onBack={onBack} onHome={onBack} />
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 16px 60px", boxSizing: "border-box", overflowX: "auto" }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "16px 16px 60px", boxSizing: "border-box", overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", background: "#fff", borderRadius: 12, overflow: "hidden", minWidth: 500 }}>
           <thead>
             <tr>

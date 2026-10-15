@@ -104,6 +104,10 @@ export const styles = `
     .photo-grid { grid-template-columns: repeat(2, 1fr); }
     .action-row { flex-direction: column; }
     .card { border-radius: 16px; }
+    /* 15/10/2026 — téléphone : tableaux « Par fournisseur / Par produit » (Rapports › 📊 Stats) —
+       colonnes chiffrées resserrées pour laisser de la place au nom, qui passe à la ligne. */
+    .stats-grille-5 { grid-template-columns: minmax(0, 1fr) 36px 52px 38px 46px !important; column-gap: 6px !important; }
+    .stats-grille-5 > span:first-child { overflow-wrap: anywhere; }
   }
   @media (min-width: 600px) and (max-width: 1024px) {
     .content-wrap { padding: 24px 24px; }

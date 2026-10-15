@@ -186,9 +186,9 @@ export function AttributionNotifications({ comptes, darkMode }: { comptes: strin
               return (
                 <div key={t.cle} style={{ border: "1px solid #e8e0d0", borderRadius: 10, padding: "8px 10px", background: darkMode ? "#1a1a1a" : "#faf8f3" }}>
                   <button onClick={() => setOuvert(estOuvert ? null : t.cle)} style={{ all: "unset", cursor: "pointer", display: "block", width: "100%" }}>
-                    <span style={{ fontSize: 12.5, fontWeight: 700, color: couleurTexte }}>{t.label}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 700, color: couleurTexte, overflowWrap: "anywhere" }}>{t.label}</span>
                     <span style={{ display: "block", fontSize: 11, color: "#9ca3af", marginTop: 2 }}>{t.desc}</span>
-                    <span style={{ display: "block", fontSize: 11, marginTop: 4, fontWeight: 600, color: choisis.length ? "#16a34a" : "#9ca3af" }}>
+                    <span style={{ display: "block", fontSize: 11, marginTop: 4, fontWeight: 600, overflowWrap: "anywhere", color: choisis.length ? "#16a34a" : "#9ca3af" }}>
                       {choisis.length ? `→ ${choisis.map(e => e.split("@")[0]).join(", ")}` : "→ personne"} <span style={{ color: "#8a6f2e" }}>{estOuvert ? "▲" : "✎ modifier"}</span>
                     </span>
                   </button>
@@ -402,7 +402,7 @@ export function NotificationsPush({ darkMode }: { darkMode?: boolean }) {
         {etat === "actif" && bouton("📨 Envoyer une notification de test", tester, true)}
         {etat === "actif" && bouton("🔕 Désactiver sur cet appareil", desactiver)}
       </div>
-      {message && <p style={{ ...texte, margin: "10px 0 0", fontWeight: 600 }}>{message}</p>}
+      {message && <p style={{ ...texte, margin: "10px 0 0", fontWeight: 600, overflowWrap: "anywhere" }}>{message}</p>}
 
       {estIos() && etat !== "ios_a_installer" && (
         <p style={encadre}>📱 iPhone / iPad : ça ne marche que si l'appli est ouverte depuis son icône sur l'écran d'accueil (iOS 16.4 ou plus récent), pas depuis Safari.</p>
@@ -434,7 +434,7 @@ export function EtatNotificationsComptes({ comptes, darkMode }: { comptes: strin
         {tous.map(c => (
           <div key={c.email} style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, padding: "8px 10px", borderRadius: 10, border: `1px solid ${c.appareils.length ? "#bbf7d0" : "#e5e7eb"}`, background: c.appareils.length ? (darkMode ? "#10241a" : "#f0fdf4") : (darkMode ? "#171b21" : "#fff") }}>
             <div style={{ minWidth: 0 }}>
-              <p style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: couleurTexte, overflow: "hidden", textOverflow: "ellipsis" }}>{c.email}</p>
+              <p style={{ margin: 0, fontSize: 12.5, fontWeight: 700, color: couleurTexte, overflowWrap: "anywhere" }}>{c.email}</p>
               {c.appareils.length > 0
                 ? c.appareils.map((a, i) => <p key={i} style={{ margin: "2px 0 0", fontSize: 11.5, color: darkMode ? "#aab1bb" : "#5e6b69" }}>📱 {a.appareil || "Appareil"}{a.maj ? ` · ${date(a.maj)}` : ""}</p>)
                 : <p style={{ margin: "2px 0 0", fontSize: 11.5, color: darkMode ? "#aab1bb" : "#5e6b69" }}>Aucun appareil : la personne verra la demande d'activation à sa prochaine connexion</p>}
@@ -558,7 +558,7 @@ export function InvitationNotifications({ darkMode }: { darkMode?: boolean }) {
   const boutonSecondaire = { padding: "10px 14px", borderRadius: 10, border: `1px solid ${darkMode ? "#2e3540" : "#dde6e3"}`, background: "transparent", color: gris, fontSize: 13, fontWeight: 600, cursor: "pointer" } as const;
   return (
     <div style={{ position: "fixed", inset: 0, zIndex: 10050, background: "rgba(0,0,0,.55)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-      <div role="dialog" aria-modal="true" style={{ background: fond, color: encre, borderRadius: 16, width: "100%", maxWidth: 460, maxHeight: "90vh", overflowY: "auto", padding: "22px 20px 18px", boxShadow: "0 20px 60px rgba(0,0,0,.35)" }}>
+      <div role="dialog" aria-modal="true" style={{ background: fond, color: encre, borderRadius: 16, width: "100%", maxWidth: 460, boxSizing: "border-box", maxHeight: "90vh", overflowY: "auto", padding: "22px 20px 18px", boxShadow: "0 20px 60px rgba(0,0,0,.35)" }}>
         <p style={{ margin: "0 0 4px", fontSize: 17, fontWeight: 800 }}>🔔 {mode === "refuse" ? "Notifications bloquées" : "Recevoir les alertes Moorea"}</p>
         {mode === "activer" && <>
           <p style={{ margin: "0 0 16px", fontSize: 13.5, color: gris, lineHeight: 1.5 }}>Active les notifications pour être prévenu(e) des arrivages, litiges, départs de reconditionnement… même quand l'appli est fermée.</p>

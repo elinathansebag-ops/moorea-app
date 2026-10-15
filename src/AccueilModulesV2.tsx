@@ -106,16 +106,26 @@ export function AccueilModulesV2({ modules, sombre, ordre, positions, couleurs =
   return <AccueilGrille modules={modules} sombre={sombre} ordre={ordre} positions={positions} couleurs={couleurs} />;
 }
 
-function CarteModule({ m, sombre, coul, edition, badgeOff }: { m: Module; sombre: boolean; coul?: typeof COULEURS_PASTEL[number]; edition?: boolean; badgeOff?: boolean }) {
+function CarteModule({ m, sombre, coul, edition, badgeOff, compact }: { m: Module; sombre: boolean; coul?: typeof COULEURS_PASTEL[number]; edition?: boolean; badgeOff?: boolean; compact?: boolean }) {
   const carte = sombre ? "#171b21" : "#ffffff", fondIcone = sombre ? "#1d2e2b" : "#eaf2ee";
   const titre = sombre ? "#8cc79a" : "#305a55", encre = sombre ? "#e6e8eb" : "#1e2b29", gris = sombre ? "#aab1bb" : "#5e6b69";
+  // 15/10/2026 — téléphone : en mode personnalisation la grille garde 4 colonnes ; carte « compacte »
+  // (icône au-dessus, petit nom) pour que le nom reste dans sa case.
+  if (compact) return (
+    <div style={{ position: "relative", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4, minHeight: 64, height: "100%", textAlign: "center", background: coul ? (sombre ? coul.sombre : coul.fond) : carte, borderRadius: 12, padding: "8px 4px", color: encre, boxSizing: "border-box", width: "100%", outline: edition ? `2px dashed ${sombre ? "#4b5563" : "#c9d6d2"}` : "none", outlineOffset: -2 }}>
+      <span style={{ width: 30, height: 30, flexShrink: 0, borderRadius: 8, background: coul && !sombre ? coul.icone : fondIcone, color: titre, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <IconeTrait d={ICONES[m.key || ""] || ICONE_DEFAUT} taille={17} />
+      </span>
+      <span style={{ display: "block", maxWidth: "100%", fontSize: 10.5, fontWeight: 700, lineHeight: 1.15, overflowWrap: "anywhere" }}>{m.label}</span>
+    </div>
+  );
   return (
     <div style={{ position: "relative", display: "flex", alignItems: "center", gap: 12, minHeight: 64, height: "100%", textAlign: "left", background: coul ? (sombre ? coul.sombre : coul.fond) : carte, borderRadius: 12, padding: "12px 14px", boxShadow: sombre ? "none" : "0 1px 2px rgba(30,43,41,.07)", color: encre, boxSizing: "border-box", width: "100%", outline: edition ? `2px dashed ${sombre ? "#4b5563" : "#c9d6d2"}` : "none", outlineOffset: -2 }}>
       <span style={{ width: 40, height: 40, flexShrink: 0, borderRadius: 10, background: coul && !sombre ? coul.icone : fondIcone, color: titre, display: "flex", alignItems: "center", justifyContent: "center" }}>
         <IconeTrait d={ICONES[m.key || ""] || ICONE_DEFAUT} />
       </span>
       <span style={{ flex: 1, minWidth: 0 }}>
-        <span style={{ display: "block", fontSize: 15, fontWeight: 700 }}>{m.label}</span>
+        <span style={{ display: "block", fontSize: 15, fontWeight: 700, overflowWrap: "anywhere" }}>{m.label}</span>
         {m.stat && <span style={{ display: "block", fontSize: 12.5, color: gris, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{m.stat}</span>}
       </span>
       {!edition && m.key && <Pastille cle={m.key} />}
@@ -136,6 +146,7 @@ function AccueilEdition({ sombre, ordre, positions = {}, couleurs, e }: { sombre
   const [menu, setMenu] = useState<{ cle: string; x: number; y: number } | null>(null);
   const [glisse, setGlisse] = useState<{ cle: string; x: number; y: number } | null>(null);
   const [cible, setCible] = useState<number | "bac" | null>(null);
+  const etroit = useLargeur() < 700;
   const geste = useRef<{ cle: string; x0: number; y0: number; bouge: boolean; depuisBac: boolean; minuterie: any } | null>(null);
 
   // Toutes les positions à enregistrer : celles affichées + celles gardées pour les modules masqués.
@@ -205,14 +216,14 @@ function AccueilEdition({ sombre, ordre, positions = {}, couleurs, e }: { sombre
     <div style={{ marginBottom: 16, userSelect: "none", WebkitUserSelect: "none" }} onPointerMove={mouvement} onPointerUp={fin} onPointerCancel={fin}>
       <style>{`@keyframes mrqTremble { 0%,100% { transform: rotate(-.4deg) } 50% { transform: rotate(.4deg) } }`}</style>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10, padding: "10px 14px", borderRadius: 12, background: sombre ? "#1a1808" : "#fffbeb", border: "1.5px solid #f59e0b55" }}>
-        <span style={{ flex: 1, fontSize: 12.5, color: sombre ? "#c9a869" : "#8a6f2e", minWidth: 200 }}>
+        <span style={{ flex: 1, fontSize: 12.5, color: sombre ? "#c9a869" : "#8a6f2e", minWidth: "min(200px, 100%)" }}>
           <b>Mode personnalisation</b> — glisse un module sur n'importe quelle case (vide ou non : il échange sa place) · <b>clic droit</b> (ou appui long) pour la couleur · bac du bas pour cacher.
         </span>
         <button type="button" onClick={e.onReinitialiser} style={{ border: "none", background: "transparent", color: gris, fontSize: 11.5, fontWeight: 700, cursor: "pointer", textDecoration: "underline" }}>Remettre par défaut</button>
         <button type="button" onClick={e.onTerminer} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: "#305a55", color: "#fff", fontWeight: 800, cursor: "pointer" }}>✓ Terminé</button>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: `repeat(${COLS}, minmax(0, 1fr))`, gap: 10 }}>
+      <div style={{ display: "grid", gridTemplateColumns: `repeat(${COLS}, minmax(0, 1fr))`, gap: etroit ? 6 : 10 }}>
         {Array.from({ length: nbCases }, (_, cas) => {
           const k = parCase.get(cas), m = k ? parCle.get(k) : null;
           const survol = cible === cas && glisse;
@@ -222,7 +233,7 @@ function AccueilEdition({ sombre, ordre, positions = {}, couleurs, e }: { sombre
                 <div onPointerDown={ev => debut(ev, k!, false)}
                   onContextMenu={ev => { ev.preventDefault(); setMenu({ cle: k!, x: ev.clientX, y: ev.clientY }); }}
                   style={{ position: "relative", height: "100%", cursor: "grab", touchAction: "none", opacity: glisse?.cle === k ? 0.3 : 1, animation: glisse ? "none" : `mrqTremble .35s ease-in-out ${(cas % 4) * 0.07}s infinite` }}>
-                  <CarteModule m={m} sombre={sombre} coul={COULEURS_PASTEL.find(x => x.id === couleurs[k!])} edition />
+                  <CarteModule m={m} sombre={sombre} coul={COULEURS_PASTEL.find(x => x.id === couleurs[k!])} edition compact={etroit} />
                   <button type="button" title="Masquer" onPointerDown={ev => ev.stopPropagation()} onClick={() => e.onMasquer(k!, true)}
                     style={{ position: "absolute", top: -7, right: -7, width: 22, height: 22, borderRadius: 11, border: "none", background: "#6b7280", color: "#fff", fontSize: 14, lineHeight: 1, cursor: "pointer", padding: 0 }}>–</button>
                 </div>
@@ -235,7 +246,7 @@ function AccueilEdition({ sombre, ordre, positions = {}, couleurs, e }: { sombre
       <div data-bac style={{ marginTop: 18, padding: 14, borderRadius: 14, border: `2px dashed ${cible === "bac" ? "#305a55" : ligne}`, background: cible === "bac" ? (sombre ? "#1d2e2b" : "#eaf2ee") : "transparent" }}>
         <div style={{ fontSize: 12.5, fontWeight: 800, color: gris, textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>Modules masqués {caches.length ? `(${caches.length})` : ""} — touche-en un ou glisse-le sur une case pour l'afficher</div>
         {!caches.length && <div style={{ fontSize: 12.5, color: gris }}>Dépose un module ici pour le masquer.</div>}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: 8 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(200px, 100%), 1fr))", gap: 8 }}>
           {caches.map(k => { const m = parCle.get(k); if (!m) return null; return (
             <div key={k} onPointerDown={ev => debut(ev, k, true)} style={{ cursor: "grab", touchAction: "none", opacity: glisse?.cle === k ? 0.3 : 0.6 }}>
               <CarteModule m={m} sombre={sombre} coul={COULEURS_PASTEL.find(x => x.id === couleurs[k])} badgeOff />
@@ -278,7 +289,7 @@ function AccueilGrille({ modules, sombre, ordre, positions, couleurs = {} }: { m
   const etroit = largeur < 700;
   const liste = [...avecCle].sort((a, b) => place.get(a.key!)! - place.get(b.key!)!);
   return (
-    <div style={{ display: "grid", gridTemplateColumns: etroit ? "repeat(auto-fill, minmax(220px, 1fr))" : `repeat(${COLS}, minmax(0, 1fr))`, gap: 10, marginBottom: 16 }}>
+    <div style={{ display: "grid", gridTemplateColumns: etroit ? "repeat(auto-fill, minmax(min(220px, 100%), 1fr))" : `repeat(${COLS}, minmax(0, 1fr))`, gap: 10, marginBottom: 16 }}>
       {[...liste, ...sansCle].map(m => {
         const cas = m.key ? place.get(m.key) : undefined;
         return (

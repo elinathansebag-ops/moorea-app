@@ -157,18 +157,18 @@ export function DashboardModule({
   const NB_STOCK_MAX = 6;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#0a0a0a", padding: "24px 30px", fontFamily: "'DM Sans', Arial, sans-serif", display: "flex", flexDirection: "column", gap: 18 }}>
+    <div style={{ minHeight: "100vh", background: "#0a0a0a", padding: "clamp(12px, 3vw, 24px) clamp(12px, 3vw, 30px)", boxSizing: "border-box", fontFamily: "'DM Sans', Arial, sans-serif", display: "flex", flexDirection: "column", gap: 18 }}>
       <style>{styles}</style>
       <style>{`@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.35}}`}</style>
 
       {/* En-tête */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div>
-          <p style={{ margin: 0, fontSize: 24, fontWeight: 900, color: "#c8a84b", fontFamily: "'Syne', sans-serif", letterSpacing: 1 }}>🌿 MOOREA — TABLEAU DE BORD</p>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+        <div style={{ minWidth: 0 }}>
+          <p style={{ margin: 0, fontSize: "clamp(18px, 5vw, 24px)", fontWeight: 900, color: "#c8a84b", fontFamily: "'Syne', sans-serif", letterSpacing: 1 }}>🌿 MOOREA — TABLEAU DE BORD</p>
           <p style={{ margin: "5px 0 0", fontSize: 14.5, color: "#8a8899", textTransform: "capitalize" }}>{horloge.toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long" })}</p>
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-          <span style={{ fontSize: 36, fontWeight: 900, color: "#fff", fontFamily: "'Syne', sans-serif", fontVariantNumeric: "tabular-nums" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "clamp(10px, 3vw, 20px)" }}>
+          <span style={{ fontSize: "clamp(24px, 7vw, 36px)", fontWeight: 900, color: "#fff", fontFamily: "'Syne', sans-serif", fontVariantNumeric: "tabular-nums" }}>
             {horloge.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
           </span>
           <button onClick={onClose} style={{ padding: "10px 18px", borderRadius: 10, border: "1px solid #2a2a2a", background: "#151515", color: "#8a8a99", cursor: "pointer", fontSize: 13, fontWeight: 700 }}>
@@ -178,9 +178,10 @@ export function DashboardModule({
       </div>
 
       {/* Fournisseurs attendus */}
-      <div style={{ flex: 3, minHeight: 0, background: "#13151d", borderRadius: 18, padding: "22px 24px", border: "1px solid #ffffff12", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      <div style={{ flex: 3, minHeight: 0, background: "#13151d", borderRadius: 18, padding: "clamp(14px, 3vw, 22px) clamp(12px, 3vw, 24px)", border: "1px solid #ffffff12", display: "flex", flexDirection: "column", overflow: "hidden" }}>
         <TitrePanneau titre="Fournisseurs attendus" icone="📋" couleur="#c8a84b" />
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, minmax(0, 260px))", justifyContent: "center", gap: 16, marginBottom: 20, flexShrink: 0 }}>
+        {/* 15/10/2026 — téléphone : 2 tuiles par ligne ; sur la TV, toujours 4 tuiles de 260 px centrées */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(130px, 100%), 1fr))", width: "100%", maxWidth: 4 * 260 + 3 * 16, margin: "0 auto 20px", gap: 16, flexShrink: 0 }}>
           <StatTile label="En attente" n={compteurs.enAttente} couleur="#d97706" />
           <StatTile label="Autorisés" n={compteurs.valide} couleur="#16a34a" />
           <StatTile label="Refusés" n={compteurs.refuse} couleur="#dc2626" />
@@ -191,8 +192,8 @@ export function DashboardModule({
         ) : (
           <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexWrap: "wrap", gap: 14, alignContent: "flex-start" }}>
             {fournisseurGroupes.slice(0, NB_FOURNISSEURS_MAX).map(groupe => (
-              <div key={groupe.nom} style={{ flex: "1 1 340px", background: "#0a0a0c", borderRadius: 14, padding: "14px 16px", border: "1px solid #ffffff14" }}>
-                <p style={{ margin: "0 0 10px", fontWeight: 800, fontSize: 17, color: "#c8a84b" }}>{groupe.nom}</p>
+              <div key={groupe.nom} style={{ flex: "1 1 340px", minWidth: 0, background: "#0a0a0c", borderRadius: 14, padding: "14px 16px", border: "1px solid #ffffff14" }}>
+                <p style={{ margin: "0 0 10px", fontWeight: 800, fontSize: 17, color: "#c8a84b", overflowWrap: "anywhere" }}>{groupe.nom}</p>
                 {groupe.articles.map((a: any) => {
                   const info = statutInfo(a.statut);
                   return (
@@ -213,7 +214,7 @@ export function DashboardModule({
       </div>
 
       {/* Retours (+ Stock seulement si un comptage est réellement en cours) */}
-      <div style={{ flex: 2, minHeight: 0, display: "grid", gridTemplateColumns: comptagesEnCours.length > 0 ? "1fr 1fr" : "1fr", gap: 18 }}>
+      <div style={{ flex: 2, minHeight: 0, display: "grid", gridTemplateColumns: comptagesEnCours.length > 0 ? "repeat(auto-fit, minmax(min(360px, 100%), 1fr))" : "1fr", gap: 18 }}>
         <div style={{ background: "#13151d", borderRadius: 18, padding: "20px 22px", border: "1px solid #ffffff12", display: "flex", flexDirection: "column", overflow: "hidden" }}>
           <TitrePanneau titre="Retours clients" icone="🚚" couleur="#dc2626" />
           {retoursNonTraites.length === 0 ? (
@@ -221,11 +222,11 @@ export function DashboardModule({
           ) : (
             <div style={{ flex: 1, minHeight: 0, overflow: "hidden", display: "flex", flexWrap: "wrap", gap: 10, alignContent: "flex-start" }}>
               {retoursNonTraites.slice(0, NB_RETOURS_MAX).map((r: any) => (
-                <div key={r.id} style={{ background: "#0a0a0c", borderRadius: 12, padding: "10px 14px", border: "1px solid #dc262633", display: "flex", alignItems: "center", gap: 10 }}>
+                <div key={r.id} style={{ background: "#0a0a0c", borderRadius: 12, padding: "10px 14px", border: "1px solid #dc262633", display: "flex", alignItems: "center", gap: 10, maxWidth: "100%", boxSizing: "border-box" }}>
                   <span style={{ fontSize: 12.5, fontWeight: 800, color: "#dc2626", background: "#dc26261a", border: "1px solid #dc262644", borderRadius: 20, padding: "3px 9px", whiteSpace: "nowrap" }}>
                     {r.statut === "nouveau" ? "Nouveau" : "En attente"}
                   </span>
-                  <span style={{ fontSize: 15.5, color: "#eceaf5", whiteSpace: "nowrap" }}>{r.client || r.clientConnu || "-"} · BL {r.bl || "-"}</span>
+                  <span style={{ fontSize: 15.5, color: "#eceaf5", minWidth: 0, overflowWrap: "anywhere" }}>{r.client || r.clientConnu || "-"} · BL {r.bl || "-"}</span>
                 </div>
               ))}
             </div>
@@ -240,9 +241,9 @@ export function DashboardModule({
               {comptagesEnCours.slice(0, NB_STOCK_MAX).map(({ stock, team, done, total, pct }) => {
                 const couleurEquipe = team === "GMS" ? "#c8a84b" : "#0ea5e9";
                 return (
-                  <div key={stock.id + "_" + team} style={{ background: "#0a0a0c", borderRadius: 12, padding: "10px 14px", border: `1px solid ${couleurEquipe}33`, minWidth: 200 }}>
+                  <div key={stock.id + "_" + team} style={{ background: "#0a0a0c", borderRadius: 12, padding: "10px 14px", border: `1px solid ${couleurEquipe}33`, minWidth: "min(200px, 100%)", maxWidth: "100%", boxSizing: "border-box" }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
-                      <span style={{ fontSize: 15, color: "#eceaf5", whiteSpace: "nowrap" }}>{stock.filename || "Stock"} · {team === "GMS" ? "GMS" : "Prestige"}</span>
+                      <span style={{ fontSize: 15, color: "#eceaf5", whiteSpace: "nowrap", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis" }}>{stock.filename || "Stock"} · {team === "GMS" ? "GMS" : "Prestige"}</span>
                       <span style={{ fontSize: 17, fontWeight: 800, color: couleurEquipe, fontFamily: "'Syne', sans-serif" }}>{pct}%</span>
                     </div>
                     <div style={{ height: 6, background: "#ffffff14", borderRadius: 3, overflow: "hidden" }}>

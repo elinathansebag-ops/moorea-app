@@ -16,7 +16,7 @@ import { NotificationsPush, AttributionNotifications, alerterPush, EtatNotificat
 import { ReglagesImpression } from "./Imprimantes";
 import { SousComptesAcces, useRefusProfils, refusDuProfil } from "./SousComptesAcces";
 import { LogoMoorea, PageHeader, AutocompleteInput, EMAILJS_SERVICE_ID, EMAILJS_TEMPLATE_ID, EMAILJS_PUBLIC_KEY, CRITERES, styles, NOTE_LABELS, NOTE_COLORS, initialNotes, initialEtiquette, ETIQUETTE_ITEMS, ScoreCircle, NoteSelector, F, ChargementEcran, calculerAcces, cleEmail, AccesRole, AccesUser, AccesRefuse, ADMIN_BOOTSTRAP, toutesLesClesModules, compteEnAttente } from "./shared";
-import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, lireMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC } from "./ArrivageModule";
+import { ProduitRow, FournisseurBlock, DateBlock, ScannerQR, GencodeChecker, PalettePublique, HistoriqueArrivageRow, ArrivageTraiteRow, PopupEtiquetteMulti, PopupEtiquetteRefusMulti, PalettePerteForm, BadgeArrivage, PillArr, StatCardArr, NoteBtnArr, HistoriqueMesures, lireMesures, envoyerEtiquetteRefusPourImpressionPC, envoyerEtiquettePourImpressionPC, envoyerEtiquettesPalettesPC } from "./ArrivageModule";
 
 // 29/09/2026 — Demande d'Elinathan (vitesse) : chaque module est maintenant téléchargé à part,
 // seulement quand on l'ouvre (avant : un seul fichier de ~5 Mo avec toute l'appli pour tout le
@@ -1790,9 +1790,7 @@ export default function App() {
       try {
         const arrivageMaj = { ...arrivage, dlc: dlcFinal, lot_fournisseur: lotFournisseurFinal };
         if (palettes && palettes.length > 1) {
-          for (let i = 0; i < palettes.length; i++) {
-            if (palettes[i] > 0) await envoyerEtiquettePourImpressionPC(arrivageMaj, i + 1, palettes[i]);
-          }
+          await envoyerEtiquettesPalettesPC(arrivageMaj, palettes.map((colis: number, i: number) => ({ index: i + 1, colis })));
         } else {
           // 09/09/2026 — Bug trouvé avec Elinathan : ici, sans 3ᵉ argument, envoyerEtiquettePourImpressionPC
           // retombe sur arrivage.quantite (la quantité ATTENDUE d'origine) pour l'étiquette — jamais la
@@ -4070,7 +4068,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                           {Object.entries(santeComptesMail).map(([cle, c]: [string, any]) => (
                             <div key={cle} title={c?.erreur || ""} style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "7px 10px", borderRadius: 8, background: darkMode ? "#1a1a1a" : "#faf8f3", border: "1px solid #e8e0d0" }}>
                               <span style={{ width: 9, height: 9, borderRadius: "50%", flexShrink: 0, background: c?.ok === true ? "#22c55e" : c?.ok === false ? "#dc2626" : "#9ca3af" }} />
-                              <span style={{ fontSize: 12.5, fontWeight: 600, color: darkMode ? "#e5e7eb" : "#1a2e1a" }}>{c?.email || cle}</span>
+                              <span style={{ fontSize: 12.5, fontWeight: 600, color: darkMode ? "#e5e7eb" : "#1a2e1a", minWidth: 0, overflowWrap: "anywhere" }}>{c?.email || cle}</span>
                               <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 700, color: c?.ok === true ? "#16a34a" : c?.ok === false ? "#dc2626" : "#9ca3af" }}>
                                 {c?.ok === true ? "OK" : c?.ok === false ? "Déconnecté" : "?"}
                               </span>
@@ -4295,7 +4293,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 ))}
               </select>
               {apercuEmail && (
-                <span style={{ display: "flex", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.45)", color: "#ffffff" }}>
+                <span style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8, padding: "5px 10px", borderRadius: 8, fontSize: 11, fontWeight: 700, background: "rgba(255,255,255,0.12)", border: "1px solid rgba(255,255,255,0.45)", color: "#ffffff", minWidth: 0, maxWidth: "100%", overflowWrap: "anywhere" }}>
                   👁️ Aperçu : {apercuEmail}
                   <button onClick={() => setApercuEmail(null)} style={{ border: "none", background: "rgba(0,0,0,0.2)", color: "#fff", borderRadius: 6, padding: "2px 8px", cursor: "pointer", fontSize: 10.5, fontWeight: 700 }}>Quitter</button>
                 </span>
@@ -4416,7 +4414,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             const nbMasques = modulesMasquables.filter(b => accueilMasques[b.key!]).length;
             return (
               <>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
                   <p style={{ margin: 0, fontSize: 11, fontWeight: 700, color: textSub, textTransform: "uppercase", letterSpacing: ".6px" }}>🌿 Moorea · Rungis</p>
                   <button onClick={() => setShowPersonnaliserAccueil(!showPersonnaliserAccueil)}
                     style={{ border: "none", background: "transparent", cursor: "pointer", fontSize: 11, fontWeight: 700, color: showPersonnaliserAccueil ? "#8a6f2e" : textSub, padding: "2px 4px" }}>
@@ -4456,8 +4454,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               <div style={{ display: "grid", gap: 4, marginBottom: 16 }}>
                 {archivageResultats.map(r => (
                   <div key={r.label} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12.5, padding: "6px 10px", background: r.erreur ? "#fef2f2" : r.archives > 0 ? "#f0fdf4" : (darkMode ? "#1a1d27" : "#f5f3ee"), borderRadius: 8 }}>
-                    <span style={{ color: textMain }}>{r.label}</span>
-                    <span style={{ fontWeight: 700, color: r.erreur ? "#dc2626" : r.archives > 0 ? "#16a34a" : textSub }}>
+                    <span style={{ color: textMain, minWidth: 0 }}>{r.label}</span>
+                    <span style={{ fontWeight: 700, color: r.erreur ? "#dc2626" : r.archives > 0 ? "#16a34a" : textSub, minWidth: 0, textAlign: "right", overflowWrap: "anywhere" }}>
                       {r.erreur ? `Erreur : ${r.erreur}` : `${r.archives}`}
                     </span>
                   </div>
@@ -4727,8 +4725,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             return (
               <div key={a.id} style={{ background: "#fff", borderRadius: 16, marginBottom: 14, overflow: "hidden", boxShadow: "0 2px 12px rgba(0,0,0,0.06)", borderLeft: `4px solid ${a.statut === "validé" ? "#22c55e" : a.statut === "refusé" ? "#dc2626" : a.statut === "sous réserve" ? "#d97706" : "#9ca3af"}` }}>
                 <div style={{ padding: "14px 18px", borderBottom: "1px solid #f5f3ee" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
-                    <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
+                    <div style={{ minWidth: 0 }}>
                       <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 16, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>{a.produit}{a.variete ? ` · ${a.variete}` : ""}</p>
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                         <PillArr>🏭 {a.fournisseur}</PillArr>
@@ -4822,7 +4820,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             );
           })}
           {searchLotQuery.length >= 2 && resultats.length === 0 && (
-            <div style={{ textAlign: "center", padding: "3rem", background: "#fff", borderRadius: 20, border: "1.5px solid #e8e0d0" }}>
+            <div style={{ textAlign: "center", padding: "3rem 1.25rem", background: "#fff", borderRadius: 20, border: "1.5px solid #e8e0d0", overflowWrap: "anywhere" }}>
               <div style={{ fontSize: 36, marginBottom: 10 }}>🔎</div>
               <p style={{ margin: 0, fontWeight: 700, color: "#374151" }}>Aucun résultat pour « {searchLotQuery} »</p>
               <p style={{ margin: "6px 0 0", fontSize: 13, color: "#9ca3af" }}>Essaie avec le numéro de lot, le produit ou le fournisseur</p>
@@ -4917,7 +4915,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
 
       {popupApresRapport && (
         <div style={{ position: "fixed", inset: 0, zIndex: 4000, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 380, boxSizing: "border-box" }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 380, maxHeight: "92vh", overflowY: "auto", boxSizing: "border-box" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 4 }}>
               <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, fontFamily: "'Syne', sans-serif", color: "#1a2e1a" }}>✅ Rapport enregistré</h2>
               <button onClick={() => setPopupApresRapport(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280", lineHeight: 1, padding: 0 }}>✕</button>
@@ -4975,13 +4973,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       {/* MODAL GENCODE INCONNU → ENREGISTRER SOUS UN NOM */}
       {gencodeInconnu && (
         <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 420, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 420, maxHeight: "92vh", overflowY: "auto", boxSizing: "border-box", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
               <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, fontFamily: "'Syne', sans-serif", color: "#0a0a0a" }}>🏷️ Gencode inconnu</h2>
               <button onClick={() => setGencodeInconnu(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280" }}>✕</button>
             </div>
             <p style={{ margin: "0 0 14px", fontSize: 13, color: "#6b7280" }}>Ce code n'existe pas encore dans la base des gencodes.</p>
-            <p style={{ fontFamily: "monospace", fontSize: 15, fontWeight: 700, color: "#dc2626", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, padding: "8px 12px", marginBottom: 16, textAlign: "center" }}>{gencodeInconnu}</p>
+            <p style={{ fontFamily: "monospace", fontSize: 15, fontWeight: 700, color: "#dc2626", background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 8, padding: "8px 12px", marginBottom: 16, textAlign: "center", overflowWrap: "anywhere" }}>{gencodeInconnu}</p>
             <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 6 }}>NOM DE L'ARTICLE</label>
             <input
               value={nouveauProduitNom}
@@ -5026,18 +5024,18 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       {/* MODAL SIGNATURE TRANSPORTEUR */}
       {signatureModal && (
         <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.7)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 520, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: "clamp(16px, 5vw, 24px)", width: "100%", maxWidth: 520, maxHeight: "92vh", overflowY: "auto", boxSizing: "border-box", boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h2 style={{ fontSize: 18, fontWeight: 700, color: "#0a0a0a", fontFamily: "'Syne', sans-serif", margin: 0 }}>🖊 Visa Transporteur</h2>
               <button onClick={() => setSignatureModal(null)} style={{ background: "none", border: "none", fontSize: 22, cursor: "pointer", color: "#6b7280" }}>✕</button>
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
               <div style={{ display: "flex", gap: 10 }}>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>NOM</label>
                   <input value={sigNom} onChange={e => setSigNom(e.target.value)} placeholder="Ex: DUPONT" style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 15, fontFamily: "'Syne', sans-serif", boxSizing: "border-box" }} />
                 </div>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>PRÉNOM</label>
                   <input value={sigPrenom} onChange={e => setSigPrenom(e.target.value)} placeholder="Ex: Jean" style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 15, fontFamily: "'Syne', sans-serif", boxSizing: "border-box" }} />
                 </div>
@@ -5145,7 +5143,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               // bloquant, fermable d'une croix.
               return (
                 // 14/10/2026 — Partie haute plus compacte : l'alerte tient sur une seule ligne fine.
-                <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 999, padding: "5px 8px 5px 14px", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 16, padding: "5px 8px 5px 14px", marginBottom: 10, display: "flex", alignItems: "center", gap: 8 }}>
                   <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                     <p style={{ margin: 0, fontWeight: 800, fontSize: 12.5, color: "#991b1b" }}>⚠️ Contrôles qualité en retard :</p>
                     <p style={{ margin: 0, fontSize: 12, color: "#7f1d1d" }}>
@@ -5247,8 +5245,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               const melangeDetecte = equipesDistinctes.length > 1;
               return (
                 <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: "16px", marginBottom: 16 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-                    <div>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 10 }}>
+                    <div style={{ minWidth: 0 }}>
                       <p style={{ margin: 0, fontWeight: 700, color: "#1a6b3a", fontFamily: "'Syne', sans-serif" }}>✅ {previewArr.length} arrivages détectés</p>
                       {(doublons > 0 || modifs.length > 0 || dateChangee.length > 0) && (
                         <p style={{ margin: "3px 0 0", fontSize: 12, color: "#d97706" }}>
@@ -5259,7 +5257,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                         </p>
                       )}
                     </div>
-                    <button onClick={() => setPreviewArr(null)} style={{ fontSize: 12, padding: "4px 10px", borderRadius: 8, cursor: "pointer", background: "transparent", border: "1px solid #fca5a5", color: "#dc2626" }}>Annuler</button>
+                    <button onClick={() => setPreviewArr(null)} style={{ flexShrink: 0, fontSize: 12, padding: "4px 10px", borderRadius: 8, cursor: "pointer", background: "transparent", border: "1px solid #fca5a5", color: "#dc2626" }}>Annuler</button>
                   </div>
                   {melangeDetecte && (
                     <div style={{ background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 10, padding: "10px 12px", marginBottom: 10 }}>
@@ -5554,8 +5552,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               📁 Historique · {arrivagesAvecArchives.filter(a => a.date !== new Date().toLocaleDateString("fr-FR")).length} arrivages
               {arrivagesArchivesData.length > 0 && <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0 }}> (dont {arrivagesArchivesData.length} archivés)</span>}
             </p>
-            <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-              <input value={histSearchArr} onChange={e=>setHistSearchArr(e.target.value)} placeholder="🔍 Produit, fournisseur, lot..." style={{ flex: 1, padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 14, outline: "none", boxSizing: "border-box" as const }} />
+            <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+              <input value={histSearchArr} onChange={e=>setHistSearchArr(e.target.value)} placeholder="🔍 Produit, fournisseur, lot..." style={{ flex: "1 1 180px", minWidth: 0, padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 10, fontSize: 14, outline: "none", boxSizing: "border-box" as const }} />
               <button
                 onClick={() => {
                   const tous = arrivagesAvecArchives
@@ -5667,7 +5665,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               <button onClick={() => setPdfApercuTracaHist(null)} style={{ padding: "6px 10px", borderRadius: 9, border: "1px solid rgba(255,255,255,0.15)", background: "rgba(255,255,255,0.06)", cursor: "pointer", fontSize: 12, color: "rgba(255,255,255,0.8)", fontFamily: "'Syne', sans-serif" }}>
                 ← Retour
               </button>
-              <span style={{ color: "#c8a84b", fontWeight: 700, fontFamily: "'Syne', sans-serif", fontSize: 13 }}>📄 Traçabilité — Historique</span>
+              <span style={{ color: "#c8a84b", fontWeight: 700, fontFamily: "'Syne', sans-serif", fontSize: 13, flex: 1, minWidth: 0, textAlign: "center", padding: "0 8px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📄 Traçabilité — Historique</span>
               <button onClick={() => { try { pdfApercuTracaHistIframeRef.current?.contentWindow?.print(); } catch {} }}
                 style={{ padding: "6px 14px", borderRadius: 9, border: "none", background: "#c8a84b", color: "#0a0a0a", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}>
                 🖨️ Imprimer
@@ -5693,14 +5691,14 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 const tauxLitige = s.total ? Math.round(s.litiges/s.total*100) : 0;
                 return (
                   <div key={f} style={{ background:"#fff", borderRadius:14, padding:"14px 18px", marginBottom:10, boxShadow:"0 2px 12px rgba(0,0,0,0.05)", borderLeft:`4px solid ${s.litiges>0?"#dc2626":"#27ae60"}` }}>
-                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", marginBottom:8 }}>
-                      <p style={{ margin:0, fontWeight:700, fontSize:14, color:"#1a2e1a", fontFamily:"'Syne',sans-serif" }}>{f}</p>
-                      <div style={{ display:"flex", gap:6 }}>
+                    <div style={{ display:"flex", justifyContent:"space-between", alignItems:"center", flexWrap:"wrap", gap:6, marginBottom:8 }}>
+                      <p style={{ margin:0, fontWeight:700, fontSize:14, color:"#1a2e1a", fontFamily:"'Syne',sans-serif", minWidth:0, overflowWrap:"anywhere" }}>{f}</p>
+                      <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
                         {scoreMoyen&&<span style={{ fontSize:12, fontWeight:700, color:NOTE_COLORS[Math.round(parseFloat(scoreMoyen))], background:NOTE_COLORS[Math.round(parseFloat(scoreMoyen))]+"15", padding:"2px 8px", borderRadius:20 }}>⭐ {scoreMoyen}/5</span>}
                         {tauxLitige>0&&<span style={{ fontSize:12, fontWeight:700, color:"#dc2626", background:"#fef2f2", padding:"2px 8px", borderRadius:20, border:"1px solid #fca5a5" }}>{tauxLitige}% litiges</span>}
                       </div>
                     </div>
-                    <div style={{ display:"flex", gap:16 }}>
+                    <div style={{ display:"flex", gap:"4px 16px", flexWrap:"wrap" }}>
                       <span style={{ fontSize:12, color:"#6b7280" }}>{s.total} arrivages</span>
                       <span style={{ fontSize:12, color:"#1a6b3a" }}>✓ {s.valides} validés</span>
                       {s.litiges>0&&<span style={{ fontSize:12, color:"#dc2626" }}>⚠ {s.litiges} litiges</span>}
@@ -5791,8 +5789,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 return (
                   <div key={a.id} style={{ background: "#fff", borderRadius: 16, boxShadow: "0 2px 16px rgba(220,38,38,0.08)", marginBottom: 12, overflow: "hidden", borderLeft: "4px solid #dc2626" }}>
                     <div style={{ padding: "14px 18px" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-                        <div>
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 10 }}>
+                        <div style={{ minWidth: 0 }}>
                           <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 15, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>{a.produit}</p>
                           <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
                             <PillArr>🏭 {a.fournisseur}</PillArr>
@@ -5802,7 +5800,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                           </div>
                           <p style={{ margin: "4px 0 0", fontSize: 11, color: "#9ca3af" }}>Arrivage du {a.date}</p>
                         </div>
-                        <span style={{ fontSize: 11, fontWeight: 700, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5", padding: "4px 10px", borderRadius: 20 }}>❌ À récupérer</span>
+                        <span style={{ fontSize: 11, fontWeight: 700, background: "#fef2f2", color: "#dc2626", border: "1px solid #fca5a5", padding: "4px 10px", borderRadius: 20, flexShrink: 0, whiteSpace: "nowrap" }}>❌ À récupérer</span>
                       </div>
                       {a.litige && (
                         <div style={{ background: "#fef2f2", border: "1px solid #fca5a5", borderRadius: 10, padding: "10px 14px", marginBottom: 10 }}>
@@ -5813,7 +5811,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                         </div>
                       )}
                       {rapport && (
-                        <div style={{ background: "#faf8f3", border: "1px solid #e8e0d0", borderRadius: 10, padding: "8px 14px", marginBottom: 10, display: "flex", gap: 10, alignItems: "center" }}>
+                        <div style={{ background: "#faf8f3", border: "1px solid #e8e0d0", borderRadius: 10, padding: "8px 14px", marginBottom: 10, display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center" }}>
                           <span style={{ fontSize: 12, fontWeight: 600, color: "#8a6f2e" }}>📋 {rapport.numeroRapport}</span>
                           {rapport.score && <span style={{ fontSize: 12, color: NOTE_COLORS[Math.round(parseFloat(rapport.score))], fontWeight: 700 }}>Score {rapport.score}/5</span>}
                           <button onClick={() => setChoixLangueRapport(rapport)} style={{ marginLeft: "auto", padding: "4px 10px", borderRadius: 8, border: "1px solid #e8e0d0", background: "#fff", color: "#8a6f2e", cursor: "pointer", fontSize: 12, fontWeight: 600 }}>🖨️ Imprimer</button>
@@ -5853,8 +5851,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                   ✅ Traités · {arrivages.filter(a => a.recupere || a.destruction?.effectuee).length}
                 </p>
                 {arrivages.filter(a => a.recupere || a.destruction?.effectuee).map(a => (
-                  <div key={a.id} style={{ background: "#fff", borderRadius: 12, padding: "10px 16px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", opacity: 0.7, borderLeft: "3px solid #16a34a" }}>
-                    <div>
+                  <div key={a.id} style={{ background: "#fff", borderRadius: 12, padding: "10px 16px", marginBottom: 8, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, opacity: 0.7, borderLeft: "3px solid #16a34a" }}>
+                    <div style={{ minWidth: 0 }}>
                       <p style={{ margin: "0 0 2px", fontSize: 13, fontWeight: 600, color: "#374151" }}>{a.produit} · {a.fournisseur}</p>
                       <p style={{ margin: 0, fontSize: 11, color: "#9ca3af" }}>
                         {a.lot_interne ? `Lot Moorea: ${a.lot_interne} · ` : ""}{a.date}
@@ -5862,7 +5860,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                         {a.destruction?.effectuee ? ` · 🗑 Détruit le ${a.destruction.date}` : ""}
                       </p>
                     </div>
-                    <span style={{ fontSize: 11, fontWeight: 600, background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", padding: "3px 10px", borderRadius: 20 }}>
+                    <span style={{ fontSize: 11, fontWeight: 600, background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", padding: "3px 10px", borderRadius: 20, flexShrink: 0, whiteSpace: "nowrap" }}>
                       {a.recupere ? "✅ Récupéré" : "🗑 Détruit"}
                     </span>
                   </div>
@@ -5876,7 +5874,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
           <div className="fade-up">
             {rapportGroupe && (
               <div style={{ marginBottom: 16, background: "#fffbeb", border: "2px solid #fcd34d", borderRadius: 16, padding: "12px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <p style={{ margin: "0 0 3px", fontSize: 11, fontWeight: 700, color: "#92400e", textTransform: "uppercase", letterSpacing: "0.5px" }}>⚠️ Réserve sur tout l'arrivage</p>
                   <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: "#1a2e1a" }}>{rapportGroupe.length} produits · {rapportGroupe[0]?.fournisseur}</p>
                   <p style={{ margin: "2px 0 0", fontSize: 12, color: "#6b7280" }}>Arrivage du {rapportGroupe[0]?.date}</p>
@@ -5888,8 +5886,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               </div>
             )}
             {rapportArrivage && (
-              <div style={{ marginBottom: 16, background: rapportArrivage.litige ? "#fef2f2" : "#f0fdf4", border: `2px solid ${rapportArrivage.litige ? "#fca5a5" : "#bbf7d0"}`, borderRadius: 16, padding: "12px 18px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                <div>
+              <div style={{ marginBottom: 16, background: rapportArrivage.litige ? "#fef2f2" : "#f0fdf4", border: `2px solid ${rapportArrivage.litige ? "#fca5a5" : "#bbf7d0"}`, borderRadius: 16, padding: "12px 18px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
+                <div style={{ minWidth: 0 }}>
                   <p style={{ margin: "0 0 3px", fontSize: 11, fontWeight: 700, color: rapportArrivage.litige ? "#991b1b" : "#15803d", textTransform: "uppercase", letterSpacing: "0.5px" }}>
                     {rapportArrivage.litige ? "⚠️ Rapport de litige" : "📋 Rapport d'agréage"}
                   </p>
@@ -5954,7 +5952,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
               <div className="section-title">Évaluation qualité</div>
               {CRITERES.map((c) => (
                 <div key={c.id} style={{ marginBottom: 20, paddingBottom: 20, borderBottom: "1px solid #f0f0f0" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                       <div style={{ width: 32, height: 32, borderRadius: 8, background: c.accent + "18", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>{c.icon}</div>
                       <span style={{ fontSize: 14, fontWeight: 600, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>{c.label}</span>
@@ -6333,9 +6331,9 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             {(filterFournisseur || filterProduit) && (
               <div style={{ display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", marginBottom: 14, padding: "18px 20px", borderRadius: 16, background: "linear-gradient(135deg, #1f4440 0%, #305a55 60%, #4f8a6f 100%)", color: "#fff", boxShadow: "0 8px 24px rgba(31,68,64,.2)" }}>
                 <span style={{ fontSize: 34 }}>{filterFournisseur ? "🏭" : "🥬"}</span>
-                <span style={{ flex: 1, minWidth: 200 }}>
+                <span style={{ flex: 1, minWidth: "min(200px, 100%)" }}>
                   <span style={{ display: "block", fontSize: 12, fontWeight: 800, opacity: 0.8, textTransform: "uppercase", letterSpacing: ".06em" }}>{filterFournisseur ? "Rapports du fournisseur" : "Rapports du produit"}</span>
-                  <span style={{ display: "block", fontSize: 21, fontWeight: 900, lineHeight: 1.2 }}>{filterFournisseur || filterProduit}</span>
+                  <span style={{ display: "block", fontSize: 21, fontWeight: 900, lineHeight: 1.2, overflowWrap: "anywhere" }}>{filterFournisseur || filterProduit}</span>
                   {(() => { const l = rapports.filter(r => (!filterFournisseur || r.fournisseur === filterFournisseur) && (!filterProduit || r.produit === filterProduit)); return (
                     <span style={{ display: "block", fontSize: 13, opacity: 0.9, marginTop: 2 }}>{l.length} rapport{l.length > 1 ? "s" : ""} · {l.filter(r => r.decision === "reserve").length} réserve(s) · {l.filter(r => r.decision === "refus").length} refus</span>
                   ); })()}
@@ -6365,7 +6363,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 </div>
               );
             })()}
-            <div style={{ marginBottom: 10, display: "flex", gap: 8 }}>
+            {/* 15/10/2026 — téléphone : la ligne recherche + tri + boutons passe à la ligne au lieu de déborder de l'écran. */}
+            <div style={{ marginBottom: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
               <input
                 type="text"
                 value={searchText}
@@ -6373,7 +6372,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 placeholder="🔍 Rechercher produit, fournisseur…"
                 style={{ flex: "2 1 220px", minWidth: 180, padding: "10px 14px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 13, color: "#374151", background: "#fff", outline: "none" }}
               />
-              <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ padding: "10px 10px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 13, color: "#374151", background: "#fff", cursor: "pointer" }}>
+              <select value={sortBy} onChange={e => setSortBy(e.target.value)} style={{ flex: "1 1 140px", width: "auto", minWidth: 0, padding: "10px 10px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 13, color: "#374151", background: "#fff", cursor: "pointer" }}>
                 <option value="date_desc">📅 Plus récent</option>
                 <option value="date_asc">📅 Plus ancien</option>
                 <option value="fournisseur">🏭 Fournisseur</option>
@@ -6624,13 +6623,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                             les chiffres ne tombaient plus sous les bons en-têtes (demande d'Elinathan :
                             "les donnée sont pas en dessous des colones"). Fix : largeurs de colonnes fixes,
                             identiques sur l'en-tête et toutes les lignes, garantissant l'alignement. */}
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 56px 64px 56px 76px", gap: "4px 10px", fontSize: 11, color: "#9ca3af", fontWeight: 700, textTransform: "uppercase", padding: "0 0 6px", borderBottom: "1px solid #f3f4f6" }}>
+                        <div className="stats-grille-5" style={{ display: "grid", gridTemplateColumns: "1fr 56px 64px 56px 76px", gap: "4px 10px", fontSize: 11, color: "#9ca3af", fontWeight: 700, textTransform: "uppercase", padding: "0 0 6px", borderBottom: "1px solid #f3f4f6" }}>
                           <span>Fournisseur</span><span style={{ textAlign: "right" }}>Reçu</span><span style={{ textAlign: "right" }}>Réserve</span><span style={{ textAlign: "right" }}>Refus</span><span style={{ textAlign: "right" }}>Taux refus</span>
                         </div>
                         {tousFourn.map(([nom, s]) => {
                           const taux = s.total > 0 ? Math.round((s.refus / s.total) * 100) : 0;
                           return (
-                            <div key={nom} style={{ display: "grid", gridTemplateColumns: "1fr 56px 64px 56px 76px", gap: "4px 10px", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f3f4f6" }}>
+                            <div key={nom} className="stats-grille-5" style={{ display: "grid", gridTemplateColumns: "1fr 56px 64px 56px 76px", gap: "4px 10px", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f3f4f6" }}>
                               <span style={{ fontSize: 13, color: "#374151", fontWeight: 600 }}>{nom}</span>
                               <span style={{ fontSize: 12, color: "#6b7280", textAlign: "right" }}>{s.total}</span>
                               <span style={{ fontSize: 12, color: s.reserve > 0 ? "#d97706" : "#9ca3af", fontWeight: 700, textAlign: "right" }}>{s.reserve}</span>
@@ -6646,13 +6645,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                         <p style={{ fontSize: 13, fontWeight: 700, color: "#1a2e1a", marginBottom: 12, fontFamily: "'Syne', sans-serif" }}>🥦 Par produit ({tousProd.length}) — triés par nb de refus</p>
                         {/* 15/09/2026 — même correctif d'alignement que "Par fournisseur" ci-dessus :
                             largeurs de colonnes fixes au lieu de "auto" par ligne. */}
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 56px 64px 56px 76px", gap: "4px 10px", fontSize: 11, color: "#9ca3af", fontWeight: 700, textTransform: "uppercase", padding: "0 0 6px", borderBottom: "1px solid #f3f4f6" }}>
+                        <div className="stats-grille-5" style={{ display: "grid", gridTemplateColumns: "1fr 56px 64px 56px 76px", gap: "4px 10px", fontSize: 11, color: "#9ca3af", fontWeight: 700, textTransform: "uppercase", padding: "0 0 6px", borderBottom: "1px solid #f3f4f6" }}>
                           <span>Produit</span><span style={{ textAlign: "right" }}>Reçu</span><span style={{ textAlign: "right" }}>Réserve</span><span style={{ textAlign: "right" }}>Refus</span><span style={{ textAlign: "right" }}>Taux refus</span>
                         </div>
                         {tousProd.map(([nom, s]) => {
                           const taux = s.total > 0 ? Math.round((s.refus / s.total) * 100) : 0;
                           return (
-                            <div key={nom} style={{ display: "grid", gridTemplateColumns: "1fr 56px 64px 56px 76px", gap: "4px 10px", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f3f4f6" }}>
+                            <div key={nom} className="stats-grille-5" style={{ display: "grid", gridTemplateColumns: "1fr 56px 64px 56px 76px", gap: "4px 10px", alignItems: "center", padding: "8px 0", borderBottom: "1px solid #f3f4f6" }}>
                               <span style={{ fontSize: 13, color: "#374151", fontWeight: 600 }}>{nom}</span>
                               <span style={{ fontSize: 12, color: "#6b7280", textAlign: "right" }}>{s.total}</span>
                               <span style={{ fontSize: 12, color: s.reserve > 0 ? "#d97706" : "#9ca3af", fontWeight: 700, textAlign: "right" }}>{s.reserve}</span>

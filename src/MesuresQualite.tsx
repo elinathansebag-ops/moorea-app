@@ -140,7 +140,7 @@ export function MesuresQualite({ type, rapports, arrivages, recherche, du, au }:
         style={{ background: "#fff", border: `1.5px solid ${ouvert ? couleur : "#eee8dc"}`, borderLeft: `5px solid ${couleur}`, borderRadius: 12, padding: "10px 12px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 7, boxShadow: "0 1px 6px rgba(0,0,0,0.04)" }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
           <span style={{ fontSize: 13, fontWeight: 800, color: "#1f2937", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, minWidth: 0 }} title={c.produit}>{c.produit || "—"}</span>
-          {c.lot && <span style={{ fontSize: 11, fontWeight: 800, color: "#8a6f2e", whiteSpace: "nowrap" }}>Lot {c.lot}</span>}
+          {c.lot && <span title={`Lot ${c.lot}`} style={{ fontSize: 11, fontWeight: 800, color: "#8a6f2e", whiteSpace: "nowrap", maxWidth: "50%", overflow: "hidden", textOverflow: "ellipsis" }}>Lot {c.lot}</span>}
         </div>
         <div style={{ fontSize: 11, color: "#9ca3af", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", marginTop: -4 }}>{c.fournisseur || "—"}</div>
         {type === "temperature" ? (
@@ -150,12 +150,12 @@ export function MesuresQualite({ type, rapports, arrivages, recherche, du, au }:
         ) : (
           <div style={{ display: "flex", gap: 6, flexDirection: "row-reverse" }}>
             {[["Net corrigé", c.net, "kg"], ["Brut corrigé", c.brut, "kg"]].filter(([, v]) => v != null).map(([lib, v, u]) => (
-              <div key={lib as string} style={{ flex: 1, background: v != null ? fond : "#f9fafb", border: `1px solid ${v != null ? bord : "#eef0f2"}`, borderRadius: 8, padding: "4px 8px", textAlign: "center" }}>
+              <div key={lib as string} style={{ flex: 1, minWidth: 0, background: v != null ? fond : "#f9fafb", border: `1px solid ${v != null ? bord : "#eef0f2"}`, borderRadius: 8, padding: "4px 8px", textAlign: "center" }}>
                 <div style={{ fontSize: 9.5, fontWeight: 700, color: "#9ca3af" }}>{lib as string}</div>
                 <div style={{ fontSize: 14, fontWeight: 900, color: v != null ? couleur : "#d1d5db" }}>{v != null ? `${fmt(v as number)} ${u}` : "—"}</div>
               </div>
             ))}
-            <div style={{ flex: 1, background: c.barquettes.length ? fond : "#f9fafb", border: `1px solid ${c.barquettes.length ? bord : "#eef0f2"}`, borderRadius: 8, padding: "4px 8px", textAlign: "center" }}>
+            <div style={{ flex: 1, minWidth: 0, background: c.barquettes.length ? fond : "#f9fafb", border: `1px solid ${c.barquettes.length ? bord : "#eef0f2"}`, borderRadius: 8, padding: "4px 8px", textAlign: "center" }}>
               <div style={{ fontSize: 9.5, fontWeight: 700, color: "#9ca3af" }}>Barquettes{c.barquettes.length > 1 ? ` (moy. de ${c.barquettes.length})` : ""}</div>
               <div style={{ fontSize: 14, fontWeight: 900, color: c.barquettes.length ? couleur : "#d1d5db" }}>
                 {c.barquettes.length ? `${fmt(c.barquettes.reduce((a, b) => a + b.valeur, 0) / c.barquettes.length, 0)} g` : "—"}
@@ -173,7 +173,7 @@ export function MesuresQualite({ type, rapports, arrivages, recherche, du, au }:
         {ouvert && (
           <div style={{ borderTop: "1px solid #f0ebe0", paddingTop: 7, display: "flex", flexDirection: "column", gap: 3 }}>
             {(type === "temperature" ? c.temps : c.barquettes).map((m, i) => (
-              <div key={i} style={{ display: "flex", gap: 8, fontSize: 11.5, color: "#4b5563" }}>
+              <div key={i} style={{ display: "flex", flexWrap: "wrap", gap: 8, fontSize: 11.5, color: "#4b5563" }}>
                 <span style={{ fontWeight: 800, color: couleur, minWidth: 60 }}>{fmt(m.valeur, type === "temperature" ? 1 : 0)} {type === "temperature" ? "°C" : "g"}</span>
                 <span>{m.at ? new Date(m.at).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "—"}</span>
                 <span style={{ marginLeft: "auto", color: "#9ca3af" }}>{m.source === "rapport" ? "Rapport" : "Pointage"}</span>

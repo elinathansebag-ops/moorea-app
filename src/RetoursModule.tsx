@@ -263,7 +263,7 @@ function LignesPrevu({ rows, onChange }: { rows: ProduitLigne[]; onChange: (r: P
             </div>
           </div>
           {/* Ligne 2 : lot + origine + qté attendue seulement */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(110px, 100%), 1fr))", gap: 10 }}>
             <div><label style={LBL}>Lot</label><input style={INP} placeholder="—" value={row.lot} onChange={e => up(i, "lot", e.target.value)} /></div>
             <div><label style={LBL}>Origine</label><input style={INP} placeholder="—" value={row.origine} onChange={e => up(i, "origine", e.target.value)} /></div>
             <div><label style={LBL}>Qté attendue</label><input style={{ ...INP, textAlign: "center" }} type="number" placeholder="0" value={row.qteAttendue} onChange={e => up(i, "qteAttendue", e.target.value)} /></div>
@@ -309,7 +309,8 @@ function LignesEntrepot({ rows, onChange }: { rows: ProduitLigne[]; onChange: (r
             </div>
           </div>
           {/* Ligne 2 : origine + qté + stock + destruction */}
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, alignItems: "flex-end" }}>
+          {/* 15/10/2026 — téléphone : 4 colonnes trop étroites (libellés qui débordent) → 2×2 */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(110px, 100%), 1fr))", gap: 10, alignItems: "flex-end" }}>
             <div><label style={LBL}>Origine</label><input style={INP} placeholder="—" value={row.origine} onChange={e => up(i, "origine", e.target.value)} /></div>
             <div><label style={LBL}>Qté reçue</label><input style={{ ...INP, textAlign: "center" }} type="number" placeholder="0" value={row.qteRecue} onChange={e => up(i, "qteRecue", e.target.value)} /></div>
             <div>
@@ -344,9 +345,9 @@ function LignesEntrepot({ rows, onChange }: { rows: ProduitLigne[]; onChange: (r
 // ── Overlay modal ──
 function Ovl({ children, close }: { children: React.ReactNode; close: () => void }) {
   return (
-    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 500, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: 16, overflowY: "auto" }}
+    <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.55)", zIndex: 500, display: "flex", alignItems: "flex-start", justifyContent: "center", padding: "clamp(8px, 3vw, 16px)", overflowY: "auto", boxSizing: "border-box" }}
       onMouseDown={e => { if (e.target === e.currentTarget) close(); }}>
-      <div style={{ background: "#fff", borderRadius: 20, padding: 24, maxWidth: 760, width: "100%", marginTop: 20, marginBottom: 20 }}>{children}</div>
+      <div style={{ background: "#fff", borderRadius: 20, padding: "clamp(14px, 4vw, 24px)", maxWidth: 760, width: "100%", marginTop: 20, marginBottom: 20, boxSizing: "border-box", minWidth: 0 }}>{children}</div>
     </div>
   );
 }
@@ -724,7 +725,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
         </div>
 
         {/* Stats */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 16 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(110px, 1fr))", gap: 10, marginBottom: 16 }}>
           {([["Total", retours.length, "#1a2e1a"], ["Traitées", nbTra, "#15803d"], ["À valider", nbAtt, "#c8a84b"], ["À rattacher", nbRat, "#b45309"]] as any[]).map(([l, n, c]) => (
             <div key={l} style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: 12, textAlign: "center" }}>
               <div style={{ fontSize: 22, fontWeight: 800, color: c }}>{n}</div>
@@ -756,7 +757,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
                   <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                       {numBadge(r.numero)}
-                      <span style={{ fontWeight: 700, fontSize: 15 }}>{r.client}</span>
+                      <span style={{ fontWeight: 700, fontSize: 15, overflowWrap: "anywhere" }}>{r.client}</span>
                       <span style={{ color: "#6b7280", fontSize: 12 }}>BL {r.bl}</span>
                       {r.source === "entrepot_rattache" && <span style={{ background: "#f3e8ff", color: "#7c3aed", border: "1px solid #e9d5ff", borderRadius: 20, padding: "2px 8px", fontSize: 11, fontWeight: 600 }}>🏭 Entrepôt</span>}
                     </div>
@@ -792,9 +793,9 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
             : entrepots.filter(r => !r.rattache).map(r => (
               <div key={r.id} style={{ background: "#fffbf0", border: "1.5px solid #fde68a", borderRadius: 16, padding: "1.1rem 1.4rem", marginBottom: 10 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 8 }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
                     {numBadge(r.numero)}
-                    <span style={{ fontWeight: 700 }}>{r.clientConnu || "Client non identifié"}</span>
+                    <span style={{ fontWeight: 700, overflowWrap: "anywhere" }}>{r.clientConnu || "Client non identifié"}</span>
                     <span style={{ background: "#fef3c7", color: "#b45309", border: "1px solid #fde68a", borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 600 }}>⏳ À rattacher</span>
                   </div>
                   <span style={{ fontSize: 12, color: "#6b7280" }}>📅 {r.date} · 👤 {r.agent}{(r as any).creePar && (r as any).creePar !== r.agent ? <span style={PAR}> · saisi par {(r as any).creePar}</span> : null}</span>
@@ -837,7 +838,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
                       <span style={{ color: "#6b7280", fontSize: 12 }}>BL {r.bl}</span>
                       <span style={{ background: "#dcfce7", color: "#15803d", border: "1px solid #bbf7d0", borderRadius: 20, padding: "3px 10px", fontSize: 11, fontWeight: 600 }}>✓ Traité</span>
                     </div>
-                    <div style={{ display: "flex", gap: 6 }}>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <button style={{ ...BTN("#dbeafe", "#1d4ed8"), padding: "7px 12px", fontSize: 12 }} onClick={() => repointerFiche(r)}>📋 Repointer</button>
                       <button style={{ ...BTN("#fee2e2", "#dc2626"), padding: "7px 12px", fontSize: 12 }} onClick={() => genPDF(r)}>📄 PDF</button>
                       <button style={{ ...BTN("#fee2e2", "#dc2626"), padding: "7px 10px", fontSize: 11 }} onClick={() => { setModal("delete"); setModalData({ type: "ret", id: r.id, numero: r.numero }); }}>🗑</button>
@@ -873,13 +874,13 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
               {corbeille.map(r => (
                 <div key={r.id} style={{ background: "#fff", border: "1.5px solid #fecaca", borderRadius: 14, padding: "1rem 1.2rem", marginBottom: 8 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", minWidth: 0 }}>
                       {numBadge(r.numero || "—")}
                       <span style={{ fontWeight: 700 }}>{(r as any).client || (r as any).clientConnu || "—"}</span>
                     </div>
                     <span style={{ fontSize: 11, color: "#dc2626" }}>🗑 {(r as any)._deletedAt}{(r as any)._deletedPar ? <span style={PAR}> · par {(r as any)._deletedPar}</span> : null}</span>
                   </div>
-                  <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+                  <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
                     <button style={BTN("#dcfce7", "#15803d")} onClick={async () => {
                       const { _originalPath, _deletedAt, _deletedTs, _deletedPar, id, ...data } = r as any;
                       await push(ref(db, _originalPath?.startsWith("retours_entrepot") ? "retours_entrepot" : "retours"), data);

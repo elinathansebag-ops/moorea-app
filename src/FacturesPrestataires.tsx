@@ -179,7 +179,7 @@ function EditeurLigne({ l, onFin, couleurs }: { l: Ligne; onFin: () => void; cou
   const [erreur, setErreur] = useState("");
   const [envoi, setEnvoi] = useState(false);
   const { texte, gris, bord, carte } = couleurs;
-  const champ = { padding: "7px 9px", borderRadius: 8, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13 } as const;
+  const champ = { padding: "7px 9px", borderRadius: 8, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13, maxWidth: "100%", boxSizing: "border-box" } as const;
 
   async function enregistrer() {
     const base = `${SOURCES[l.source].chemin}/${l.id}`;
@@ -235,7 +235,7 @@ function EditeurLigne({ l, onFin, couleurs }: { l: Ligne; onFin: () => void; cou
 
   const catalogue: Record<string, any> = l.source === "cartons" ? CARTONS_CATALOGUE : PALETTES_IFCO;
   return (
-    <div style={{ width: "100%", border: `1px dashed ${bord}`, borderRadius: 10, padding: "10px 12px", marginTop: 4, display: "flex", flexDirection: "column", gap: 8 }}>
+    <div style={{ width: "100%", boxSizing: "border-box", border: `1px dashed ${bord}`, borderRadius: 10, padding: "10px 12px", marginTop: 4, display: "flex", flexDirection: "column", gap: 8 }}>
       {(l.source === "cartons" || l.source === "ifco") && (
         <>
           {lignes.map((x, i) => (
@@ -278,11 +278,11 @@ function EditeurLigne({ l, onFin, couleurs }: { l: Ligne; onFin: () => void; cou
       )}
       <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
         {l.source !== "entretiens" && (
-          <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: gris }}>
+          <label style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", fontSize: 12.5, color: gris }}>
             Date de livraison <input type="date" value={date} onChange={e => setDate(e.target.value)} style={champ} />
           </label>
         )}
-        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: gris }}>
+        <label style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", fontSize: 12.5, color: gris }}>
           Montant facture (€ HT) <input inputMode="decimal" value={montant} onChange={e => setMontant(e.target.value)} placeholder={l.montantHT != null ? `estimé ${String(l.montantHT).replace(".", ",")}` : "ex. 78,50"} style={{ ...champ, width: 120 }} />
         </label>
       </div>
@@ -319,7 +319,7 @@ function NouvelleEntree({ nomsPresta, onFin, couleurs }: { nomsPresta: string[];
   const [montant, setMontant] = useState("");
   const [erreur, setErreur] = useState("");
   const [envoi, setEnvoi] = useState(false);
-  const champ = { padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13 } as const;
+  const champ = { padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 13, maxWidth: "100%", boxSizing: "border-box" } as const;
 
   function changerChoix(c: string) {
     setChoix(c); setErreur("");
@@ -432,8 +432,8 @@ function NouvelleEntree({ nomsPresta, onFin, couleurs }: { nomsPresta: string[];
       )}
 
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: gris }}>Date de livraison <input type="date" value={date} onChange={e => setDate(e.target.value)} style={champ} /></label>
-        <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12.5, color: gris }}>Montant facture (€ HT) <input inputMode="decimal" value={montant} onChange={e => setMontant(e.target.value)} placeholder="facultatif" style={{ ...champ, width: 110 }} /></label>
+        <label style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", fontSize: 12.5, color: gris }}>Date de livraison <input type="date" value={date} onChange={e => setDate(e.target.value)} style={champ} /></label>
+        <label style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap", fontSize: 12.5, color: gris }}>Montant facture (€ HT) <input inputMode="decimal" value={montant} onChange={e => setMontant(e.target.value)} placeholder="facultatif" style={{ ...champ, width: 110 }} /></label>
       </div>
       {erreur && <span style={{ fontSize: 12.5, fontWeight: 700, color: "#b91c1c" }}>{erreur}</span>}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
@@ -573,7 +573,7 @@ export function FacturesPrestataires({ onClose, darkMode, integre = false }: { o
                 <span style={{ flex: 1 }} />
               </div>
               {Object.keys(pv).length > 0 && (
-                <p style={{ margin: "0 0 8px", fontSize: 12, color: gris }}>🟫 Palettes vierges du mois : {Object.entries(pv).map(([r, n]) => `${n} × ${r}`).join(" · ")}</p>
+                <p style={{ margin: "0 0 8px", fontSize: 12, color: gris, overflowWrap: "anywhere" }}>🟫 Palettes vierges du mois : {Object.entries(pv).map(([r, n]) => `${n} × ${r}`).join(" · ")}</p>
               )}
               {[...jours.entries()].map(([jour, lignes]) => (
                 <div key={jour} style={{ background: carte, border: `1px solid ${bord}`, borderRadius: 12, padding: "8px 12px", marginBottom: 8 }}>
@@ -581,7 +581,7 @@ export function FacturesPrestataires({ onClose, darkMode, integre = false }: { o
                   {lignes.map(l => (
                     <div key={l.cle} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 0", borderTop: `1px solid ${bord}` }}>
                       <span style={{ fontSize: 20 }}>{SOURCES[l.source].icone}</span>
-                      <span style={{ flex: 1, minWidth: 200 }}>
+                      <span style={{ flex: 1, minWidth: 200, overflowWrap: "anywhere" }}>
                         <span style={{ display: "block", fontSize: 14, fontWeight: 700 }}>{l.titre}</span>
                         <span style={{ display: "block", fontSize: 12.5, color: gris }}>{l.detail || "—"}</span>
                       </span>
@@ -600,7 +600,7 @@ export function FacturesPrestataires({ onClose, darkMode, integre = false }: { o
                       <button type="button" onClick={() => supprimer(l)} title="Supprimer ce frais" aria-label="Supprimer ce frais"
                         style={{ padding: "7px 9px", borderRadius: 10, border: "none", background: "#fee2e2", color: "#b91c1c", fontSize: 13, fontWeight: 700, cursor: "pointer" }}>🗑</button>
                       {l.facturee ? (
-                        <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                           <span style={{ fontSize: 12, fontWeight: 700, color: "#15803d" }}>
                             ✓ Facturée{l.dateFacture ? ` le ${new Date(l.dateFacture + "T12:00:00").toLocaleDateString("fr-FR")}` : ""}{l.facturePar ? ` — ${l.facturePar}` : ""}
                           </span>

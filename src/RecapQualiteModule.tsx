@@ -169,8 +169,8 @@ export function RecapQualiteModule({ rapports, arrivages, onClose }: { rapports:
       <div key={lot} onClick={() => setLotOuvert(ouvert ? null : lot)}
         style={{ background: "#fff", borderRadius: ouvert ? "12px 12px 0 0" : 12, border: `2px solid ${ouvert ? coul : "#eee8dc"}`, borderBottom: ouvert ? "none" : undefined, borderLeft: `${ouvert ? 2 : 5}px solid ${coul}`, padding: ouvert ? "10px 12px 10px 15px" : "10px 12px", cursor: "pointer", display: "flex", flexDirection: "column", gap: 6, position: "relative", zIndex: ouvert ? 1 : undefined, marginBottom: ouvert ? -12 : 0, paddingBottom: ouvert ? 22 : 10, boxShadow: ouvert ? "none" : "0 1px 6px rgba(0,0,0,0.04)" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ fontSize: 15, fontWeight: 900, color: "#1a2e1a", fontFamily: "'Syne', sans-serif" }}>{lot === "Sans lot" ? lot : `Lot ${lot}`}</span>
-          <span style={{ marginLeft: "auto", fontSize: 11, fontWeight: 800, color: coul, background: decisionFond(pire), borderRadius: 20, padding: "2px 9px" }}>{decisionAbrege(pire)}</span>
+          <span style={{ fontSize: 15, fontWeight: 900, color: "#1a2e1a", fontFamily: "'Syne', sans-serif", minWidth: 0, overflowWrap: "anywhere" }}>{lot === "Sans lot" ? lot : `Lot ${lot}`}</span>
+          <span style={{ marginLeft: "auto", flexShrink: 0, fontSize: 11, fontWeight: 800, color: coul, background: decisionFond(pire), borderRadius: 20, padding: "2px 9px" }}>{decisionAbrege(pire)}</span>
         </div>
         <div style={{ minWidth: 0 }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: "#1f2937", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={dernier.produit}>{dernier.produit || "-"}</div>
@@ -184,7 +184,7 @@ export function RecapQualiteModule({ rapports, arrivages, onClose }: { rapports:
         </div>
       </div>,
       ouvert && (
-        <div key={`${lot}_detail`} style={{ gridColumn: "1 / -1", background: "#fff", border: `2px solid ${coul}`, borderRadius: 12, padding: "12px 14px" }}>
+        <div key={`${lot}_detail`} style={{ gridColumn: "1 / -1", minWidth: 0, background: "#fff", border: `2px solid ${coul}`, borderRadius: 12, padding: "12px 14px" }}>
           <div style={{ fontSize: 11, fontWeight: 800, color: "#9ca3af", textTransform: "uppercase", letterSpacing: 0.6, marginBottom: 8 }}>Contrôles du lot {lot}</div>
           <div style={{ display: "flex", flexDirection: "column", gap: 0 }}>
             {items.map((r, i) => {
@@ -196,7 +196,7 @@ export function RecapQualiteModule({ rapports, arrivages, onClose }: { rapports:
                     <span style={{ width: 12, height: 12, borderRadius: "50%", background: c, marginTop: 9, flexShrink: 0 }} />
                     {i < items.length - 1 && <span style={{ flex: 1, width: 2, background: "#e5e7eb" }} />}
                   </div>
-                  <div style={{ flex: 1, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "6px 10px", margin: "2px 0", borderRadius: 8, background: decisionFond(r.decision), fontSize: 12 }}>
+                  <div style={{ flex: 1, minWidth: 0, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", padding: "6px 10px", margin: "2px 0", borderRadius: 8, background: decisionFond(r.decision), fontSize: 12 }}>
                     <span style={{ fontWeight: 800, color: "#374151", minWidth: 110 }}>{r.date || "-"}{r.heure ? ` · ${r.heure}` : ""}</span>
                     {r.numeroRapport && <span style={{ color: "#6b7280", fontWeight: 700 }}>{r.numeroRapport}</span>}
                     <span style={pastille("", !!r.numeroTracabilite)}>🏷️ {r.numeroTracabilite || "—"}</span>
@@ -228,9 +228,9 @@ export function RecapQualiteModule({ rapports, arrivages, onClose }: { rapports:
         </div>
         <div style={{ background: "#fff", borderRadius: 14, padding: 14, marginBottom: 14, border: "1.5px solid #e8e0d0" }}>
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "flex-end" }}>
-            <label style={{ fontSize: 11, color: "#6b7280" }}>Rechercher
+            <label style={{ fontSize: 11, color: "#6b7280", maxWidth: "100%" }}>Rechercher
               <input type="text" value={rechercheLot} onChange={e => setRechercheLot(e.target.value)} placeholder="Lot, fournisseur, produit, n° traça…"
-                style={{ display: "block", marginTop: 3, padding: "7px 10px", borderRadius: 8, border: "1.5px solid #e8e0d0", fontSize: 13, width: 240 }} />
+                style={{ display: "block", marginTop: 3, padding: "7px 10px", borderRadius: 8, border: "1.5px solid #e8e0d0", fontSize: 13, width: 240, maxWidth: "100%", boxSizing: "border-box" }} />
             </label>
             <label style={{ fontSize: 11, color: "#6b7280" }}>Du
               <input type="date" value={du} onChange={e => setDu(e.target.value)}

@@ -127,7 +127,7 @@ export function EnvoisMails({ sante, darkMode }: { sante: Record<string, { email
                     <div style={{ display: "flex", flexDirection: "column", gap: 6, margin: "8px 0 4px", padding: 8, borderRadius: 8, border: "1px dashed #d1d5db", background: darkMode ? "#111" : "#fff" }}>
                       {e0.mod?.de && (
                         <label style={{ fontSize: 11.5, fontWeight: 700, color: texte, display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>De
-                          <select value={edition.de} onChange={ev => setEdition({ ...edition, de: ev.target.value })} style={{ padding: "5px 8px", borderRadius: 7, border: "1.5px solid #d1d5db", fontSize: 12 }}>
+                          <select value={edition.de} onChange={ev => setEdition({ ...edition, de: ev.target.value })} style={{ padding: "5px 8px", borderRadius: 7, border: "1.5px solid #d1d5db", fontSize: 12, maxWidth: "100%" }}>
                             {(Object.keys(BOITES) as Boite[]).filter(b => b !== "messagerie").map(b => <option key={b} value={b}>{BOITES[b]}{sante[b]?.ok === false ? " (déconnectée)" : ""}</option>)}
                           </select>
                         </label>
@@ -142,7 +142,7 @@ export function EnvoisMails({ sante, darkMode }: { sante: Record<string, { email
                           <input value={edition.cc} onChange={ev => setEdition({ ...edition, cc: ev.target.value })} placeholder="ex. qualite@moorea.fr" style={{ display: "block", width: "100%", boxSizing: "border-box", marginTop: 3, padding: "6px 8px", borderRadius: 7, border: "1.5px solid #d1d5db", fontSize: 12 }} />
                         </label>
                       )}
-                      {!e0.mod?.a && <span style={{ fontSize: 11, color: "#6b7280" }}>« À » dépend de chaque envoi ({e0.a}) : il ne se règle pas ici.</span>}
+                      {!e0.mod?.a && <span style={{ fontSize: 11, color: "#6b7280", overflowWrap: "anywhere" }}>« À » dépend de chaque envoi ({e0.a}) : il ne se règle pas ici.</span>}
                       {erreur && <span style={{ fontSize: 11.5, fontWeight: 700, color: "#dc2626" }}>{erreur}</span>}
                       <div style={{ display: "flex", gap: 6 }}>
                         <button type="button" onClick={enregistrer} style={{ padding: "5px 12px", borderRadius: 7, border: "none", background: "#305a55", color: "#fff", fontSize: 12, fontWeight: 800, cursor: "pointer" }}>Enregistrer</button>
@@ -150,14 +150,14 @@ export function EnvoisMails({ sante, darkMode }: { sante: Record<string, { email
                       </div>
                     </div>
                   )}
-                  <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", columnGap: 8, rowGap: 2, fontSize: 11.5, marginTop: 4, color: darkMode ? "#d1d5db" : "#4b5563" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "auto minmax(0, 1fr)", columnGap: 8, rowGap: 2, fontSize: 11.5, marginTop: 4, color: darkMode ? "#d1d5db" : "#4b5563" }}>
                     <span style={{ fontWeight: 700 }}>De</span>
                     <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
                       <span style={{ width: 8, height: 8, borderRadius: "50%", flexShrink: 0, background: ok === true ? "#22c55e" : ok === false ? "#dc2626" : "#9ca3af" }} title={ok === false ? "Boîte déconnectée : ce mail ne part pas" : ok ? "Boîte OK" : "Pas encore testée"} />
                       {BOITES[e.de]}{ok === false && <b style={{ color: "#dc2626" }}>— déconnectée, ce mail ne part pas</b>}
                     </span>
-                    <span style={{ fontWeight: 700 }}>À</span><span style={{ wordBreak: "break-word" }}>{e.a}</span>
-                    {e.cc && <><span style={{ fontWeight: 700 }}>Copie</span><span>{e.cc}</span></>}
+                    <span style={{ fontWeight: 700 }}>À</span><span style={{ wordBreak: "break-word", overflowWrap: "anywhere" }}>{e.a}</span>
+                    {e.cc && <><span style={{ fontWeight: 700 }}>Copie</span><span style={{ overflowWrap: "anywhere" }}>{e.cc}</span></>}
                     <span style={{ fontWeight: 700 }}>Quand</span><span>{e.quand}</span>
                   </div>
                 </div>

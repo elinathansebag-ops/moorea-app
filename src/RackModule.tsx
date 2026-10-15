@@ -966,7 +966,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
           <>
 
           {/* NAVIGATION ENTRE MURS */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 18 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 18, flexWrap: "wrap" }}>
             {WALL_IDS.map((id, i) => {
               const c = configs[id] || { label: WALL_DEFAULT_LABELS[i] };
               return (
@@ -1009,7 +1009,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
 
             <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
               <input value={favSearch} onChange={e => setFavSearch(e.target.value)} placeholder="🔍 Chercher un article du catalogue..."
-                style={{ flex: 1, padding: "9px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, boxSizing: "border-box" as const }} />
+                style={{ flex: 1, minWidth: 0, padding: "9px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 13, boxSizing: "border-box" as const }} />
               <input type="color" value={newFavColor} onChange={e => setNewFavColor(e.target.value)} title="Couleur pour les prochains articles cochés"
                 style={{ width: 38, height: 38, padding: 2, border: "1.5px solid #e5e7eb", borderRadius: 8, cursor: "pointer", flexShrink: 0 }} />
             </div>
@@ -1045,12 +1045,12 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
             <input value={cfgLabel} onChange={e => setCfgLabel(e.target.value)} placeholder={WALL_DEFAULT_LABELS[WALL_IDS.indexOf(activeWall)]}
               style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, marginBottom: 14, boxSizing: "border-box" as const, fontFamily: "'Syne', sans-serif" }} />
             <div style={{ display: "flex", gap: 10, marginBottom: 16 }}>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>NIVEAUX (hauteur)</label>
                 <input type="number" min="1" value={cfgRows} onChange={e => setCfgRows(Number(e.target.value))}
                   style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 15, fontWeight: 700, boxSizing: "border-box" as const }} />
               </div>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <label style={{ fontSize: 12, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 4 }}>EMPLACEMENTS (largeur)</label>
                 <input type="number" min="1" value={cfgCols} onChange={e => setCfgCols(Number(e.target.value))}
                   style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 15, fontWeight: 700, boxSizing: "border-box" as const }} />
@@ -1072,12 +1072,12 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
             <p style={{ fontSize: 11, color: "#9ca3af", margin: "0 0 14px" }}>Chaque section (entre deux échelles, ou le mur entier si pas d'échelle) garde toujours la même taille physique — tu choisis juste combien de palettes y rentrent, niveau par niveau : 1 (très grande), 2, 3...</p>
 
             <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-              <div style={{ flex: 1 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 3 }}>Niveau</label>
                 <input type="number" min={1} max={cfg.rows} value={cfgBayNiveau} onChange={e => setCfgBayNiveau(Number(e.target.value))}
                   style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 14, boxSizing: "border-box" as const }} />
               </div>
-              <div style={{ flex: 2 }}>
+              <div style={{ flex: 2, minWidth: 0 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: "#6b7280", display: "block", marginBottom: 3 }}>Section (entre échelles)</label>
                 <select value={cfgBayIndex} onChange={e => { const i = Number(e.target.value); setCfgBayIndex(i); const b = getBays(cfg)[i]; if (b) setCfgBayCount(b.width); }}
                   style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }}>
@@ -1178,7 +1178,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
 
         {/* BANNIÈRE DÉPLACEMENT EN COURS */}
         {moving && (
-          <div style={{ background: "#fef9c3", border: "1.5px solid #facc15", borderRadius: 12, padding: "10px 16px", marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div style={{ background: "#fef9c3", border: "1.5px solid #facc15", borderRadius: 12, padding: "10px 16px", marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#92400e" }}>
               📦 Déplacement de "{moving.data.produit}" — clique sur une case vide pour la déposer (n'importe quel mur)
             </p>
@@ -1189,7 +1189,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
         )}
 
         {duplicating && (
-          <div style={{ background: "#f5f3ff", border: "1.5px solid #c4b5fd", borderRadius: 12, padding: "10px 16px", marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
+          <div style={{ background: "#f5f3ff", border: "1.5px solid #c4b5fd", borderRadius: 12, padding: "10px 16px", marginBottom: 14, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
             <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: "#6d28d9" }}>
               📋 Duplication de "{duplicating.produit}" — clique sur une case vide pour créer la copie (à modifier avant de valider)
             </p>
@@ -1449,7 +1449,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
       {/* MODAL CASE VIDE → AJOUTER PALETTE */}
       {selectedCell && (!selectedData || isEditing) && (
         <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 440, maxHeight: "88vh", overflowY: "auto" }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: "clamp(16px, 5vw, 24px)", width: "100%", maxWidth: 440, maxHeight: "88vh", overflowY: "auto", boxSizing: "border-box" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
               <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, fontFamily: "'Syne', sans-serif" }}>{isEditing ? "✏️ Modifier la palette" : "➕ Placer une palette"}</h2>
               <button onClick={() => { setSelectedCell(null); setIsEditing(false); }} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#6b7280" }}>✕</button>
@@ -1560,7 +1560,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
                       )}
                       <div style={{ display: "flex", gap: 8 }}>
                         <input type="number" value={item.quantite} onChange={e => updateExtraItem(idx, { quantite: e.target.value })} placeholder="Qté"
-                          style={{ flex: 1, padding: "9px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
+                          style={{ flex: 1, minWidth: 0, padding: "9px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13, boxSizing: "border-box" as const }} />
                         <select value={item.unite} onChange={e => updateExtraItem(idx, { unite: e.target.value })}
                           style={{ width: 90, padding: "9px 6px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }}>
                           <option>colis</option><option>kg</option><option>palette</option>
@@ -1574,7 +1574,7 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <input value={freeForm.lot_interne} onChange={e => setFreeForm({ ...freeForm, lot_interne: e.target.value })} placeholder="N° Lot" autoFocus={presetLocked}
-                    style={{ flex: 1, padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
+                    style={{ flex: 1, minWidth: 0, padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
                   <input type="number" value={freeForm.quantite} onChange={e => setFreeForm({ ...freeForm, quantite: e.target.value })} placeholder="Qté"
                     style={{ width: 90, padding: "10px 12px", border: "1.5px solid #e5e7eb", borderRadius: 10, fontSize: 14, boxSizing: "border-box" as const }} />
                   <select value={freeForm.unite} onChange={e => setFreeForm({ ...freeForm, unite: e.target.value })}
@@ -1607,10 +1607,10 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
       {/* MODAL CASE OCCUPÉE → DÉTAIL / ACTIONS */}
       {selectedCell && selectedData && !isEditing && (
         <div style={{ position: "fixed", inset: 0, zIndex: 2000, background: "rgba(0,0,0,0.6)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 20, padding: 24, width: "100%", maxWidth: 400 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
-              <div>
-                <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, fontFamily: "'Syne', sans-serif", color: "#1a2e1a", display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{ background: "#fff", borderRadius: 20, padding: "clamp(16px, 5vw, 24px)", width: "100%", maxWidth: 400, maxHeight: "88vh", overflowY: "auto", boxSizing: "border-box" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12, gap: 8 }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h2 style={{ fontSize: 17, fontWeight: 700, margin: 0, fontFamily: "'Syne', sans-serif", color: "#1a2e1a", display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", overflowWrap: "anywhere" }}>
                   {selectedData.color && <span style={{ width: 14, height: 14, borderRadius: 4, background: selectedData.color, border: "1px solid rgba(0,0,0,0.15)", display: "inline-block" }} />}
                   {selectedData.type && selectedData.type !== "produit" && <span>{PALETTE_TYPES[selectedData.type].icon}</span>}
                   {selectedData.produit}
@@ -1664,8 +1664,8 @@ export function RackModule({ onClose, autoOpenConfig }: { onClose: () => void; a
               📋 Dupliquer (et modifier)
             </button>
             {confirmSortie ? (
-              <div style={{ display: "flex", gap: 8, alignItems: "center", background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 10, padding: 6 }}>
-                <span style={{ flex: 1, fontSize: 12.5, fontWeight: 700, color: "#dc2626", paddingLeft: 6 }}>Sortir cette palette du rack ?</span>
+              <div style={{ display: "flex", gap: 8, alignItems: "center", background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 10, padding: 6, flexWrap: "wrap" }}>
+                <span style={{ flex: "1 1 140px", fontSize: 12.5, fontWeight: 700, color: "#dc2626", paddingLeft: 6 }}>Sortir cette palette du rack ?</span>
                 <button onClick={handleRemove} style={{ padding: "9px 14px", borderRadius: 8, border: "none", background: "#dc2626", color: "#fff", fontWeight: 800, fontSize: 13, cursor: "pointer" }}>Oui, sortir</button>
                 <button onClick={() => setConfirmSortie(false)} style={{ padding: "9px 12px", borderRadius: 8, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer" }}>Annuler</button>
               </div>

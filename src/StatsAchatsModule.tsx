@@ -221,7 +221,7 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
         {/* Import */}
         <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: 14, marginBottom: 14 }}>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 10, alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ fontSize: 12.5, color: "#6b7280" }}>
+            <div style={{ fontSize: 12.5, color: "#6b7280", minWidth: 0, overflowWrap: "anywhere" }}>
               {meta
                 ? <>Dernier import : <b>{new Date(meta.dernierImport).toLocaleString("fr-FR")}</b> {meta.par ? `par ${meta.par}` : ""} — {meta.fichier} ({(meta.lignes || 0).toLocaleString("fr-FR")} lignes, du {dateFr(meta.du)} au {dateFr(meta.au)})</>
                 : "Aucune donnée pour l'instant. Importe ton export Excel (« Résultat par ligne »)."}
@@ -357,7 +357,7 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
                 <input value={recherche} onChange={e => setRecherche(e.target.value)} placeholder={`Chercher un ${COL_TITRES[onglet as Dim].toLowerCase()}…`}
                   style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, marginBottom: 10, fontSize: 13 }} />
                 <div style={{ fontSize: 11.5, color: "#9ca3af", marginBottom: 6 }}>{groupes.length} résultat(s) — clique sur une ligne pour filtrer dessus et voir le détail.</div>
-                <div style={{ overflowX: "auto" }}>
+                <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                     <thead>
                       <tr style={{ background: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>
@@ -396,7 +396,7 @@ export function StatsAchatsModule({ onClose, userName }: { onClose: () => void; 
                   ))}
                   <span style={{ fontSize: 11.5, color: "#9ca3af" }}>Astuce : filtre d'abord un fournisseur / article / client (onglets précédents) pour voir son évolution, y compris son prix d'achat par colis.</span>
                 </div>
-                <div style={{ overflowX: "auto" }}>
+                <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5 }}>
                     <thead>
                       <tr style={{ background: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>

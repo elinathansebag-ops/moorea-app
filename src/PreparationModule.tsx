@@ -759,11 +759,12 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
           </div>
         )}
 
-        {/* 05/10/2026 — Demande d'Elinathan : Lidl et Reconditionnement séparés en deux onglets. */}
+        {/* 05/10/2026 — Demande d'Elinathan : Lidl et Reconditionnement séparés en deux onglets.
+            15/10/2026 — téléphone : police réduite sous ~420 px pour que « ♻️ Reconditionnement » tienne. */}
         <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
           {([["lidl", "🛒 Lidl", nbLidlAPreparer, "#0050aa"], ["recond", "♻️ Reconditionnement", nbRecondEnCours, COLORS.primary]] as const).map(([k, lib, n, c]) => (
             <button key={k} type="button" onClick={() => choisirOnglet(k)}
-              style={{ flex: 1, height: 52, borderRadius: 14, border: `2px solid ${onglet === k ? c : COLORS.gray200}`, background: onglet === k ? c : "#fff", color: onglet === k ? "#fff" : COLORS.gray700, fontSize: 16, fontWeight: 900, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: onglet === k ? "0 3px 10px rgba(0,0,0,.12)" : "none" }}>
+              style={{ flex: 1, minWidth: 0, minHeight: 52, padding: "4px 6px", borderRadius: 14, border: `2px solid ${onglet === k ? c : COLORS.gray200}`, background: onglet === k ? c : "#fff", color: onglet === k ? "#fff" : COLORS.gray700, fontSize: "clamp(13px, 3.8vw, 16px)", fontWeight: 900, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: onglet === k ? "0 3px 10px rgba(0,0,0,.12)" : "none" }}>
               {lib}
               {n > 0 && <span style={{ background: onglet === k ? "rgba(255,255,255,.25)" : "#fef3c7", color: onglet === k ? "#fff" : "#b45309", borderRadius: 12, padding: "1px 9px", fontSize: 13 }}>{n}</span>}
             </button>
@@ -783,7 +784,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
             <div style={{ fontSize: 12, color: "#92400e", marginBottom: 10 }}>
               "{r.raison}" — {r.date}
             </div>
-            <div style={{ display: "flex", gap: 8 }}>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button
                 onClick={() => traiterReajustement(r, true)}
                 style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
@@ -842,7 +843,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                     </div>
                   </div>
                   {ouverte && (
-                    <div style={{ padding: "12px 16px 4px", background: "#fafafa" }}>
+                    <div style={{ padding: "12px clamp(8px, 3vw, 16px) 4px", background: "#fafafa" }}>
                       {info.jours.map(jourStr => (
                         <div key={jourStr} style={{ marginBottom: 14, borderLeft: `3px solid ${weekdayAccent(jourStr)}`, paddingLeft: 10 }}>
                           <p style={{ margin: "0 0 8px", fontSize: 11.5, fontWeight: 700, color: weekdayAccent(jourStr) }}>{jourStr}</p>
@@ -937,9 +938,9 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
                                       // (vraiment terminée) doit se distinguer du reste (en attente/prêt/parti) sans
                                       // avoir à lire le badge — fond vert pâle + bord vert plutôt que la même carte
                                       // blanche neutre pour tous les statuts.
-                                      <div key={d.id} style={{ background: d.statut === "reçu" ? "#f0fdf4" : "#fff", border: `1.5px solid ${d.statut === "reçu" ? "#bbf7d0" : COLORS.gray200}`, borderLeft: `4px solid ${d.statut === "reçu" ? "#15803d" : accentDepot}`, borderRadius: 12, padding: 16, opacity: d.statut === "reçu" ? 0.85 : 1 }}>
+                                      <div key={d.id} style={{ background: d.statut === "reçu" ? "#f0fdf4" : "#fff", border: `1.5px solid ${d.statut === "reçu" ? "#bbf7d0" : COLORS.gray200}`, borderLeft: `4px solid ${d.statut === "reçu" ? "#15803d" : accentDepot}`, borderRadius: 12, padding: "clamp(10px, 3vw, 16px)", opacity: d.statut === "reçu" ? 0.85 : 1 }}>
                                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-                                          <div>
+                                          <div style={{ minWidth: 0, overflowWrap: "anywhere" }}>
                                             <div style={{ fontSize: 14, fontWeight: 800, color: COLORS.gray700 }}>
                                               {d.numero && <span style={{ color: COLORS.primary, marginRight: 6 }}>{d.numero}</span>}
                                               {d.articleVrac} → {d.articleFini}
@@ -1165,7 +1166,7 @@ export function PreparationModule({ onClose, userName, scanDemandeId, onScanHand
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 800, display: "flex", flexDirection: "column", padding: 16 }} onClick={() => setPdfApercu(null)}>
           <div style={{ background: "#fff", borderRadius: 14, flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", maxWidth: 900, width: "100%", margin: "0 auto" }} onClick={e => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: `1.5px solid ${COLORS.gray200}` }}>
-              <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>{pdfApercu.titre}</span>
+              <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700, minWidth: 0, overflowWrap: "anywhere" }}>{pdfApercu.titre}</span>
               <button onClick={() => setPdfApercu(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: COLORS.gray600, lineHeight: 1 }}>×</button>
             </div>
             <iframe src={pdfApercu.base64} title={pdfApercu.titre} style={{ flex: 1, border: "none", background: "#fff" }} />

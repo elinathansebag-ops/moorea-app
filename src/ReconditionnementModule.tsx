@@ -905,6 +905,17 @@ function LotSelect({ value, onChange, lotsConnus }: { value: string; onChange: (
   );
 }
 
+// 15/10/2026 — téléphone : les lignes de la demande groupée (grilles 4 colonnes fixes) passent
+// sur 2 colonnes, les champs article sur toute la largeur, et les cases à cocher peuvent passer
+// à la ligne au lieu d'être coupées.
+const CSS_RECOND_TELEPHONE = `
+@media (max-width: 600px) {
+  .recond-ligne-groupe { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important; gap: 8px 10px !important; }
+  .recond-ligne-groupe > .recond-pleine-largeur { grid-column: 1 / -1; }
+  .recond-ligne-groupe label { white-space: normal !important; height: auto !important; min-height: 36px; line-height: 1.2; }
+}
+`;
+
 export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesConfig, demandesRecondExterne, demandesRecondChargees, peutVoirOnglet, isAdmin }: {
   // 01/10/2026 — Seul un admin peut supprimer une demande dont l'arrivage est validé.
   isAdmin?: boolean;
@@ -3795,6 +3806,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   return (
     <div id="recond-root" style={{ minHeight: "100vh", background: COLORS.gray100, overflowX: "hidden", maxWidth: "100vw" }}>
       <style>{styles}</style>
+      <style>{CSS_RECOND_TELEPHONE}</style>
       <PageHeader
         titre="🔄 Reconditionnement"
         couleur={COLORS.primary}
@@ -3811,7 +3823,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
       <div style={{ maxWidth: 900, margin: "0 auto", padding: "20px 16px 60px", display: (demandesRecondChargees === false || !stockIfcoCharge) ? "none" : undefined }}>
         {corrD && (
           <div onClick={() => !corrEnCours && setCorrD(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.45)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-            <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, padding: 20, width: "100%", maxWidth: 420, boxShadow: "0 10px 40px rgba(0,0,0,.3)" }}>
+            <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 14, padding: 20, width: "100%", maxWidth: 420, maxHeight: "90vh", overflowY: "auto", boxSizing: "border-box", boxShadow: "0 10px 40px rgba(0,0,0,.3)" }}>
               <div style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700, marginBottom: 4 }}>✏️ Corriger {corrD.numero || corrD.id}</div>
               <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 14 }}>{corrD.articleVrac} → {corrD.articleFini}. Seul l'écart est appliqué au stock.</div>
               {([
@@ -4028,7 +4040,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                 <div style={{ fontSize: 12, color: "#92400e", marginBottom: 10 }}>
                   "{r.raison}" — {r.date}
                 </div>
-                <div style={{ display: "flex", gap: 8 }}>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <button
                     onClick={() => traiterReajustement(r, true)}
                     style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.secondary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}
@@ -4155,7 +4167,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                   const totalDemandesSemaine = info.jours.reduce((s, j) => s + parJourDemandes[j].length, 0);
                   return (
                     <div key={cleSemaine} style={{ marginBottom: 10, border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, overflow: "hidden" }}>
-                      <div onClick={() => toggleSemaineDemandes(cleSemaine)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer" }}>
+                      <div onClick={() => toggleSemaineDemandes(cleSemaine)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer", flexWrap: "wrap", gap: 8 }}>
                         <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>
                           📅 {info.label}{" "}
                           <span style={{ color: "#999", fontWeight: 600 }}>
@@ -4168,7 +4180,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                         </div>
                       </div>
                       {ouverte && (
-                        <div style={{ padding: "12px 16px 4px", background: "#fafafa" }}>
+                        <div style={{ padding: "12px clamp(8px, 3vw, 16px) 4px", background: "#fafafa" }}>
                           {info.jours.map(jourStr => (
                             <div key={jourStr} style={{ marginBottom: 14, borderLeft: `3px solid ${weekdayAccent(jourStr)}`, paddingLeft: 10 }}>
                               <p style={{ margin: "0 0 8px", fontSize: 11.5, fontWeight: 700, color: weekdayAccent(jourStr) }}>{jourStr}</p>
@@ -4207,9 +4219,9 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                                     {depotOuvert && (
                               <div style={{ display: "grid", gap: 12 }}>
                                 {demandesJourDepot.map(d => (
-                  <div key={d.id} style={{ background: d.statut === "reçu" ? "#f0fdf4" : "#fff", border: `1.5px solid ${d.statut === "reçu" ? "#bbf7d0" : COLORS.gray200}`, borderLeft: `4px solid ${d.statut === "reçu" ? "#15803d" : accentDepot}`, borderRadius: 12, padding: 16, opacity: d.statut === "reçu" ? 0.85 : 1 }}>
+                  <div key={d.id} style={{ background: d.statut === "reçu" ? "#f0fdf4" : "#fff", border: `1.5px solid ${d.statut === "reçu" ? "#bbf7d0" : COLORS.gray200}`, borderLeft: `4px solid ${d.statut === "reçu" ? "#15803d" : accentDepot}`, borderRadius: 12, padding: "clamp(10px, 3vw, 16px)", opacity: d.statut === "reçu" ? 0.85 : 1 }}>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-                      <div>
+                      <div style={{ minWidth: 0, overflowWrap: "anywhere" }}>
                         <div style={{ fontSize: 14, fontWeight: 800, color: COLORS.gray700 }}>
                           {d.numero && <span style={{ color: COLORS.primary, marginRight: 6 }}>{d.numero}</span>}
                           {d.articleVrac} → {d.articleFini}
@@ -4334,7 +4346,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                           <div key={pid} style={{ fontSize: 12, color: "#7f1d1d", marginBottom: 6 }}>
                             <strong>{p.quantite}</strong> colis — {p.motif} · {p.date}
                             {p.commentaire ? ` · "${p.commentaire}"` : ""}
-                            <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                            <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
                               {p.photoEtiquette && (
                                 <img src={p.photoEtiquette} alt="Étiquette" onClick={() => setPhotoApercu(p.photoEtiquette!)}
                                   style={{ width: 52, height: 52, objectFit: "cover", borderRadius: 6, border: "1px solid #fca5a5", cursor: "pointer" }} />
@@ -4488,7 +4500,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                       style={{ display: "block", marginTop: 4, padding: "6px 8px", borderRadius: 8, border: "1px solid #fcd34d", fontSize: 13 }} />
                   </label>
                   <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}>La marchandise est
-                    <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                    <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
                       {([["parti", "🚚 pas encore revenue (à pointer)"], ["reçu", "✅ déjà revenue à Moorea"]] as const).map(([v, lbl]) => (
                         <button key={v} type="button" onClick={() => setGroupeStatutApresCoup(v)}
                           style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${groupeStatutApresCoup === v ? "#d97706" : "#fde68a"}`, background: groupeStatutApresCoup === v ? "#d97706" : "#fff", color: groupeStatutApresCoup === v ? "#fff" : "#92400e" }}>
@@ -4506,7 +4518,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             <div className="card" style={{ padding: "14px 16px", marginBottom: 12 }}>
               {/* 29/09/2026 — Tout sur une seule ligne pour gagner de la hauteur. */}
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700, whiteSpace: "nowrap" }}>📦 Envoyer des caisses IFCO vides à NLT ?</span>
+                <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>📦 Envoyer des caisses IFCO vides à NLT ?</span>
                 {(["oui", "non"] as const).map(v => (
                   <button key={v} type="button" onClick={() => setGroupeIfcoEnvoi(v)}
                     style={{ width: 70, height: 34, borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${groupeIfcoEnvoi === v ? COLORS.primary : COLORS.gray200}`, background: groupeIfcoEnvoi === v ? COLORS.primary : "#fff", color: groupeIfcoEnvoi === v ? "#fff" : COLORS.gray700 }}>
@@ -4555,7 +4567,8 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                     // 29/09/2026 — 3 lignes : (1) dépôt / lot / transporteur / déjà chez le
                     // reconditionneur, (2) produit à sortir + quantité, (3) produit à rentrer +
                     // quantités + case retour IFCO (NLT) ou BABY BLANC (Andès).
-                    const ligne = (cols: string, contenu: any) => <div style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "end" }}>{contenu}</div>;
+                    // 15/10/2026 — téléphone : 2 colonnes (voir CSS_RECOND_TELEPHONE), articles sur toute la largeur.
+                    const ligne = (cols: string, contenu: any) => <div className="recond-ligne-groupe" style={{ display: "grid", gridTemplateColumns: cols, gap: 12, alignItems: "end" }}>{contenu}</div>;
                     const caseRetour = (coche: boolean, libelle: string, set: (v: "oui" | "non") => void) => (
                       <label style={{ display: "flex", alignItems: "center", gap: 8, height: 36, padding: "0 10px", borderRadius: 8, cursor: "pointer", border: `1.5px solid ${coche ? COLORS.primary : COLORS.gray200}`, background: coche ? COLORS.primaryLight : "#fff", fontSize: 12.5, fontWeight: 700, color: coche ? COLORS.primary : COLORS.gray700, whiteSpace: "nowrap" }}>
                         <span className="mrq-case-conteneur">
@@ -4593,11 +4606,11 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                           </label>
                         </>)}
                         {ligne("3fr 1fr", <>
-                          <div>{lab("Produit à sortir (article vrac)")}<ArticleSelect value={l.articleVrac} onSelect={v => majLigne(l.pdfId, { articleVrac: v })} articles={catalogueArticles} placeholder="Article…" inputStyle={champ} /></div>
+                          <div className="recond-pleine-largeur">{lab("Produit à sortir (article vrac)")}<ArticleSelect value={l.articleVrac} onSelect={v => majLigne(l.pdfId, { articleVrac: v })} articles={catalogueArticles} placeholder="Article…" inputStyle={champ} /></div>
                           <div>{lab("Colis à sortir")}<input type="number" value={l.nbSortir} onChange={e => majLigne(l.pdfId, { nbSortir: e.target.value })} style={champ} /></div>
                         </>)}
                         {ligne("3fr 1fr 1fr 1.3fr", <>
-                          <div>{lab("Produit à rentrer (article à fabriquer)")}<ArticleSelect value={l.articleFini} onSelect={v => majLigne(l.pdfId, { articleFini: v, retourIfco: v.trim() ? retourIfcoParDefaut(v) : "" })} articles={catalogueArticles} placeholder="Article…" inputStyle={champ} /></div>
+                          <div className="recond-pleine-largeur">{lab("Produit à rentrer (article à fabriquer)")}<ArticleSelect value={l.articleFini} onSelect={v => majLigne(l.pdfId, { articleFini: v, retourIfco: v.trim() ? retourIfcoParDefaut(v) : "" })} articles={catalogueArticles} placeholder="Article…" inputStyle={champ} /></div>
                           <div>{lab("Colis à entrer")}<input type="number" value={l.nbEntrer} onChange={e => majLigne(l.pdfId, { nbEntrer: e.target.value })} style={manque(l.nbEntrer)} /></div>
                           <div>{lab(dep ? `Qté / colis (${UNITE_QTE[dep]})` : "Qté / colis")}<input type="number" value={l.qteParColis} onChange={e => majLigne(l.pdfId, { qteParColis: e.target.value })} style={champ} /></div>
                           <div>
@@ -4876,7 +4889,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                     <span style={{ fontSize: 13, color: COLORS.gray700, fontWeight: 800 }}>
                       📦 Le retour se fait en caisses IFCO ? <span style={{ color: "#d97706" }}>*obligatoire</span>
                     </span>
-                    <div style={{ display: "flex", gap: 8 }}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button type="button" onClick={() => setRetourIfco("oui")}
                         style={{ padding: "6px 14px", borderRadius: 8, border: `1.5px solid ${retourIfco === "oui" ? COLORS.secondary : COLORS.gray200}`, background: retourIfco === "oui" ? COLORS.secondaryLight : "#fff", color: retourIfco === "oui" ? COLORS.secondary : COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                         ✓ Oui
@@ -4911,7 +4924,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                     <span style={{ fontSize: 13, color: COLORS.gray700, fontWeight: 800 }}>
                       📦 Cet article revient en cartons BABY BLANC ? <span style={{ color: "#d97706" }}>*obligatoire</span>
                     </span>
-                    <div style={{ display: "flex", gap: 8 }}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button type="button" onClick={() => setRetourBabyBlanc("oui")}
                         style={{ padding: "6px 14px", borderRadius: 8, border: `1.5px solid ${retourBabyBlanc === "oui" ? COLORS.secondary : COLORS.gray200}`, background: retourBabyBlanc === "oui" ? COLORS.secondaryLight : "#fff", color: retourBabyBlanc === "oui" ? COLORS.secondary : COLORS.gray600, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                         ✓ Oui
@@ -4939,7 +4952,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                 aria-checked={fournirEtiquettes}
                 onClick={() => setFournirEtiquettes(v => !v)}
                 style={{
-                  display: "flex", alignItems: "center", gap: 10, margin: "2px 0 10px", padding: "10px 14px",
+                  display: "flex", alignItems: "center", gap: 10, margin: "2px 0 10px", padding: "10px 14px", flexWrap: "wrap",
                   borderRadius: 10, cursor: "pointer",
                   border: `2px solid ${fournirEtiquettes ? COLORS.amber : COLORS.gray200}`,
                   background: fournirEtiquettes ? COLORS.amberLight : "#fff",
@@ -4985,7 +4998,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                         style={{ display: "block", marginTop: 4, padding: "6px 8px", borderRadius: 8, border: "1px solid #fcd34d", fontSize: 13 }} />
                     </label>
                     <div style={{ fontSize: 12, fontWeight: 700, color: "#92400e" }}>La marchandise est
-                      <div style={{ display: "flex", gap: 6, marginTop: 4 }}>
+                      <div style={{ display: "flex", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
                         {([["parti", "🚚 pas encore revenue (à pointer)"], ["reçu", "✅ déjà revenue à Moorea"]] as const).map(([v, l]) => (
                           <button key={v} type="button" onClick={() => setStatutApresCoup(v)}
                             style={{ padding: "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", border: `1.5px solid ${statutApresCoup === v ? "#d97706" : "#fde68a"}`, background: statutApresCoup === v ? "#d97706" : "#fff", color: statutApresCoup === v ? "#fff" : "#92400e" }}>
@@ -5085,7 +5098,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                   const totalDemandes = info.jours.reduce((s, j) => s + parJour[j].length, 0);
                   return (
                     <div key={cleSemaine} style={{ marginBottom: 10, border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, overflow: "hidden" }}>
-                      <div onClick={() => toggleSemaine(cleSemaine)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer" }}>
+                      <div onClick={() => toggleSemaine(cleSemaine)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "12px 16px", background: "#fff", cursor: "pointer" }}>
                         <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>
                           📅 {info.label}{" "}
                           <span style={{ color: "#999", fontWeight: 600 }}>
@@ -5095,7 +5108,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                         <span style={{ fontSize: 14, color: COLORS.primary, transform: ouverte ? "rotate(90deg)" : "none", transition: "transform 0.15s", display: "inline-block" }}>›</span>
                       </div>
                       {ouverte && (
-                        <div style={{ padding: "0 16px 12px", background: "#fafafa" }}>
+                        <div style={{ padding: "0 clamp(8px, 3vw, 16px) 12px", background: "#fafafa" }}>
                           {info.jours.map(jourStr => (
                             <div key={jourStr} style={{ marginTop: 12, borderLeft: `3px solid ${weekdayAccent(jourStr)}`, paddingLeft: 10 }}>
                               <p style={{ margin: "0 0 6px", fontSize: 11.5, fontWeight: 700, color: weekdayAccent(jourStr) }}>{jourStr}</p>
@@ -5205,7 +5218,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                 conditionnée), une ligne par demande reçue — pour la facturation du reconditionneur. ── */}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
               <p style={{ margin: 0, fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>🧾 Détail production reconditionneur (pour facturation)</p>
-              <div style={{ display: "flex", gap: 6 }}>
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {([
                   ["tous", "Tout"],
                   ["caisse", "🧊 Caisse IFCO"],
@@ -5256,7 +5269,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                   const ouvert = joursProductionOuverts?.has(jourStr) ?? false;
                   return (
                     <div key={jourStr} style={{ marginBottom: 10, border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, overflow: "hidden" }}>
-                      <div onClick={() => toggleJourProduction(jourStr)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer" }}>
+                      <div onClick={() => toggleJourProduction(jourStr)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "12px 16px", background: "#fff", cursor: "pointer" }}>
                         <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>
                           📅 {jourStr}{" "}
                           <span style={{ color: "#999", fontWeight: 600 }}>
@@ -5360,7 +5373,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
                   const ouvert = transporteursOuverts.has(nom);
                   return (
                     <div key={nom} style={{ marginBottom: 10, border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, overflow: "hidden" }}>
-                      <div onClick={() => toggleTransporteur(nom)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 16px", background: "#fff", cursor: "pointer" }}>
+                      <div onClick={() => toggleTransporteur(nom)} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8, padding: "12px 16px", background: "#fff", cursor: "pointer" }}>
                         <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>
                           🚚 {nom}{" "}
                           <span style={{ color: "#999", fontWeight: 600 }}>
@@ -5578,7 +5591,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
           bon PDF — voir genererBonEnvoiPaletteIfco). */}
       {envoiPaletteModalOuvert && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 800, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }} onClick={() => !envoiPaletteEnCours && setEnvoiPaletteModalOuvert(false)}>
-          <div style={{ background: "#fff", borderRadius: 14, maxWidth: 420, width: "100%", padding: 24 }} onClick={e => e.stopPropagation()}>
+          <div style={{ background: "#fff", borderRadius: 14, maxWidth: 420, width: "100%", padding: "clamp(16px, 5vw, 24px)", maxHeight: "90vh", overflowY: "auto", boxSizing: "border-box" }} onClick={e => e.stopPropagation()}>
             <h3 style={{ margin: "0 0 4px", fontSize: 15, fontWeight: 800, color: COLORS.gray700 }}>📦 Envoyer une palette IFCO à NLT</h3>
             <p style={{ margin: "0 0 18px", fontSize: 12, color: COLORS.gray600 }}>Transfert interne (Moorea → NLT) — aucun retour attendu. Un bon PDF sera généré et envoyé à l'impression.</p>
             <div style={{ marginBottom: 14 }}>
@@ -5660,7 +5673,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
               {blJour.bls.map(b => (
                 <div key={`${b.uid}-${b.part}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, border: `1px solid ${COLORS.gray200}`, borderRadius: 10, padding: "8px 12px" }}>
                   <div style={{ minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: COLORS.gray700, overflow: "hidden", textOverflow: "ellipsis" }}>📄 {b.nom}</p>
+                    <p style={{ margin: 0, fontSize: 13, fontWeight: 700, color: COLORS.gray700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>📄 {b.nom}</p>
                     <p style={{ margin: "2px 0 0", fontSize: 11.5, color: COLORS.gray600 }}>{b.heure ? `Reçu à ${b.heure}` : ""}{b.sujet ? ` · ${b.sujet}` : ""}</p>
                   </div>
                   <button type="button" onClick={() => ouvrirUnBl(b)} disabled={blJour.ouverture === `${b.uid}-${b.part}`}
@@ -5678,7 +5691,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.7)", zIndex: 800, display: "flex", flexDirection: "column", padding: 16 }} onClick={() => setPdfApercu(null)}>
           <div style={{ background: "#fff", borderRadius: 14, flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", maxWidth: 900, width: "100%", margin: "0 auto" }} onClick={e => e.stopPropagation()}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "10px 16px", borderBottom: `1.5px solid ${COLORS.gray200}` }}>
-              <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>{pdfApercu.titre}</span>
+              <span style={{ fontSize: 13, fontWeight: 800, color: COLORS.gray700, minWidth: 0, overflowWrap: "anywhere" }}>{pdfApercu.titre}</span>
               <button onClick={() => setPdfApercu(null)} style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: COLORS.gray600, lineHeight: 1 }}>×</button>
             </div>
             <iframe src={pdfApercu.base64} title={pdfApercu.titre} style={{ flex: 1, border: "none", background: "#fff" }} />

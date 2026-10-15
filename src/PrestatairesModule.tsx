@@ -2202,6 +2202,8 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
             position: "fixed",
             top: "80px",
             right: "20px",
+            maxWidth: "calc(100vw - 40px)",
+            boxSizing: "border-box",
             padding: "14px 18px",
             borderRadius: "10px",
             background: notification.type === "success" ? COLORS.primary : COLORS.danger,
@@ -2329,7 +2331,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                 .filter(c => c.statut === "commandé")
                 .reduce((total, c) => total + c.lignes.reduce((s, l) => s + (PALETTES_IFCO[l.type as keyof typeof PALETTES_IFCO]?.caisses || 0) * l.quantite, 0), 0);
               return (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "12px", marginBottom: "20px" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))", gap: "12px", marginBottom: "20px" }}>
                   {([
                     { label: "🏭 IFCO — Moorea", total: stockLevels.moorea, color: "#27ae60", bg: "#eafaf1", enCommande: caissesEnCommandeMoorea },
                     { label: "🔄 IFCO — NLT", total: stockLevels.nlt, color: "#3b82f6", bg: "#eff6ff", enCommande: 0 },
@@ -2579,11 +2581,13 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                       borderRadius: "8px",
                       padding: "12px 14px",
                       display: "flex",
+                      flexWrap: "wrap",
+                      gap: "10px",
                       justifyContent: "space-between",
                       alignItems: "center",
                       opacity: cmd.statut === "annulé" ? 0.6 : 1,
                     }}>
-                      <div>
+                      <div style={{ flex: "1 1 220px", minWidth: 0, overflowWrap: "anywhere" }}>
                         <div style={{ fontSize: "13px", fontWeight: "700", color: COLORS.gray700 }}>
                           📅 {new Date(cmd.dateLivraisonPrevue).toLocaleDateString("fr-FR")} · {cmd.creneau}
                         </div>
@@ -2797,7 +2801,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
             </label>
             </>)}
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "16px" }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(200px, 100%), 1fr))", gap: "12px", marginBottom: "16px" }}>
               <div>
                 <label style={{ display: "block", fontSize: "13px", fontWeight: "700", color: COLORS.gray700, marginBottom: "6px" }}>🕐 Créneau</label>
                 <select
@@ -2868,6 +2872,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                     onChange={(e) => modifierLigneCarton(idx, "type", e.target.value)}
                     style={{
                       flex: 1,
+                      minWidth: 0,
                       padding: "9px 12px",
                       border: `1px solid ${COLORS.gray200}`,
                       borderRadius: "6px",
@@ -2990,11 +2995,13 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                       borderRadius: "8px",
                       padding: "12px 14px",
                       display: "flex",
+                      flexWrap: "wrap",
+                      gap: "10px",
                       justifyContent: "space-between",
                       alignItems: "center",
                       opacity: cmd.statut === "annulé" ? 0.6 : 1,
                     }}>
-                      <div>
+                      <div style={{ flex: "1 1 220px", minWidth: 0, overflowWrap: "anywhere" }}>
                         <div style={{ fontSize: "13px", fontWeight: "700", color: COLORS.gray700 }}>
                           📅 {new Date(cmd.dateLivraisonPrevue).toLocaleDateString("fr-FR")}
                         </div>
@@ -3423,8 +3430,8 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                   <p style={{ margin: 0, fontSize: 12, color: "#92400e" }}>Ces clients sont exclus de l'export. Entrez le code IFCO pour les valider.</p>
                 </div>
                 {pendingClients.map(c => (
-                  <div key={c} style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8, background: "#fff", border: "1.5px solid #fde68a", borderRadius: 8, padding: "10px 12px" }}>
-                    <span style={{ flex: 1, fontSize: 12, fontWeight: 600, color: "#92400e" }}>⏳ {c}</span>
+                  <div key={c} style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, marginBottom: 8, background: "#fff", border: "1.5px solid #fde68a", borderRadius: 8, padding: "10px 12px" }}>
+                    <span style={{ flex: "1 1 140px", minWidth: 0, overflowWrap: "anywhere", fontSize: 12, fontWeight: 600, color: "#92400e" }}>⏳ {c}</span>
                     <input
                       type="number"
                       placeholder="Code IFCO"
@@ -3506,7 +3513,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                 <h3 style={{ margin: 0, fontSize: "15px", fontWeight: "700", color: COLORS.gray700 }}>🏭 IFCO — Ajuster les stocks</h3>
                 <p style={{ margin: "4px 0 0", fontSize: "12px", color: COLORS.gray600 }}>Corrige un stock affiché sur le Dashboard s'il ne correspond plus au stock réel. Tape directement la valeur que doit prendre le stock (peut être négative).</p>
               </div>
-              <div style={{ padding: "16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "16px" }}>
+              <div style={{ padding: "16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))", gap: "16px" }}>
                 <div>
                   <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🏭 IFCO — Moorea (actuel : {formatCaisses(stockLevels.moorea)})</div>
                   <input type="number" value={ajustStockMoorea} onChange={(e) => setAjustStockMoorea(e.target.value)} placeholder="Nouvelle valeur (peut être négative)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
@@ -3703,7 +3710,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
             ) : (
               <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: "24px" }}>
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
-                  <select value={statsClientChoisi} onChange={e => setStatsClientChoisi(e.target.value)} style={{ padding: "8px 12px", borderRadius: 8, border: "1.5px solid #e8e0d0", fontSize: 12, fontWeight: 700 }}>
+                  <select value={statsClientChoisi} onChange={e => setStatsClientChoisi(e.target.value)} style={{ maxWidth: "100%", padding: "8px 12px", borderRadius: 8, border: "1.5px solid #e8e0d0", fontSize: 12, fontWeight: 700 }}>
                     <option value="">Tous les clients</option>
                     {clientsStatsListe.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
@@ -3943,7 +3950,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                 <h3 style={{ margin: 0, fontSize: "15px", fontWeight: "700", color: COLORS.gray700 }}>🟫 Palettes vierges — taille d'une pile</h3>
                 <p style={{ margin: "4px 0 0", fontSize: "12px", color: COLORS.gray600 }}>Combien de palettes contient une pile complète, pour chaque référence — utilisé par le bouton "+ 1 pile complète".</p>
               </div>
-              <div style={{ padding: "16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "16px" }}>
+              <div style={{ padding: "16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(220px, 100%), 1fr))", gap: "16px" }}>
                 {Object.entries(REFS_PALETTES_VIERGES).map(([cle, label]) => (
                   <div key={cle}>
                     <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>{label}</div>
@@ -4058,13 +4065,16 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                   <h4 style={{ fontSize: "13px", fontWeight: "700", color: COLORS.primary, margin: "0 0 12px", marginTop: 0 }}>
                     {ifcoEditingClient ? "✏️ Modifier le client" : "➕ Ajouter un client"}
                   </h4>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginBottom: "10px" }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(160px, 100%), 1fr))", gap: "10px", marginBottom: "10px" }}>
                     <input
                       type="text"
                       value={ifcoNewClientName}
                       onChange={(e) => setIfcoNewClientName(e.target.value)}
                       placeholder="Nom du client"
                       style={{
+                        width: "100%",
+                        minWidth: 0,
+                        boxSizing: "border-box",
                         padding: "8px 12px",
                         border: `1px solid ${COLORS.primaryBorder}`,
                         borderRadius: "6px",
@@ -4077,6 +4087,9 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                       onChange={(e) => setIfcoNewClientCode(e.target.value)}
                       placeholder="Code IFCO"
                       style={{
+                        width: "100%",
+                        minWidth: 0,
+                        boxSizing: "border-box",
                         padding: "8px 12px",
                         border: `1px solid ${COLORS.primaryBorder}`,
                         borderRadius: "6px",
@@ -4134,7 +4147,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                 <h3 style={{ margin: 0, fontSize: "15px", fontWeight: "700", color: COLORS.gray700 }}>⚖️ Ajuster les stocks (IFCO / Carton Andès)</h3>
                 <p style={{ margin: "4px 0 0", fontSize: "12px", color: COLORS.gray600 }}>Corrige un stock IFCO (Moorea/NLT) ou de carton Andès s'il ne correspond plus au stock réel. Tape directement la valeur que doit prendre le stock (peut être négative).</p>
               </div>
-              <div style={{ padding: "16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "16px" }}>
+              <div style={{ padding: "16px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(260px, 100%), 1fr))", gap: "16px" }}>
                 <div>
                   <div style={{ fontSize: "12px", fontWeight: "700", color: COLORS.gray600, marginBottom: "6px" }}>🏭 IFCO — Moorea (actuel : {formatCaisses(stockLevels.moorea)})</div>
                   <input type="number" value={ajustStockMoorea} onChange={(e) => setAjustStockMoorea(e.target.value)} placeholder="Nouvelle valeur (peut être négative)" style={{ width: "100%", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: "6px", fontSize: "13px", boxSizing: "border-box", marginBottom: "6px" }} />
@@ -4298,7 +4311,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                       const ageLabel = ageMs < 60000 ? "à l'instant" : ageMs < 3600000 ? `il y a ${Math.round(ageMs / 60000)} min` : `il y a ${Math.round(ageMs / 3600000)} h`;
                       return (
                         <div key={job.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, padding: "8px 10px", background: bloqueProbable ? "#fef2f2" : COLORS.gray100, border: `1.5px solid ${bloqueProbable ? "#fca5a5" : COLORS.gray200}`, borderRadius: 8 }}>
-                          <div style={{ minWidth: 0 }}>
+                          <div style={{ minWidth: 0, overflowWrap: "anywhere" }}>
                             <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray700 }}>{PRINT_JOB_LABEL[job.type] || job.type || "?"}</div>
                             <div style={{ fontSize: 11, color: "#888" }}>{job.pdfNom || job.lotLabel || job.reference || ""} · {ageLabel}</div>
                           </div>
@@ -4342,10 +4355,10 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
               </div>
               <div style={{ padding: "16px" }}>
                 <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))", gap: 8, marginBottom: 10 }}>
-                  <input type="text" value={nvNom} onChange={e => setNvNom(e.target.value)} placeholder="Nom *" style={{ padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
-                  <input type="text" value={nvContact} onChange={e => setNvContact(e.target.value)} placeholder="Contact" style={{ padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
-                  <input type="text" value={nvTelephone} onChange={e => setNvTelephone(e.target.value)} placeholder="Téléphone" style={{ padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
-                  <input type="text" value={nvEmail} onChange={e => setNvEmail(e.target.value)} placeholder="Email" style={{ padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
+                  <input type="text" value={nvNom} onChange={e => setNvNom(e.target.value)} placeholder="Nom *" style={{ width: "100%", minWidth: 0, boxSizing: "border-box", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
+                  <input type="text" value={nvContact} onChange={e => setNvContact(e.target.value)} placeholder="Contact" style={{ width: "100%", minWidth: 0, boxSizing: "border-box", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
+                  <input type="text" value={nvTelephone} onChange={e => setNvTelephone(e.target.value)} placeholder="Téléphone" style={{ width: "100%", minWidth: 0, boxSizing: "border-box", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
+                  <input type="text" value={nvEmail} onChange={e => setNvEmail(e.target.value)} placeholder="Email" style={{ width: "100%", minWidth: 0, boxSizing: "border-box", padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 6, fontSize: 12 }} />
                 </div>
                 <div style={{ display: "flex", gap: 8 }}>
                   <button onClick={ajouterTransporteur} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: transporteurEnEdition ? COLORS.secondary : COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
@@ -4362,8 +4375,8 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                     <p style={{ fontSize: 12, color: "#999" }}>Aucun transporteur pour l'instant.</p>
                   ) : (
                     transporteursRecond.map(t => (
-                      <div key={t.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${COLORS.gray100}`, background: transporteurEnEdition === t.id ? COLORS.primaryLight : "transparent" }}>
-                        <div>
+                      <div key={t.id} style={{ display: "flex", flexWrap: "wrap", gap: 8, justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: `1px solid ${COLORS.gray100}`, background: transporteurEnEdition === t.id ? COLORS.primaryLight : "transparent" }}>
+                        <div style={{ flex: "1 1 180px", minWidth: 0, overflowWrap: "anywhere" }}>
                           <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.gray700 }}>{t.nom}</div>
                           <div style={{ fontSize: 11, color: "#888" }}>{[t.contact, t.telephone, t.email].filter(Boolean).join(" · ")}</div>
                         </div>
@@ -4546,7 +4559,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
 
               {showNouvelEntretien && (
                 <div style={{ padding: 16, borderBottom: `1px solid ${COLORS.gray200}`, background: "#faf7fc" }}>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 12, marginBottom: 12 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(200px, 100%), 1fr))", gap: 12, marginBottom: 12 }}>
                     <div>
                       <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: COLORS.gray600, marginBottom: 6 }}>Prestataire</label>
                       <select value={entretienPrestataire} onChange={e => setEntretienPrestataire(e.target.value)} style={{ width: "100%", padding: "9px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}>
@@ -4576,7 +4589,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                 </div>
               )}
 
-              <div style={{ padding: "12px 16px", display: "flex", gap: 8 }}>
+              <div style={{ padding: "12px 16px", display: "flex", flexWrap: "wrap", gap: 8 }}>
                 {(["en_cours", "historique"] as const).map(f => (
                   <button key={f} onClick={() => setFiltreEntretien(f)} style={{
                     padding: "6px 14px", borderRadius: 8, border: `1.5px solid ${filtreEntretien === f ? "#8e44ad" : COLORS.gray200}`,
@@ -4701,7 +4714,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                     <p style={{ margin: 0, fontSize: 13 }}>Aucune fiche pour l'instant — clique "➕ Nouveau prestataire" pour en créer une.</p>
                   </div>
                 ) : (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 14 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(260px, 100%), 1fr))", gap: 14 }}>
                     {fichesPresta.map(f => (
                       <div key={f.id} style={{ border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12, overflow: "hidden", background: "#fff", display: "flex", flexDirection: "column" }}>
                         <div
@@ -4712,13 +4725,13 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                         </div>
                         <div style={{ padding: 14, flex: 1, display: "flex", flexDirection: "column" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 4 }}>
-                            <span style={{ fontSize: 15, fontWeight: 800, color: COLORS.gray700 }}>{f.nom}</span>
+                            <span style={{ fontSize: 15, fontWeight: 800, color: COLORS.gray700, minWidth: 0, overflowWrap: "anywhere" }}>{f.nom}</span>
                           </div>
                           <span style={{ alignSelf: "flex-start", fontSize: 10.5, fontWeight: 700, color: "#8e44ad", background: "#f4ecf7", borderRadius: 20, padding: "2px 10px", marginBottom: 10 }}>{f.categorie}</span>
                           {f.couts && f.couts.length > 0 ? (
                             <div style={{ display: "grid", gap: 4, marginBottom: f.notes ? 10 : 0 }}>
                               {f.couts.map((c, i) => (
-                                <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 12.5, color: COLORS.gray700, background: COLORS.gray100, borderRadius: 6, padding: "5px 8px" }}>
+                                <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: 8, fontSize: 12.5, color: COLORS.gray700, background: COLORS.gray100, borderRadius: 6, padding: "5px 8px" }}>
                                   <span>{c.label}</span>
                                   <span style={{ fontWeight: 700 }}>{c.prix.toFixed(2).replace(".", ",")} {c.unite.replace(/^€\s*\/\s*/, "€ / ")}</span>
                                 </div>
@@ -4752,7 +4765,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
         {/* MODALE — Créer / modifier une fiche prestataire */}
         {showFormFiche && (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 850, display: "flex", alignItems: "center", justifyContent: "center", padding: 16, overflowY: "auto" }}>
-            <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 460, width: "100%", borderTop: "7px solid #8e44ad", maxHeight: "90vh", overflowY: "auto" }}>
+            <div style={{ background: "#fff", borderRadius: 18, padding: "24px clamp(16px, 5vw, 28px)", maxWidth: 460, width: "100%", borderTop: "7px solid #8e44ad", maxHeight: "90vh", overflowY: "auto" }}>
               <p style={{ fontSize: 16, fontWeight: 800, color: COLORS.gray700, margin: "0 0 16px" }}>
                 {showFormFiche === "new" ? "➕ Nouveau prestataire" : "✏️ Modifier la fiche"}
               </p>
@@ -4781,9 +4794,9 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
               <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
                 {ficheCouts.map((l, i) => (
                   <div key={i} style={{ display: "flex", gap: 6 }}>
-                    <input value={l.label} onChange={e => modifierLigneCoutFiche(i, "label", e.target.value)} placeholder="Ex : Colis" style={{ flex: 2, padding: "8px 9px", border: `1px solid ${COLORS.gray200}`, borderRadius: 7, fontSize: 12.5, boxSizing: "border-box" }} />
-                    <input value={l.prix} onChange={e => modifierLigneCoutFiche(i, "prix", e.target.value)} placeholder="0,00" inputMode="decimal" style={{ width: 70, padding: "8px 9px", border: `1px solid ${COLORS.gray200}`, borderRadius: 7, fontSize: 12.5, boxSizing: "border-box" }} />
-                    <input value={l.unite} onChange={e => modifierLigneCoutFiche(i, "unite", e.target.value)} placeholder="€ / colis" style={{ flex: 1.4, padding: "8px 9px", border: `1px solid ${COLORS.gray200}`, borderRadius: 7, fontSize: 12.5, boxSizing: "border-box" }} />
+                    <input value={l.label} onChange={e => modifierLigneCoutFiche(i, "label", e.target.value)} placeholder="Ex : Colis" style={{ flex: 2, minWidth: 0, padding: "8px 9px", border: `1px solid ${COLORS.gray200}`, borderRadius: 7, fontSize: 12.5, boxSizing: "border-box" }} />
+                    <input value={l.prix} onChange={e => modifierLigneCoutFiche(i, "prix", e.target.value)} placeholder="0,00" inputMode="decimal" style={{ width: 70, flexShrink: 0, padding: "8px 9px", border: `1px solid ${COLORS.gray200}`, borderRadius: 7, fontSize: 12.5, boxSizing: "border-box" }} />
+                    <input value={l.unite} onChange={e => modifierLigneCoutFiche(i, "unite", e.target.value)} placeholder="€ / colis" style={{ flex: 1.4, minWidth: 0, padding: "8px 9px", border: `1px solid ${COLORS.gray200}`, borderRadius: 7, fontSize: 12.5, boxSizing: "border-box" }} />
                     <button onClick={() => retirerLigneCoutFiche(i)} style={{ padding: "0 10px", background: "none", border: "none", color: COLORS.danger, cursor: "pointer", fontSize: 16 }}>×</button>
                   </div>
                 ))}
@@ -4818,7 +4831,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
               {/* 02/09/2026 — Demande d'Elinathan : c'est le chef d'entrepôt qui utilise cette page,
                   donc plus simple = un gros bouton par référence (au lieu d'une liste déroulante
                   + un bouton). Un seul clic choisit la référence ET enregistre la pile complète. */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 10, marginBottom: 14 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(200px, 100%), 1fr))", gap: 10, marginBottom: 14 }}>
                 {Object.entries(REFS_PALETTES_VIERGES).map(([cle, label]) => {
                   const taille = taillesPilesPv[cle];
                   return (
@@ -4912,9 +4925,9 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
               ) : (
                 <div style={{ display: "grid", gap: 8 }}>
                   {livraisonsAujourdhuiPv.map((l) => (
-                    <div key={l.id} style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 12px", background: "#fdf6ec", border: "1px solid #fde3a8", borderRadius: 10 }}>
+                    <div key={l.id} style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, padding: "10px 12px", background: "#fdf6ec", border: "1px solid #fde3a8", borderRadius: 10 }}>
                       <span style={{ fontSize: 12, fontWeight: 700, color: "#92400e", minWidth: 48 }}>{l.heure}</span>
-                      <span style={{ flex: 1, fontSize: 13, color: COLORS.gray700 }}>
+                      <span style={{ flex: "1 1 120px", minWidth: 0, fontSize: 13, color: COLORS.gray700 }}>
                         {REFS_PALETTES_VIERGES[l.ref] || l.ref}
                         {l.lieuLivraison && l.lieuLivraison !== LIEU_PV_DEFAUT && (
                           <span style={{ marginLeft: 6, fontSize: 11, color: COLORS.gray400 }}>📍 {l.lieuLivraison}</span>
@@ -5069,7 +5082,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
         };
         return (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 600, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-            <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 500, width: "100%", borderTop: "7px solid #f59e0b", maxHeight: "85vh", overflowY: "auto" }}>
+            <div style={{ background: "#fff", borderRadius: 18, padding: "24px clamp(16px, 5vw, 28px)", maxWidth: 500, width: "100%", borderTop: "7px solid #f59e0b", maxHeight: "85vh", overflowY: "auto" }}>
               <div style={{ textAlign: "center", marginBottom: 18 }}>
                 <div style={{ fontSize: 32, marginBottom: 6 }}>⏳</div>
                 <p style={{ fontSize: 15, fontWeight: 800, color: "#b45309", margin: 0 }}>Clients en attente IFCO</p>
@@ -5081,14 +5094,14 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                   return (
                     <div key={e.nom} style={{ background: hasCode ? "#f0fdf4" : "#fffbe6", border: `1.5px solid ${hasCode ? "#27ae60" : "#fde68a"}`, borderRadius: 12, padding: "12px 14px" }}>
                       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                        <div style={{ flex: 1 }}>
+                        <div style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
                           <div style={{ fontSize: 13, fontWeight: 800, color: "#92400e" }}>{e.nom}</div>
                           <div style={{ fontSize: 11, color: "#aaa", marginTop: 2 }}>📦 {e.totalColis} colis · 🧾 {e.totalBL} BL · 📅 depuis le {e.addedAt}</div>
                         </div>
                         <input type="number" placeholder="Code IFCO"
                           value={pendingInputCodes[e.nom] || ""}
                           onChange={ev => setPendingInputCodes(prev => ({ ...prev, [e.nom]: ev.target.value }))}
-                          style={{ width: 100, padding: "6px 10px", border: `1.5px solid ${hasCode ? "#27ae60" : "#fde68a"}`, borderRadius: 8, fontSize: 13, outline: "none", fontWeight: 700 }}
+                          style={{ width: 100, flexShrink: 0, padding: "6px 10px", border: `1.5px solid ${hasCode ? "#27ae60" : "#fde68a"}`, borderRadius: 8, fontSize: 13, outline: "none", fontWeight: 700 }}
                         />
                         {hasCode && <span style={{ color: "#27ae60", fontSize: 18 }}>✅</span>}
                       </div>
@@ -5136,7 +5149,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
         };
         return (
           <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 500, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-            <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 460, width: "100%", borderTop: "7px solid #e74c3c" }}>
+            <div style={{ background: "#fff", borderRadius: 18, padding: "24px clamp(16px, 5vw, 28px)", maxWidth: 460, width: "100%", borderTop: "7px solid #e74c3c", maxHeight: "90vh", overflowY: "auto" }}>
               <div style={{ textAlign: "center", marginBottom: 16 }}>
                 <div style={{ fontSize: 32, marginBottom: 6 }}>🚨</div>
                 <p style={{ fontSize: 15, fontWeight: 800, color: "#c0392b", margin: 0 }}>Codes IFCO manquants !</p>
@@ -5144,8 +5157,8 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
               </div>
               <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
                 {showMissingPopup.map(c => (
-                  <div key={c} style={{ display: "flex", alignItems: "center", gap: 8, background: tempPending[c] ? "#fffbe6" : "#fff5f5", border: `1.5px solid ${tempPending[c] ? "#f59e0b" : tempCodes[c]?.trim() ? "#27ae60" : "#f5c6cb"}`, borderRadius: 8, padding: "8px 10px" }}>
-                    <span style={{ flex: 1, fontSize: 11, fontWeight: 700, color: tempPending[c] ? "#b45309" : "#c0392b" }}>
+                  <div key={c} style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 8, background: tempPending[c] ? "#fffbe6" : "#fff5f5", border: `1.5px solid ${tempPending[c] ? "#f59e0b" : tempCodes[c]?.trim() ? "#27ae60" : "#f5c6cb"}`, borderRadius: 8, padding: "8px 10px" }}>
+                    <span style={{ flex: "1 1 120px", minWidth: 0, overflowWrap: "anywhere", fontSize: 11, fontWeight: 700, color: tempPending[c] ? "#b45309" : "#c0392b" }}>
                       {tempPending[c] ? "⏳" : "⚠️"} {c}
                     </span>
                     {!tempPending[c] && (
@@ -5176,7 +5189,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
       {/* MODAL CAISSES — déclaration des caisses envoyées (déduit le stock Moorea) */}
       {showPalettesForm && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 450, width: "100%", borderTop: "7px solid #27ae60" }}>
+          <div style={{ background: "#fff", borderRadius: 18, padding: "24px clamp(16px, 5vw, 28px)", maxWidth: 450, width: "100%", borderTop: "7px solid #27ae60", maxHeight: "90vh", overflowY: "auto" }}>
             <div style={{ textAlign: "center", marginBottom: 20 }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>📦</div>
               <p style={{ fontSize: 16, fontWeight: 800, color: "#1a6b3a", margin: 0 }}>Déclarer les caisses IFCO</p>
@@ -5250,7 +5263,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
       {/* MODAL ENTRÉE IFCO */}
       {showEntreeForm && (
         <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.6)", zIndex: 700, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
-          <div style={{ background: "#fff", borderRadius: 18, padding: "24px 28px", maxWidth: 450, width: "100%", borderTop: "7px solid #f59e0b" }}>
+          <div style={{ background: "#fff", borderRadius: 18, padding: "24px clamp(16px, 5vw, 28px)", maxWidth: 450, width: "100%", borderTop: "7px solid #f59e0b", maxHeight: "90vh", overflowY: "auto" }}>
             <div style={{ textAlign: "center", marginBottom: 20 }}>
               <div style={{ fontSize: 32, marginBottom: 8 }}>📦</div>
               <p style={{ fontSize: 16, fontWeight: 800, color: "#1a6b3a", margin: 0 }}>Entrée IFCO</p>

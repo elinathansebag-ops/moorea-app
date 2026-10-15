@@ -4764,8 +4764,8 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
     <div>
       <div style={{ background:'#fff', borderRadius:14, padding:'12px 16px', marginBottom:12, display:'flex', gap:10, flexWrap:'wrap', alignItems:'center' }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher gencode, produit, EAN..."
-          style={{ flex:1, minWidth:200, padding:'9px 14px', border:'1.5px solid #e0e0e0', borderRadius:10, fontSize:13, outline:'none', fontFamily:'inherit' }} />
-        <div style={{ display:'flex', gap:6 }}>
+          style={{ flex:1, minWidth:200, padding:'9px 14px', border:'1.5px solid #e0e0e0', borderRadius:10, fontSize:13, outline:'none', fontFamily:'inherit', boxSizing:'border-box' }} />
+        <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
           {(['','barquette','colis','sachet','autre'] as string[]).map(v => (
             <button key={v} onClick={() => setTypeFilter(v)}
               style={{ padding:'6px 12px', borderRadius:20, border:`1px solid ${typeFilter===v?'#3b82f6':'#e0e0e0'}`, background:typeFilter===v?'#3b82f6':'#fff', color:typeFilter===v?'#fff':'#555', fontSize:11, cursor:'pointer', fontFamily:'inherit', fontWeight:600, whiteSpace:'nowrap' }}>
@@ -4829,7 +4829,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
         </div>
       ) : (
         <div style={{ background:'#fff', border:'1.5px solid #e8e0d0', borderRadius:14, overflow:'hidden' }}>
-          <div className="gc-list-header" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 110px', background:'#fff8e6', padding:'8px 14px', borderBottom:'2px solid #fde68a', gap:10 }}>
+          <div className="gc-list-header" style={{ gridTemplateColumns:'1fr 1fr 110px', background:'#fff8e6', padding:'8px 14px', borderBottom:'2px solid #fde68a', gap:10 }}>
             <span style={{ fontSize:11, fontWeight:700, color:'#b45309' }}>Gencode sans lien</span>
             <span style={{ fontSize:11, fontWeight:700, color:'#27ae60' }}>Chercher dans les 4020 articles</span>
             <span style={{ fontSize:11, fontWeight:700, color:'#555' }}>Action</span>
@@ -4968,7 +4968,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                   }} style={{ marginTop:12, background: scanning ? '#e5e7eb' : '#a855f7', color: scanning ? '#374151' : '#fff', border:'none', borderRadius:10, padding:'12px 24px', fontSize:14, fontWeight:700, cursor:'pointer', fontFamily:'inherit' }}>
                     {scanning ? '✕ Annuler le scan' : 'Demarrer le scan'}
                   </button>
-                  {scanDebug && <p style={{ marginTop:8, fontSize:10, color:'#9ca3af', fontFamily:'monospace' }}>{scanDebug}</p>}
+                  {scanDebug && <p style={{ marginTop:8, fontSize:10, color:'#9ca3af', fontFamily:'monospace', overflowWrap:'anywhere' }}>{scanDebug}</p>}
                   {/* Lecture par IA (OCR) — quand le décodage des barres ne marche pas, on lit
                       directement les chiffres imprimés en clair sous le code-barres. */}
                   {scanning && (
@@ -4977,7 +4977,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                       {ocrRunning ? '⏳ Lecture IA en cours...' : '🤖 Lire les chiffres par IA'}
                     </button>
                   )}
-                  {ocrStatus && <p style={{ marginTop:8, fontSize:11, color:'#a855f7' }}>{ocrStatus}</p>}
+                  {ocrStatus && <p style={{ marginTop:8, fontSize:11, color:'#a855f7', overflowWrap:'anywhere' }}>{ocrStatus}</p>}
                   {/* Saisie manuelle — dépanne quand la caméra n'arrive pas à lire un code-barres
                       abîmé, flou ou sur un emballage souple (fréquent, même avec un lecteur pro) */}
                   <div style={{ marginTop:16, paddingTop:16, borderTop:'1px solid #f0f0f0' }}>
@@ -4992,7 +4992,7 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                           }
                         }}
                         placeholder="Ex: 6009665700052" inputMode="numeric"
-                        style={{ flex:1, padding:'10px 12px', border:'1.5px solid #e0e0e0', borderRadius:10, fontSize:14, outline:'none', fontFamily:'monospace' }} />
+                        style={{ flex:1, minWidth:0, padding:'10px 12px', border:'1.5px solid #e0e0e0', borderRadius:10, fontSize:14, outline:'none', fontFamily:'monospace' }} />
                       <button onClick={() => {
                         if (!manualEan.trim()) return;
                         const ean = manualEan.trim();
@@ -5006,15 +5006,15 @@ export default function GencodeModule({ onClose, catalogueArticles }: { onClose:
                 </div>
               ) : (
                 <div>
-                  <div style={{ background:'#f5f3ff', borderRadius:10, padding:'10px 16px', marginBottom:12, display:'inline-block' }}>
+                  <div style={{ background:'#f5f3ff', borderRadius:10, padding:'10px 16px', marginBottom:12, display:'inline-block', maxWidth:'100%', boxSizing:'border-box', overflowWrap:'anywhere' }}>
                     <div style={{ fontSize:11, color:'#a855f7', fontWeight:700, marginBottom:2 }}>EAN SCANNE</div>
                     <div style={{ fontFamily:'monospace', fontSize:18, fontWeight:800, letterSpacing:2 }}>{scannedEan}</div>
                   </div>
                   {scanResult ? (
                     <div style={{ background:'#f0fff4', border:'1px solid #a9dfbf', borderRadius:10, padding:12, marginBottom:12, textAlign:'left' }}>
                       <div style={{ fontSize:12, fontWeight:700, color:'#27ae60', marginBottom:4 }}>Gencode trouve !</div>
-                      <div style={{ fontSize:13, fontWeight:700 }}>{scanResult.produit} {scanResult.variete}</div>
-                      <div style={{ fontSize:11, color:'#555' }}>{scanResult.conditionnement}</div>
+                      <div style={{ fontSize:13, fontWeight:700, overflowWrap:'anywhere' }}>{scanResult.produit} {scanResult.variete}</div>
+                      <div style={{ fontSize:11, color:'#555', overflowWrap:'anywhere' }}>{scanResult.conditionnement}</div>
                       {(scanResult.codes_articles?.length > 0 || scanResult.code_article) && (
                         <div style={{ marginTop:6, fontSize:11, color:'#27ae60' }}>
                           Deja lie : {(scanResult.codes_articles?.length ? scanResult.codes_articles : [scanResult.code_article]).join(', ')}

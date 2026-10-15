@@ -350,9 +350,9 @@ export function AReconditionnerAujourdhui({ demandes }: { demandes: Demande[] })
           )}
           {!charge && <span style={{ fontSize: 11, color: COUL.gris400 }}>⏳ chargement…</span>}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
           {ouvert && (
-            <span onClick={e => e.stopPropagation()} style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+            <span onClick={e => e.stopPropagation()} style={{ display: "inline-flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
               <span style={{ display: "inline-flex", border: `1px solid ${COUL.gris200}`, borderRadius: 8, overflow: "hidden" }}>
                 {(["cartes", "tableau"] as const).map(v => (
                   <button key={v} type="button" onClick={() => changerVue(v)}

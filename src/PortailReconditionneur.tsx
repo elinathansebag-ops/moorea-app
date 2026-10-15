@@ -733,7 +733,7 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
                 const pretesDuJour = parJour[jourStr].filter(d => d.statut === "parti" && !d.retourPresta?.parti?.confirme);
                 return (
                 <div key={jourStr} style={{ marginTop: 10 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8, paddingLeft: 4 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, marginBottom: 8, paddingLeft: 4, flexWrap: "wrap" }}>
                     <p style={{ margin: 0, fontSize: 11.5, fontWeight: 700, color: COLORS.gray }}>
                       {jourStr} <span style={{ fontWeight: 600 }}>({parJour[jourStr].length})</span>
                     </p>
@@ -757,7 +757,7 @@ export function PortailReconditionneur({ depot }: { depot: Depot }) {
                   {parJour[jourStr].map(d => (
                     <Card key={d.id}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 8 }}>
-                        <div>
+                        <div style={{ minWidth: 0, overflowWrap: "anywhere" }}>
                           <div style={{ fontSize: 14, fontWeight: 800, color: COLORS.ink }}>
                             {d.numero && <span style={{ color: "#92722c", marginRight: 6 }}>{d.numero}</span>}
                             {d.articleVrac} → {d.articleFini}
@@ -1086,7 +1086,7 @@ function FormPerte({ demande, envoiEnCours, onAnnuler, onValider }: {
   return (
     <div style={{ marginTop: 10, background: "#fef2f2", border: "1.5px solid #fecaca", borderRadius: 10, padding: 12 }}>
       <label style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: "#b91c1c", textTransform: "uppercase", marginBottom: 4 }}>Motif</label>
-      <select value={motif} onChange={e => setMotif(e.target.value)} style={{ width: "100%", padding: "9px 10px", border: "1.5px solid #fecaca", borderRadius: 8, fontSize: 13.5, marginBottom: 8 }}>
+      <select value={motif} onChange={e => setMotif(e.target.value)} style={{ width: "100%", padding: "9px 10px", border: "1.5px solid #fecaca", borderRadius: 8, fontSize: 13.5, marginBottom: 8, boxSizing: "border-box" }}>
         {MOTIFS_PERTE.map(m => <option key={m} value={m}>{m}</option>)}
       </select>
       <label style={{ display: "block", fontSize: 10.5, fontWeight: 700, color: "#b91c1c", textTransform: "uppercase", marginBottom: 4 }}>Quantité concernée (colis)</label>
@@ -1097,12 +1097,12 @@ function FormPerte({ demande, envoiEnCours, onAnnuler, onValider }: {
         style={{ width: "100%", minHeight: 50, padding: "9px 10px", border: "1.5px solid #fecaca", borderRadius: 8, fontSize: 13, marginBottom: 8, boxSizing: "border-box", fontFamily: "inherit" }} />
 
       <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <label style={{ display: "block", fontSize: 10, color: "#b91c1c", marginBottom: 4 }}>📷 Étiquette colis</label>
           <input type="file" accept="image/*" capture="environment" onChange={e => onPhoto(e, setPhotoEtiquette)} style={{ fontSize: 11, width: "100%" }} />
           {photoEtiquette && <img src={photoEtiquette} style={{ width: 50, height: 50, objectFit: "cover", borderRadius: 6, marginTop: 4 }} />}
         </div>
-        <div style={{ flex: 1 }}>
+        <div style={{ flex: 1, minWidth: 0 }}>
           <label style={{ display: "block", fontSize: 10, color: "#b91c1c", marginBottom: 4 }}>📷 Produit</label>
           <input type="file" accept="image/*" capture="environment" onChange={e => onPhoto(e, setPhotoProduit)} style={{ fontSize: 11, width: "100%" }} />
           {photoProduit && <img src={photoProduit} style={{ width: 50, height: 50, objectFit: "cover", borderRadius: 6, marginTop: 4 }} />}

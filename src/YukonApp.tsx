@@ -249,7 +249,7 @@ export function YukonApp({ onClose }: { onClose: () => void }) {
       <PageHeader titre="🌿 Besoins Yukon" couleur="#16a34a" onBack={onClose} onHome={onClose} />
 
       {/* SOUS-NAV */}
-      <div style={{ background: "#fff", borderBottom: "1px solid #e8e0d0", display: "flex", justifyContent: "center", gap: 4, padding: "8px 16px" }}>
+      <div style={{ background: "#fff", borderBottom: "1px solid #e8e0d0", display: "flex", flexWrap: "wrap", justifyContent: "center", gap: 4, padding: "8px 16px" }}>
         {[
           { id: "calcul", label: "📊 Calcul" },
           { id: "articles", label: "⚙️ Articles" },
@@ -270,7 +270,7 @@ export function YukonApp({ onClose }: { onClose: () => void }) {
             {/* Sélecteur stock + période ventes */}
             <div style={{ background: "#fff", borderRadius: 12, padding: "12px 14px", marginBottom: 12, border: "1px solid #e8e0d0" }}>
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                <div style={{ flex: 1, minWidth: 200 }}>
+                <div style={{ flex: 1, minWidth: "min(200px, 100%)" }}>
                   <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 700, color: "#1a2e1a" }}>📦 Inventaire</p>
                   {sessions.length > 0 ? (
                     <select onChange={async e => {
@@ -305,7 +305,7 @@ export function YukonApp({ onClose }: { onClose: () => void }) {
                       } catch (e) { }
                     }}
                       defaultValue=""
-                      style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #16a34a", borderRadius: 8, fontSize: 12, background: "#fff", cursor: "pointer" }}>
+                      style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", border: "1.5px solid #16a34a", borderRadius: 8, fontSize: 12, background: "#fff", cursor: "pointer" }}>
                       <option value="" disabled>{stockDate ? `✓ ${stockDate}` : "- Choisir -"}</option>
                       {sessions.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
                     </select>
@@ -355,7 +355,7 @@ export function YukonApp({ onClose }: { onClose: () => void }) {
                   });
                   setArrivageQty(newArrivageQty);
                 }}
-                  style={{ width: "100%", padding: "8px 10px", border: "1.5px solid #c8a84b", borderRadius: 8, fontSize: 12, background: "#fff", cursor: "pointer" }}>
+                  style={{ width: "100%", boxSizing: "border-box", padding: "8px 10px", border: "1.5px solid #c8a84b", borderRadius: 8, fontSize: 12, background: "#fff", cursor: "pointer" }}>
                   <option value="">- Sélectionner une date d'arrivage -</option>
                   {arrivagesYukon.map(g => (
                     <option key={g.id} value={g.id}>{g.label}</option>
@@ -367,8 +367,9 @@ export function YukonApp({ onClose }: { onClose: () => void }) {
             </div>
 
             {/* Tableau style Excel commercial */}
-            <div style={{ background: "#fff", borderRadius: 12, overflow: "auto", border: "1.5px solid #e8e0d0", marginBottom: 12 }}>
-              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, tableLayout: "fixed" }}>
+            <div style={{ background: "#fff", borderRadius: 12, overflow: "auto", WebkitOverflowScrolling: "touch", border: "1.5px solid #e8e0d0", marginBottom: 12 }}>
+              {/* 15/10/2026 — téléphone : largeur mini, le tableau défile à l'horizontale au lieu d'écraser les 9 colonnes */}
+              <table style={{ width: "100%", minWidth: 600, borderCollapse: "collapse", fontSize: 12, tableLayout: "fixed" }}>
                 <colgroup>
                   <col style={{ width: "22%" }} />
                   <col style={{ width: "8%" }} />
@@ -487,13 +488,13 @@ export function YukonApp({ onClose }: { onClose: () => void }) {
             <div style={{ background: "#fff", borderRadius: 16, overflow: "hidden", border: "1.5px solid #e8e0d0", marginBottom: 16 }}>
               {articles.map((art, idx) => (
                 <div key={art.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 16px", borderBottom: "1px solid #f0f0f0", background: idx % 2 === 0 ? "#fff" : "#fafaf9" }}>
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
                     {editArticle?.id === art.id ? (
                       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         <input value={editArticle.nom} onChange={e => setEditArticle({ ...editArticle, nom: e.target.value })}
                           style={{ flex: 1, minWidth: 120, padding: "6px 10px", border: "1.5px solid #c8a84b", borderRadius: 8, fontSize: 13 }} />
                         <select value={editArticle.stockNom || ""} onChange={e => setEditArticle({ ...editArticle, stockNom: e.target.value })}
-                          style={{ flex: 2, minWidth: 180, padding: "6px 8px", border: "1.5px solid #16a34a", borderRadius: 8, fontSize: 12, background: "#fff" }}>
+                          style={{ flex: 2, minWidth: "min(180px, 100%)", maxWidth: "100%", padding: "6px 8px", border: "1.5px solid #16a34a", borderRadius: 8, fontSize: 12, background: "#fff" }}>
                           <option value="">- Pas de liaison stock -</option>
                           {STOCK_LIST.filter(s => s).map(s => <option key={s} value={s}>{s}</option>)}
                         </select>

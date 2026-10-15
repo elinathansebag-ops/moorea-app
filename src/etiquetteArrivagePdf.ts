@@ -114,26 +114,36 @@ async function lireConfig() {
 
 // Fabrique le PDF (une page 180 × 110 mm) et le renvoie en base64 (sans préfixe).
 export async function fabriquerPdfEtiquetteArrivage(job: JobEtiquette): Promise<string> {
+  return fabriquerPdfEtiquettesArrivage([job]);
+}
+
+// 15/10/2026 — Plusieurs palettes d'un même arrivage : UN SEUL PDF de plusieurs pages, envoyé en une
+// seule impression (avant : une impression par étiquette, et le PC relançait Acrobat entre chaque).
+export async function fabriquerPdfEtiquettesArrivage(jobs: JobEtiquette[]): Promise<string> {
   const [{ default: QRCode }, { default: html2canvas }, { jsPDF }, cfgApp] = await Promise.all([
     import("qrcode"), import("html2canvas"), import("jspdf"), lireConfig(),
   ]);
-  const qr = await QRCode.toDataURL(job.url || " ", { width: 500, margin: 0, color: { dark: "#000000", light: "#FFFFFF" } });
-  const hote = document.createElement("div");
-  hote.style.cssText = "position:fixed;left:-10000px;top:0;width:180mm;height:110mm;background:#fff;z-index:-1";
-  hote.innerHTML = htmlEtiquette(job, qr, cfgApp);
-  document.body.appendChild(hote);
-  try {
-    const img = hote.querySelector("img");
-    if (img && !img.complete) await new Promise(r => { img.onload = r; img.onerror = r; });
-    if ((document as any).fonts?.ready) await (document as any).fonts.ready;
-    const cible = hote.querySelector(".etq") as HTMLElement;
-    // ≈ 300 dpi : 180 mm = 680 px CSS → ×3,1.
-    const canvas = await html2canvas(cible, { scale: 3.1, backgroundColor: "#ffffff", logging: false, useCORS: true });
-    if (import.meta.env.DEV) (window as any).__etiquettePng = canvas.toDataURL("image/png");
-    const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: [180, 110], compress: true });
-    pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, 180, 110, undefined, "FAST");
-    return pdf.output("datauristring").split(",").pop() || "";
-  } finally {
-    hote.remove();
+  const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: [180, 110], compress: true });
+  for (let n = 0; n < jobs.length; n++) {
+    const job = jobs[n];
+    const qr = await QRCode.toDataURL(job.url || " ", { width: 500, margin: 0, color: { dark: "#000000", light: "#FFFFFF" } });
+    const hote = document.createElement("div");
+    hote.style.cssText = "position:fixed;left:-10000px;top:0;width:180mm;height:110mm;background:#fff;z-index:-1";
+    hote.innerHTML = htmlEtiquette(job, qr, cfgApp);
+    document.body.appendChild(hote);
+    try {
+      const img = hote.querySelector("img");
+      if (img && !img.complete) await new Promise(r => { img.onload = r; img.onerror = r; });
+      if ((document as any).fonts?.ready) await (document as any).fonts.ready;
+      const cible = hote.querySelector(".etq") as HTMLElement;
+      // ≈ 300 dpi : 180 mm = 680 px CSS → ×3,1.
+      const canvas = await html2canvas(cible, { scale: 3.1, backgroundColor: "#ffffff", logging: false, useCORS: true });
+      if (import.meta.env.DEV) (window as any).__etiquettePng = canvas.toDataURL("image/png");
+      if (n > 0) pdf.addPage([180, 110], "landscape");
+      pdf.addImage(canvas.toDataURL("image/png"), "PNG", 0, 0, 180, 110, undefined, "FAST");
+    } finally {
+      hote.remove();
+    }
   }
+  return pdf.output("datauristring").split(",").pop() || "";
 }

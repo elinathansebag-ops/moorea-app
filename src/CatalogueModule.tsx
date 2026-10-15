@@ -4115,11 +4115,26 @@ export default function CatalogueModule({ onClose }: { onClose: () => void }) {
   const prestigeCount = articles.filter(a => a.equipe === 'PRESTIGE').length;
   const unassigned = articles.filter(a => !a.equipe).length;
 
-  const S: React.CSSProperties = { padding: '8px 12px', border: '1.5px solid #e0e0e0', borderRadius: 8, fontSize: 13, outline: 'none', fontFamily: 'inherit', width: '100%' };
+  const S: React.CSSProperties = { padding: '8px 12px', border: '1.5px solid #e0e0e0', borderRadius: 8, fontSize: 13, outline: 'none', fontFamily: 'inherit', width: '100%', boxSizing: 'border-box' };
 
   return (
     <div style={{ minHeight: '100vh', background: '#f5f3ee', fontFamily: "'Syne', sans-serif" }}>
       <style>{styles}</style>
+      {/* 15/10/2026 — téléphone : formulaire et lignes de liste repliés au lieu de déborder de la carte */}
+      <style>{`
+        .cat-add-grid { grid-template-columns: 1fr 2fr 160px; }
+        .cat-row { grid-template-columns: 90px minmax(0, 1fr) 180px 40px; }
+        @media (max-width: 600px) {
+          .cat-add-grid { grid-template-columns: 1fr 1fr; }
+          .cat-add-grid > :nth-child(2) { grid-column: 1 / -1; grid-row: 2; }
+          .cat-head { display: none !important; }
+          .cat-row { grid-template-columns: 64px minmax(0, 1fr) 32px; grid-template-areas: "code lib del" ". eq del"; row-gap: 4px; }
+          .cat-row > :nth-child(1) { grid-area: code; overflow-wrap: anywhere; }
+          .cat-row > :nth-child(2) { grid-area: lib; }
+          .cat-row > :nth-child(3) { grid-area: eq; justify-self: start; }
+          .cat-row > :nth-child(4) { grid-area: del; }
+        }
+      `}</style>
       <PageHeader titre="📚 Catalogue Articles" couleur="#27ae60" onBack={onClose} onHome={onClose} />
 
       <div style={{ maxWidth: 800, margin: '0 auto', padding: '20px 16px 80px', boxSizing: 'border-box' }}>
@@ -4146,7 +4161,7 @@ export default function CatalogueModule({ onClose }: { onClose: () => void }) {
             {/* Barre d'outils */}
             <div style={{ background: '#fff', borderRadius: 14, padding: '12px 16px', marginBottom: 12, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'center' }}>
               <input placeholder="🔍 Rechercher..." value={search} onChange={e => setSearch(e.target.value)} style={{ ...S, flex: 1, minWidth: 180 }} />
-              <div style={{ display: 'flex', gap: 6 }}>
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                 {[['', 'Tous'], ['GMS', 'GMS'], ['PRESTIGE', 'Prestige'], ['_none', '⚪ Non assignés']].map(([v, l]) => (
                   <button key={v} onClick={() => setFilterEquipe(v === '_none' ? '_none' : v)}
                     style={{ padding: '7px 14px', borderRadius: 20, border: `1.5px solid ${filterEquipe === (v === '_none' ? '_none' : v) ? '#27ae60' : '#e0e0e0'}`, background: filterEquipe === (v === '_none' ? '_none' : v) ? '#27ae60' : '#fff', color: filterEquipe === (v === '_none' ? '_none' : v) ? '#fff' : '#555', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}>{l}</button>
@@ -4162,7 +4177,7 @@ export default function CatalogueModule({ onClose }: { onClose: () => void }) {
             {showAdd && (
               <div style={{ background: '#fff', border: '1.5px solid #a9dfbf', borderRadius: 12, padding: 16, marginBottom: 12 }}>
                 <p style={{ fontSize: 13, fontWeight: 700, color: '#27ae60', marginBottom: 10 }}>➕ Nouvel article</p>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr 160px', gap: 10, marginBottom: 10 }}>
+                <div className="cat-add-grid" style={{ display: 'grid', gap: 10, marginBottom: 10 }}>
                   <div>
                     <label style={{ fontSize: 11, fontWeight: 700, color: '#888', display: 'block', marginBottom: 3 }}>Code</label>
                     <input value={newCode} onChange={e => setNewCode(e.target.value)} style={S} />
@@ -4189,7 +4204,7 @@ export default function CatalogueModule({ onClose }: { onClose: () => void }) {
 
             {/* Liste */}
             <div style={{ background: '#fff', border: '1.5px solid #e8e0d0', borderRadius: 14, overflow: 'hidden' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: '90px 1fr 180px 40px', background: '#f0fff4', padding: '8px 14px', borderBottom: '1px solid #a9dfbf', gap: 10 }}>
+              <div className="cat-head cat-row" style={{ display: 'grid', background: '#f0fff4', padding: '8px 14px', borderBottom: '1px solid #a9dfbf', gap: 10 }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#27ae60' }}>CODE</span>
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#27ae60' }}>LIBELLÉ</span>
                 <span style={{ fontSize: 11, fontWeight: 700, color: '#27ae60' }}>ÉQUIPE</span>
@@ -4198,9 +4213,9 @@ export default function CatalogueModule({ onClose }: { onClose: () => void }) {
               <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
                 {filtered.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: '#aaa', fontSize: 13 }}>Aucun résultat</div>}
                 {(filterEquipe === '_none' ? articles.filter(a => !a.equipe) : filtered).slice(0, 500).map(a => (
-                  <div key={a.code} style={{ display: 'grid', gridTemplateColumns: '90px 1fr 180px 40px', padding: '6px 14px', borderBottom: '1px solid #f5f5f5', gap: 10, alignItems: 'center' }}>
+                  <div key={a.code} className="cat-row" style={{ display: 'grid', padding: '6px 14px', borderBottom: '1px solid #f5f5f5', gap: 10, alignItems: 'center' }}>
                     <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#999', fontWeight: 600 }}>{a.code}</span>
-                    <span style={{ fontSize: 12, fontWeight: 500 }}>{a.libelle}</span>
+                    <span style={{ fontSize: 12, fontWeight: 500, minWidth: 0, overflowWrap: 'anywhere' }}>{a.libelle}</span>
                     <div style={{ display: 'inline-flex', border: '1.5px solid #e8e0d0', borderRadius: 20, overflow: 'hidden' }}>
                       <button onClick={() => saveEquipe(a.code, 'GMS')}
                         style={{ padding: '4px 12px', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 700, fontFamily: 'inherit', background: a.equipe === 'GMS' ? '#c8a84b' : 'transparent', color: a.equipe === 'GMS' ? '#0a0a0a' : '#bbb' }}>GMS</button>

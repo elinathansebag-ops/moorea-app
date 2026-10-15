@@ -729,7 +729,7 @@ async function imprimerEtiquetteArrivagePdf(job, key) {
     const tmpFile = path.join(os.tmpdir(), `etiquette_arrivage_${Date.now()}_${Math.random().toString(36).slice(2, 6)}.pdf`);
     fs.writeFileSync(tmpFile, Buffer.from(base64, "base64"));
     fs.copyFile(tmpFile, path.join(os.tmpdir(), "moorea-derniere-etiquette.pdf"), () => {});
-    await imprimerPdfEtiquettesArrivage(tmpFile, 1);
+    await imprimerPdfEtiquettesArrivage(tmpFile, Number(job.nb) || 1); // plusieurs pages = plusieurs palettes
     await update(ref(db, `printQueue/${key}`), { status: "done", printedAt: Date.now(), pdfBase64: null });
     console.log(`✅ Étiquette d'arrivage imprimée : ${nomAffiche}`);
   } catch (err) {

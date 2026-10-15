@@ -818,7 +818,7 @@ export function ApproModule({ onClose, userName, canConfig = true, initialTab }:
       )}
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "14px 12px 60px" }}>
-        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 14 }}>
           <button onClick={() => setActiveTab("commandes")} style={{ padding: "8px 16px", borderRadius: 10, border: `1.5px solid ${activeTab === "commandes" ? COLORS.primary : COLORS.gray200}`, background: activeTab === "commandes" ? COLORS.primaryLight : "#fff", color: activeTab === "commandes" ? COLORS.primary : COLORS.gray700, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>📋 Commandes</button>
           <button onClick={() => setActiveTab("statistiques")} style={{ padding: "8px 16px", borderRadius: 10, border: `1.5px solid ${activeTab === "statistiques" ? COLORS.primary : COLORS.gray200}`, background: activeTab === "statistiques" ? COLORS.primaryLight : "#fff", color: activeTab === "statistiques" ? COLORS.primary : COLORS.gray700, fontSize: 13, fontWeight: 700, cursor: "pointer" }}>📊 Statistiques</button>
           {canConfig && (
@@ -835,7 +835,7 @@ export function ApproModule({ onClose, userName, canConfig = true, initialTab }:
                 <span style={{ fontSize: 14, fontWeight: 800, color: COLORS.gray700 }}>Semaine {semaineKey}{semaineOffset === 0 ? " (en cours)" : ""}</span>
                 <button onClick={() => setSemaineOffset(o => o + 1)} style={{ padding: "6px 10px", borderRadius: 8, border: `1px solid ${COLORS.gray200}`, background: "#fff", cursor: "pointer", fontWeight: 700 }}>›</button>
               </div>
-              <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
                 {VAGUES.map(v => (
                   <button key={v.id} onClick={() => setVague(v.id)} title={v.envoi} style={{ padding: "7px 14px", borderRadius: 8, border: `1.5px solid ${vague === v.id ? COLORS.secondary : COLORS.gray200}`, background: vague === v.id ? COLORS.secondaryLight : "#fff", color: vague === v.id ? COLORS.secondary : COLORS.gray700, fontSize: 12.5, fontWeight: 700, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", lineHeight: 1.3 }}>
                     <span>{v.label}</span>
@@ -862,7 +862,7 @@ export function ApproModule({ onClose, userName, canConfig = true, initialTab }:
 
             {/* 31/08/2026 — Légende des couleurs de ligne (demande d'Elinathan : "que ça donne
                 envie") : vert = déjà envoyé, ambre = quantités saisies mais pas encore envoyé. */}
-            <div style={{ display: "flex", gap: 16, alignItems: "center", marginBottom: 8, fontSize: 11, color: COLORS.gray600 }}>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "6px 16px", alignItems: "center", marginBottom: 8, fontSize: 11, color: COLORS.gray600 }}>
               <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: COLORS.primary, display: "inline-block" }} /> Déjà envoyé</span>
               <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: COLORS.amber, display: "inline-block" }} /> Rempli, pas encore envoyé</span>
               <span style={{ display: "flex", alignItems: "center", gap: 5 }}><span style={{ width: 10, height: 10, borderRadius: 3, background: COLORS.gray200, display: "inline-block" }} /> Pas encore rempli</span>
@@ -884,6 +884,13 @@ export function ApproModule({ onClose, userName, canConfig = true, initialTab }:
               .appro-scrub::-webkit-slider-thumb{ -webkit-appearance:none; width:20px; height:20px; border-radius:50%; background:${COLORS.primary}; border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.3); cursor:grab; }
               .appro-scrub::-moz-range-thumb{ width:20px; height:20px; border-radius:50%; background:${COLORS.primary}; border:3px solid #fff; box-shadow:0 1px 4px rgba(0,0,0,0.3); cursor:grab; }
               .appro-scrub::-moz-range-track{ background:${COLORS.gray200}; height:6px; border-radius:999px; }
+              /* 15/10/2026 — téléphone : Fournisseur (150px) + Total + Envoi figés prenaient tout
+                 l'écran, plus de place pour les colonnes produits. Sur petit écran, Total et Envoi
+                 défilent avec le tableau (en fin de ligne) et la colonne Fournisseur est plus étroite. */
+              @media (max-width: 600px){
+                #appro-root .appro-sticky-r{ position:static !important; box-shadow:none !important; min-width:0 !important; }
+                #appro-root .appro-sticky-l{ min-width:110px !important; }
+              }
             `}</style>
             {/* 03/09/2026 — Curseur de défilement déplacé EN HAUT du tableau (demande d'Elinathan :
                 "un curseur en haut avec une petite boule pour bouger dans le tableau") — permet de
@@ -914,15 +921,15 @@ export function ApproModule({ onClose, userName, canConfig = true, initialTab }:
                   {/* 31/08/2026 — En-tête colorée (demande d'Elinathan : "que ça donne envie") : fond
                       vert de la marque, texte blanc, pour que le tableau soit plus vivant. */}
                   <tr style={{ background: COLORS.primary }}>
-                    <th style={{ position: "sticky", left: 0, background: COLORS.primary, color: "#fff", padding: "8px 10px", textAlign: "left", minWidth: 150, zIndex: 2 }}>Fournisseur</th>
+                    <th className="appro-sticky-l" style={{ position: "sticky", left: 0, background: COLORS.primary, color: "#fff", padding: "8px 10px", textAlign: "left", minWidth: 150, zIndex: 2 }}>Fournisseur</th>
                     {produits.map(p => (
                       <th key={p.id} style={{ padding: "8px 6px", minWidth: 78, textAlign: "center", fontWeight: 700, color: "#fff", whiteSpace: "nowrap" }} title={p.qteParColis ? `${p.qteParColis} — poids net ${p.poidsNetKg}kg / brut ${p.poidsBrutKg}kg par colis` : undefined}>
                         {p.label}
                         {p.poidsNetKg != null && <div style={{ fontSize: 9, fontWeight: 500, color: "rgba(255,255,255,0.75)" }}>{p.poidsNetKg}kg / {p.poidsBrutKg}kg</div>}
                       </th>
                     ))}
-                    <th style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.primary, color: "#fff", padding: "8px 10px", minWidth: TOTAL_WIDTH, textAlign: "center", fontWeight: 800, zIndex: 1, boxShadow: "-2px 0 4px rgba(0,0,0,0.15)" }}>Total</th>
-                    <th style={{ position: "sticky", right: 0, background: COLORS.primary, color: "#fff", padding: "8px 10px", minWidth: ENVOI_WIDTH, textAlign: "center", zIndex: 1 }}>Envoi</th>
+                    <th className="appro-sticky-r" style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.primary, color: "#fff", padding: "8px 10px", minWidth: TOTAL_WIDTH, textAlign: "center", fontWeight: 800, zIndex: 1, boxShadow: "-2px 0 4px rgba(0,0,0,0.15)" }}>Total</th>
+                    <th className="appro-sticky-r" style={{ position: "sticky", right: 0, background: COLORS.primary, color: "#fff", padding: "8px 10px", minWidth: ENVOI_WIDTH, textAlign: "center", zIndex: 1 }}>Envoi</th>
                   </tr>
                   {/* 03/09/2026 — Totaux par article dupliqués juste sous l'en-tête (demande
                       d'Elinathan : "les totaux par article en haut aussi") : avant, il fallait
@@ -933,24 +940,24 @@ export function ApproModule({ onClose, userName, canConfig = true, initialTab }:
                     {produits.map(p => (
                       <td key={p.id} style={{ padding: "8px 6px", textAlign: "center", fontWeight: 800, color: COLORS.primary }}>{totalColonne(p.id) || "-"}</td>
                     ))}
-                    <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.primaryLight, padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{totalGeneral || "-"}</td>
-                    <td style={{ position: "sticky", right: 0, background: COLORS.primaryLight }} />
+                    <td className="appro-sticky-r" style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.primaryLight, padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{totalGeneral || "-"}</td>
+                    <td className="appro-sticky-r" style={{ position: "sticky", right: 0, background: COLORS.primaryLight }} />
                   </tr>
                   <tr style={{ background: COLORS.secondaryLight }}>
                     <td style={{ position: "sticky", left: 0, background: COLORS.secondaryLight, padding: "4px 10px", fontWeight: 700, fontSize: 10.5, color: COLORS.secondary, zIndex: 2 }}>Poids net (kg)</td>
                     {produits.map(p => (
                       <td key={p.id} style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, fontSize: 10.5, color: COLORS.secondary }}>{poidsNetColonne(p.id) ? arrondi1(poidsNetColonne(p.id)) : "-"}</td>
                     ))}
-                    <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.secondaryLight, padding: "4px 10px", textAlign: "center", fontWeight: 800, fontSize: 10.5, color: COLORS.secondary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{poidsNetGlobal ? arrondi1(poidsNetGlobal) : "-"}</td>
-                    <td style={{ position: "sticky", right: 0, background: COLORS.secondaryLight }} />
+                    <td className="appro-sticky-r" style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.secondaryLight, padding: "4px 10px", textAlign: "center", fontWeight: 800, fontSize: 10.5, color: COLORS.secondary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{poidsNetGlobal ? arrondi1(poidsNetGlobal) : "-"}</td>
+                    <td className="appro-sticky-r" style={{ position: "sticky", right: 0, background: COLORS.secondaryLight }} />
                   </tr>
                   <tr style={{ background: COLORS.amberLight }}>
                     <td style={{ position: "sticky", left: 0, background: COLORS.amberLight, padding: "4px 10px 8px", fontWeight: 700, fontSize: 10.5, color: "#b45309", zIndex: 2 }}>Poids brut (kg)</td>
                     {produits.map(p => (
                       <td key={p.id} style={{ padding: "4px 6px 8px", textAlign: "center", fontWeight: 700, fontSize: 10.5, color: "#b45309" }}>{poidsBrutColonne(p.id) ? arrondi1(poidsBrutColonne(p.id)) : "-"}</td>
                     ))}
-                    <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.amberLight, padding: "4px 10px 8px", textAlign: "center", fontWeight: 800, fontSize: 10.5, color: "#b45309", boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{poidsBrutGlobal ? arrondi1(poidsBrutGlobal) : "-"}</td>
-                    <td style={{ position: "sticky", right: 0, background: COLORS.amberLight }} />
+                    <td className="appro-sticky-r" style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.amberLight, padding: "4px 10px 8px", textAlign: "center", fontWeight: 800, fontSize: 10.5, color: "#b45309", boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{poidsBrutGlobal ? arrondi1(poidsBrutGlobal) : "-"}</td>
+                    <td className="appro-sticky-r" style={{ position: "sticky", right: 0, background: COLORS.amberLight }} />
                   </tr>
                 </thead>
                 <tbody>
@@ -984,7 +991,7 @@ export function ApproModule({ onClose, userName, canConfig = true, initialTab }:
                             </td>
                           );
                         })}
-                        <td style={{ position: "sticky", right: ENVOI_WIDTH, background: rowBg, padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>
+                        <td className="appro-sticky-r" style={{ position: "sticky", right: ENVOI_WIDTH, background: rowBg, padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>
                           {totalLigne(f.id) || "-"}
                           {totalLigne(f.id) > 0 && (
                             <div style={{ fontSize: 9, fontWeight: 600, color: COLORS.gray400 }}>
@@ -992,7 +999,7 @@ export function ApproModule({ onClose, userName, canConfig = true, initialTab }:
                             </div>
                           )}
                         </td>
-                        <td style={{ position: "sticky", right: 0, background: rowBg, padding: "8px 10px", textAlign: "center", boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>
+                        <td className="appro-sticky-r" style={{ position: "sticky", right: 0, background: rowBg, padding: "8px 10px", textAlign: "center", boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>
                           {envoye ? (
                             <div style={{ fontSize: 10.5, color: "#15803d", fontWeight: 700 }}>
                               ✓ Envoyé<br />{cell.dateEnvoi}
@@ -1019,8 +1026,8 @@ export function ApproModule({ onClose, userName, canConfig = true, initialTab }:
                     {produits.map(p => (
                       <td key={p.id} style={{ padding: "8px 6px", textAlign: "center", fontWeight: 800, color: COLORS.primary }}>{totalColonne(p.id) || "-"}</td>
                     ))}
-                    <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.primaryLight, padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{totalGeneral || "-"}</td>
-                    <td style={{ position: "sticky", right: 0, background: COLORS.primaryLight }} />
+                    <td className="appro-sticky-r" style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.primaryLight, padding: "8px 10px", textAlign: "center", fontWeight: 800, color: COLORS.primary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{totalGeneral || "-"}</td>
+                    <td className="appro-sticky-r" style={{ position: "sticky", right: 0, background: COLORS.primaryLight }} />
                   </tr>
                   {/* 31/08/2026 — Poids net/brut par produit (colonne) et total général, calculés
                       depuis le fichier de référence "poid hv.xlsx" (kg par colis) — utile pour la
@@ -1031,16 +1038,16 @@ export function ApproModule({ onClose, userName, canConfig = true, initialTab }:
                     {produits.map(p => (
                       <td key={p.id} style={{ padding: "4px 6px", textAlign: "center", fontWeight: 700, fontSize: 10.5, color: COLORS.secondary }}>{poidsNetColonne(p.id) ? arrondi1(poidsNetColonne(p.id)) : "-"}</td>
                     ))}
-                    <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.secondaryLight, padding: "4px 10px", textAlign: "center", fontWeight: 800, fontSize: 10.5, color: COLORS.secondary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{poidsNetGlobal ? arrondi1(poidsNetGlobal) : "-"}</td>
-                    <td style={{ position: "sticky", right: 0, background: COLORS.secondaryLight }} />
+                    <td className="appro-sticky-r" style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.secondaryLight, padding: "4px 10px", textAlign: "center", fontWeight: 800, fontSize: 10.5, color: COLORS.secondary, boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{poidsNetGlobal ? arrondi1(poidsNetGlobal) : "-"}</td>
+                    <td className="appro-sticky-r" style={{ position: "sticky", right: 0, background: COLORS.secondaryLight }} />
                   </tr>
                   <tr style={{ background: COLORS.amberLight }}>
                     <td style={{ position: "sticky", left: 0, background: COLORS.amberLight, padding: "4px 10px 8px", fontWeight: 700, fontSize: 10.5, color: "#b45309", zIndex: 2 }}>Poids brut (kg)</td>
                     {produits.map(p => (
                       <td key={p.id} style={{ padding: "4px 6px 8px", textAlign: "center", fontWeight: 700, fontSize: 10.5, color: "#b45309" }}>{poidsBrutColonne(p.id) ? arrondi1(poidsBrutColonne(p.id)) : "-"}</td>
                     ))}
-                    <td style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.amberLight, padding: "4px 10px 8px", textAlign: "center", fontWeight: 800, fontSize: 10.5, color: "#b45309", boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{poidsBrutGlobal ? arrondi1(poidsBrutGlobal) : "-"}</td>
-                    <td style={{ position: "sticky", right: 0, background: COLORS.amberLight }} />
+                    <td className="appro-sticky-r" style={{ position: "sticky", right: ENVOI_WIDTH, background: COLORS.amberLight, padding: "4px 10px 8px", textAlign: "center", fontWeight: 800, fontSize: 10.5, color: "#b45309", boxShadow: "-2px 0 4px rgba(0,0,0,0.05)" }}>{poidsBrutGlobal ? arrondi1(poidsBrutGlobal) : "-"}</td>
+                    <td className="appro-sticky-r" style={{ position: "sticky", right: 0, background: COLORS.amberLight }} />
                   </tr>
                 </tfoot>
               </table>
@@ -1084,7 +1091,7 @@ export function ApproModule({ onClose, userName, canConfig = true, initialTab }:
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 10 }}>
                     {fichiersEnAttente.map((item, i) => (
                       <div key={i} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", background: COLORS.gray100, borderRadius: 8, padding: "8px 10px" }}>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: COLORS.gray700, flex: 1, minWidth: 160 }}>{item.fileName}</span>
+                        <span style={{ fontSize: 12, fontWeight: 600, color: COLORS.gray700, flex: 1, minWidth: 160, overflowWrap: "anywhere" }}>{item.fileName}</span>
                         <span style={{ fontSize: 11, color: COLORS.gray400 }}>Semaine :</span>
                         <input type="text" value={item.semaineKey} onChange={e => corrigerSemaineFichierEnAttente(i, e.target.value)}
                           title="Corrige si la semaine devinée est fausse (format AAAA-Wss)"
@@ -1120,7 +1127,7 @@ export function ApproModule({ onClose, userName, canConfig = true, initialTab }:
                       <option value="fournisseur">Par fournisseur</option>
                     </select>
                     <select value={statItemId} onChange={e => setStatItemId(e.target.value)}
-                      style={{ padding: "7px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 12.5, minWidth: 160 }}>
+                      style={{ padding: "7px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 12.5, minWidth: 160, maxWidth: "100%" }}>
                       <option value="">— Choisir {statDimension === "produit" ? "un produit" : "un fournisseur"} —</option>
                       {(statDimension === "produit" ? produits : fournisseurs).map((it: any) => (
                         <option key={it.id} value={it.id}>{statDimension === "produit" ? it.label : it.nom}</option>
@@ -1229,7 +1236,7 @@ export function ApproModule({ onClose, userName, canConfig = true, initialTab }:
                     </div>
                   ) : (
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap" }}>
-                      <div>
+                      <div style={{ minWidth: 0, overflowWrap: "anywhere" }}>
                         <div style={{ fontWeight: 700, color: COLORS.gray700 }}>{f.nom} {f.transitaire && <span style={{ fontWeight: 500, color: COLORS.gray400 }}>· via {f.transitaire}</span>}</div>
                         <div style={{ fontSize: 11, color: COLORS.gray600 }}>{(f.emails || []).length > 0 ? f.emails.join(", ") : <span style={{ color: COLORS.danger }}>Aucun email configuré</span>}</div>
                       </div>
@@ -1273,7 +1280,7 @@ export function ApproModule({ onClose, userName, canConfig = true, initialTab }:
             </div>
             <div style={{ display: "flex", gap: 8 }}>
               <input type="text" placeholder="Nouveau produit (ex : HV 600G)" value={nouveauProduitLabel} onChange={e => setNouveauProduitLabel(e.target.value)}
-                style={{ flex: 1, padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13 }} />
+                style={{ flex: 1, minWidth: 0, padding: "8px 10px", border: `1px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 13 }} />
               <button onClick={ajouterProduit} style={{ padding: "8px 16px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontWeight: 700, cursor: "pointer" }}>+ Ajouter</button>
             </div>
           </div>

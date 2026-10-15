@@ -91,7 +91,7 @@ export function PortailMedina({ jeton }: { jeton: string }) {
         ) : (
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 8 }}>
             <select value={s.ferme || ""} onChange={e => { maj({ ferme: e.target.value }); envoyer("enregistrer", c, { ferme: e.target.value }); }}
-              style={{ ...champ, flex: "1 1 170px", borderColor: s.ferme ? "#d1d5db" : "#f59e0b" }}>
+              style={{ ...champ, flex: "1 1 170px", minWidth: 0, maxWidth: "100%", borderColor: s.ferme ? "#d1d5db" : "#f59e0b" }}>
               <option value="">Producteur…</option>
               {[...new Set([...producteurs, ...(s.ferme ? [s.ferme] : [])])].map(f => <option key={f} value={f}>{f}</option>)}
             </select>

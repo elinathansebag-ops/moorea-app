@@ -1911,12 +1911,15 @@ export function MessagerieModule({
           </div>
         )}
 
+        {/* 15/10/2026 — téléphone : la colonne des dossiers (190 px) passe au-dessus de la boîte
+            au lieu d'écraser la liste des mails à ~130 px de large. */}
+        {activeTab === "boite" && <style>{`@media (max-width: 640px) { .msg-boite-ligne { flex-direction: column; align-items: stretch !important; } .msg-boite-dossiers { width: auto !important; position: static !important; } }`}</style>}
         {activeTab === "boite" && (
-          <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
+          <div className="msg-boite-ligne" style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
             {/* Colonne de gauche façon "vraie boîte mail" (19/09/2026, v3, demande d'Elinathan :
                 "mets tout les dossier comme dans une boite mail sur le côté") : liste verticale
                 des dossiers/libellés, au lieu des pastilles horizontales précédentes. */}
-            <div style={{
+            <div className="msg-boite-dossiers" style={{
               background: "#fff", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 12,
               padding: "10px 8px", width: 190, flexShrink: 0, position: "sticky", top: 70,
             }}>
@@ -2259,7 +2262,7 @@ export function MessagerieModule({
 
               {mailsFiltres.length > 0 && (
                 <div style={{ overflowX: "auto", maxHeight: 640, overflowY: "auto", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8 }}>
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, tableLayout: "fixed" }}>
+                  <table style={{ width: "100%", minWidth: 760, borderCollapse: "collapse", fontSize: 12.5, tableLayout: "fixed" }}>
                     <colgroup>
                       <col style={{ width: "3%" }} />
                       <col style={{ width: "4%" }} />
@@ -2508,7 +2511,7 @@ export function MessagerieModule({
                   <p style={{ margin: "0 0 4px", fontWeight: 800, fontSize: 15, color: COLORS.gray700, overflowWrap: "anywhere" }}>
                     {detailMail?.sujet || mailOuvert.sujet}
                   </p>
-                  <p style={{ margin: 0, fontSize: 12, color: COLORS.gray600 }}>
+                  <p style={{ margin: 0, fontSize: 12, color: COLORS.gray600, overflowWrap: "anywhere" }}>
                     De : {detailMail?.de || mailOuvert.expediteur} · {formatDateMail(detailMail?.date || mailOuvert.date)}
                   </p>
                   {detailMail && detailMail.a.length > 0 && (
@@ -2754,7 +2757,7 @@ export function MessagerieModule({
                           }
                           setCommentaireStatutSaisi("");
                         }}
-                        style={{ padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 12.5, minWidth: 170 }}
+                        style={{ padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, fontSize: 12.5, minWidth: 170, maxWidth: "100%" }}
                       >
                         <option value="">Changer le statut...</option>
                         {statutsConfigures.map(s => (
@@ -2801,7 +2804,7 @@ export function MessagerieModule({
               style={{ background: "#fff", borderRadius: 14, width: "100%", maxWidth: 900, maxHeight: "92vh", display: "flex", flexDirection: "column", overflow: "hidden" }}
             >
               <div style={{ padding: "10px 16px", borderBottom: `1.5px solid ${COLORS.gray200}`, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10 }}>
-                <strong style={{ fontSize: 13, color: COLORS.gray700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                <strong style={{ fontSize: 13, color: COLORS.gray700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", minWidth: 0 }}>
                   📎 {apercuOuvert.nomFichier}
                 </strong>
                 <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>

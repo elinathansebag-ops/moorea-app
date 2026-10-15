@@ -707,7 +707,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
       />
 
       {toast && (
-        <div style={{ position: "fixed", top: 60, left: "50%", transform: "translateX(-50%)", zIndex: 900, background: toast.type === "success" ? COLORS.successLight : COLORS.dangerLight, color: toast.type === "success" ? COLORS.success : COLORS.danger, border: `1.5px solid ${toast.type === "success" ? COLORS.success : COLORS.danger}`, borderRadius: 10, padding: "10px 18px", fontSize: 13, fontWeight: 700, boxShadow: "0 4px 14px rgba(0,0,0,.12)" }}>
+        <div style={{ position: "fixed", top: 60, left: "50%", transform: "translateX(-50%)", zIndex: 900, background: toast.type === "success" ? COLORS.successLight : COLORS.dangerLight, color: toast.type === "success" ? COLORS.success : COLORS.danger, border: `1.5px solid ${toast.type === "success" ? COLORS.success : COLORS.danger}`, borderRadius: 10, padding: "10px 18px", fontSize: 13, fontWeight: 700, boxShadow: "0 4px 14px rgba(0,0,0,.12)", maxWidth: "calc(100vw - 24px)", boxSizing: "border-box", textAlign: "center" }}>
           {toast.msg}
         </div>
       )}
@@ -813,7 +813,8 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
 
       {/* ── ÉDITEUR ── */}
       {vue === "editeur" && (
-      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "20px 16px 100px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24 }}>
+      <div style={{ maxWidth: 1000, margin: "0 auto", padding: "20px 16px 100px", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(340px, 100%), 1fr))", gap: 24 }}>
+        {/* 15/10/2026 — téléphone : les 2 colonnes (éditeur / aperçu) s'empilent quand l'écran est trop étroit */}
         {/* ── COLONNE ÉDITEUR ── */}
         <div>
           <button onClick={() => setVue("liste")} style={{ fontSize: 11, fontWeight: 700, color: COLORS.gray600, background: "transparent", border: "none", cursor: "pointer", padding: 0, marginBottom: 14 }}>
@@ -867,7 +868,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
               </button>
             ) : (
               <div style={{ display: "flex", gap: 8 }}>
-                <input value={nomFormatPerso} onChange={(e) => setNomFormatPerso(e.target.value)} placeholder="Nom du format" style={{ flex: 1, padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 12 }} />
+                <input value={nomFormatPerso} onChange={(e) => setNomFormatPerso(e.target.value)} placeholder="Nom du format" style={{ flex: 1, minWidth: 0, padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 12 }} />
                 <button onClick={enregistrerFormatPersonnalise} style={{ padding: "8px 12px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>OK</button>
                 <button onClick={() => setShowEnregistrerFormat(false)} style={{ padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", fontSize: 12, cursor: "pointer" }}>✕</button>
               </div>
@@ -1232,7 +1233,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
 
           {showEnregistrerModele && (
             <div style={{ background: "#fff", border: `1.5px solid ${COLORS.primary}`, borderRadius: 12, padding: 14, marginBottom: 16, display: "flex", gap: 8 }}>
-              <input value={nomModele} onChange={(e) => setNomModele(e.target.value)} placeholder="Nom du modèle" style={{ flex: 1, padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 12 }} />
+              <input value={nomModele} onChange={(e) => setNomModele(e.target.value)} placeholder="Nom du modèle" style={{ flex: 1, minWidth: 0, padding: "8px 10px", border: `1.5px solid ${COLORS.gray200}`, borderRadius: 8, fontSize: 12 }} />
               <button onClick={enregistrerModele} style={{ padding: "8px 14px", borderRadius: 8, border: "none", background: COLORS.primary, color: "#fff", fontSize: 12, fontWeight: 700, cursor: "pointer" }}>Enregistrer</button>
               <button onClick={() => setShowEnregistrerModele(false)} style={{ padding: "8px 10px", borderRadius: 8, border: `1.5px solid ${COLORS.gray200}`, background: "#fff", fontSize: 12, cursor: "pointer" }}>✕</button>
             </div>
@@ -1244,7 +1245,7 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
           <div style={{ position: "sticky", top: 66 }}>
             <h3 style={{ margin: "0 0 4px", fontSize: 13, fontWeight: 800, color: COLORS.gray700 }}>👁️ Aperçu — glisse les éléments pour les positionner</h3>
             <p style={{ fontSize: 11, color: COLORS.gray400, margin: "0 0 10px" }}>Clique-glisse le logo ou une ligne de texte directement sur l'étiquette pour la déplacer.</p>
-            <div style={{ background: "#e8e0d0", borderRadius: 14, padding: 20, display: "flex", justifyContent: "center", overflow: "auto", marginBottom: 16 }}>
+            <div style={{ background: "#e8e0d0", borderRadius: 14, padding: 20, display: "flex", overflow: "auto", marginBottom: 16 }}>
               <div
                 ref={previewRef}
                 style={{
@@ -1256,6 +1257,9 @@ export function EtiquetteModule({ onClose }: { onClose: () => void }) {
                   overflow: "hidden",
                   boxSizing: "border-box",
                   flexShrink: 0,
+                  // 15/10/2026 — téléphone : centrage par marges auto (au lieu de justifyContent)
+                  // pour que la partie gauche reste accessible au défilement si l'étiquette déborde.
+                  margin: "0 auto",
                   touchAction: "none",
                 }}
               >

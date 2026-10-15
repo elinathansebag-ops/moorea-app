@@ -256,7 +256,7 @@ export default function IFCOStockModule({ onClose, userName }: { onClose: () => 
         {tab === "dashboard" && (
           <div>
             {/* CARTES DE STOCK */}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginBottom: 24 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(200px, 100%), 1fr))", gap: 16, marginBottom: 24 }}>
               {renderStockCard("Moorea (dépôt)", "🏭", "moorea", "#27ae60")}
               {renderStockCard("En transit vers NLT", "📦", "transit", "#f59e0b")}
               {renderStockCard("NLT (reconditionnement)", "🔄", "nlt", "#3b82f6")}
@@ -275,7 +275,7 @@ export default function IFCOStockModule({ onClose, userName }: { onClose: () => 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
                 <div>
                   <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#666", marginBottom: 6 }}>De</label>
-                  <select value={fromLoc} onChange={e => setFromLoc(e.target.value as any)} style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 12, fontFamily: "inherit", outline: "none" }}>
+                  <select value={fromLoc} onChange={e => setFromLoc(e.target.value as any)} style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 12, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}>
                     {Object.entries(locationNames).map(([k, v]) => (
                       <option key={k} value={k}>{v.icon} {v.name}</option>
                     ))}
@@ -283,7 +283,7 @@ export default function IFCOStockModule({ onClose, userName }: { onClose: () => 
                 </div>
                 <div>
                   <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#666", marginBottom: 6 }}>Vers</label>
-                  <select value={toLoc} onChange={e => setToLoc(e.target.value as any)} style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 12, fontFamily: "inherit", outline: "none" }}>
+                  <select value={toLoc} onChange={e => setToLoc(e.target.value as any)} style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 12, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }}>
                     {Object.entries(locationNames).map(([k, v]) => (
                       <option key={k} value={k}>{v.icon} {v.name}</option>
                     ))}
@@ -293,13 +293,13 @@ export default function IFCOStockModule({ onClose, userName }: { onClose: () => 
 
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#666", marginBottom: 6 }}>Nombre de caisses (640 = 1 palette)</label>
-                <input type="number" min="0" value={qteCaisses} onChange={e => setQteCaisses(e.target.value)} placeholder="0" style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, fontFamily: "inherit", outline: "none" }} />
+                <input type="number" min="0" value={qteCaisses} onChange={e => setQteCaisses(e.target.value)} placeholder="0" style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
                 {qteCaisses && <div style={{ fontSize: 11, color: "#666", marginTop: 6 }}>= {formatCaisses(parseInt(qteCaisses) || 0)}</div>}
               </div>
 
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#666", marginBottom: 6 }}>Raison</label>
-                <input type="text" value={raison} onChange={e => setRaison(e.target.value)} placeholder="Ex: Retour de NLT, Envoi reconditionnement..." style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, fontFamily: "inherit", outline: "none" }} />
+                <input type="text" value={raison} onChange={e => setRaison(e.target.value)} placeholder="Ex: Retour de NLT, Envoi reconditionnement..." style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
               </div>
 
               {status && (
@@ -373,17 +373,17 @@ export default function IFCOStockModule({ onClose, userName }: { onClose: () => 
 
               <div style={{ marginBottom: 16 }}>
                 <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#666", marginBottom: 6 }}>Produit à reconditionnement</label>
-                <input type="text" value={produitDemande} onChange={e => setProduitDemande(e.target.value)} placeholder="Ex: Citrons, Pêches, Tomates..." style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, fontFamily: "inherit", outline: "none" }} />
+                <input type="text" value={produitDemande} onChange={e => setProduitDemande(e.target.value)} placeholder="Ex: Citrons, Pêches, Tomates..." style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
               </div>
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 16 }}>
                 <div>
                   <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#666", marginBottom: 6 }}>Quantité (colis)</label>
-                  <input type="number" value={qteColis} onChange={e => setQteColis(e.target.value)} placeholder="0" style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, fontFamily: "inherit", outline: "none" }} />
+                  <input type="number" value={qteColis} onChange={e => setQteColis(e.target.value)} placeholder="0" style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
                 </div>
                 <div>
                   <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#666", marginBottom: 6 }}>Caisses IFCO vides</label>
-                  <input type="number" value={caisseVides} onChange={e => setCaisseVides(e.target.value)} placeholder="0" style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, fontFamily: "inherit", outline: "none" }} />
+                  <input type="number" value={caisseVides} onChange={e => setCaisseVides(e.target.value)} placeholder="0" style={{ width: "100%", padding: "10px 12px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, fontFamily: "inherit", outline: "none", boxSizing: "border-box" }} />
                 </div>
               </div>
 
@@ -418,8 +418,8 @@ export default function IFCOStockModule({ onClose, userName }: { onClose: () => 
                     };
                     const sc = statusColors[d.statut] || statusColors["en_attente"];
                     return (
-                      <div key={d.id || i} style={{ background: sc.bg, border: `1.5px solid ${sc.color}33`, borderRadius: 12, padding: "14px", display: "flex", alignItems: "center", gap: 12 }}>
-                        <div style={{ flex: 1 }}>
+                      <div key={d.id || i} style={{ background: sc.bg, border: `1.5px solid ${sc.color}33`, borderRadius: 12, padding: "14px", display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                        <div style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
                           <div style={{ fontSize: 13, fontWeight: 700, color: sc.color }}>{d.produit}</div>
                           <div style={{ fontSize: 11, color: "#666", marginTop: 4 }}>{d.quantiteColis} colis · {formatCaisses(d.caisseVides)} vides</div>
                           <div style={{ fontSize: 10, color: "#999", marginTop: 4 }}>{d.date} · par {d.creePar}</div>

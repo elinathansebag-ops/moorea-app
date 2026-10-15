@@ -114,6 +114,18 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
   #stock-calc-modal{width:210px!important;right:8px!important;bottom:80px!important}
   #stock-calc-fab{bottom:16px!important;right:16px!important;width:44px!important;height:44px!important}
   #stock-scan-fab{bottom:76px!important;right:16px!important;width:44px!important;height:44px!important}
+  /* 15/10/2026 — téléphone : marges réduites, compteurs en 2×2, lignes de stock empilées
+     (infos sur toute la largeur, boutons dessous), barre de fusion qui passe à la ligne. */
+  #stock-root .topbar{padding-left:1rem;padding-right:1rem;gap:10px}
+  #stock-root .nav-wrap{padding:0 .5rem}
+  #stock-root .nav{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch;scrollbar-width:none;padding-bottom:1.5px}
+  #stock-root .stat-grid{grid-template-columns:repeat(2,1fr)}
+  #stock-root .modal-box{padding:1.25rem}
+  #stock-root .team-card{padding:1rem .75rem}
+  #stock-root .stock-item>div:first-child{min-width:0!important;flex-basis:100%!important;overflow-wrap:anywhere}
+  #stock-root .stock-actions{justify-content:flex-start}
+  #s-fusion-bar{white-space:normal!important;flex-wrap:wrap;justify-content:center;width:max-content;max-width:calc(100vw - 24px);padding:10px 14px!important}
+  #stock-toast{left:12px;right:12px;bottom:12px;max-width:none}
 }
 #stock-root .add-loc-btn{width:26px;height:26px;border-radius:50%;border:1.5px solid #c8a84b;background:transparent;color:#c8a84b;cursor:pointer;font-size:16px;flex-shrink:0;display:inline-flex;align-items:center;justify-content:center;padding:0}
 #stock-root .badge{display:inline-flex;align-items:center;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}

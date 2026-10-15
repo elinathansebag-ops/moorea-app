@@ -199,7 +199,7 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
         {onglet === "passees" && (
           <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 16, padding: 14, boxShadow: "0 2px 8px rgba(0,0,0,.05)" }}>
             {parJour.length === 0 ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 20 }}>Aucune commande importée pour l'instant</div> : (
-              <div style={{ overflowX: "auto" }}>
+              <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
                   <thead><tr style={{ background: "#f9fafb", borderBottom: "2px solid #e5e7eb" }}>
                     {["Date", "Départ", "Commandes", "Colis", "État"].map(h => <th key={h} style={{ padding: 8, textAlign: "left", fontWeight: 700 }}>{h}</th>)}
@@ -274,7 +274,7 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
         {onglet === "config" && (
           <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 16, padding: 16 }}>
             <div style={{ background: cfg.modeTest ? "#fffbeb" : "#f0fdf4", border: `1.5px solid ${cfg.modeTest ? "#fde3a8" : "#bbf7d0"}`, borderRadius: 12, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              <div>
+              <div style={{ flex: "1 1 200px", minWidth: 0, overflowWrap: "anywhere" }}>
                 <div style={{ fontWeight: 800, fontSize: 13, color: cfg.modeTest ? "#b45309" : "#15803d" }}>{cfg.modeTest ? "Mode test actif" : "Mode réel actif"}</div>
                 <div style={{ fontSize: 11.5, color: "#4b5563", marginTop: 2 }}>{cfg.modeTest ? `Le tableau part uniquement chez Jordan (${EMAIL_TEST}), depuis ta boîte (elinathan.sebag@moorea.fr). Rien n'est envoyé à Lidl.` : `Le tableau part vraiment à Lidl (${cfg.emailLidl}), depuis Jordan.`}</div>
               </div>
@@ -294,7 +294,7 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
             <div style={{ marginTop: 14 }}>
               <label style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>Adresse de Lidl (mode réel)</label>
               <input defaultValue={cfg.emailLidl} key={cfg.emailLidl} onBlur={e => { const v = e.target.value.trim(); if (v && v !== cfg.emailLidl) update(ref(db, "lidl_config"), { emailLidl: v }); }}
-                placeholder={EMAIL_LIDL_DEFAUT} style={{ display: "block", marginTop: 4, width: "100%", maxWidth: 360, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }} />
+                placeholder={EMAIL_LIDL_DEFAUT} style={{ display: "block", marginTop: 4, width: "100%", maxWidth: 360, boxSizing: "border-box", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }} />
             </div>
             {/* 13/10/2026 — Demande d'Elinathan : gérer les producteurs (fermes) et leurs coordonnées. */}
             <div style={{ marginTop: 14, background: "#f0f9ff", border: "1.5px solid #bae6fd", borderRadius: 12, padding: "12px 16px" }}>
@@ -309,7 +309,7 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
               <div style={{ fontSize: 11.5, color: "#4b5563", marginTop: 2 }}>À chaque import, leurs commandes partent par mail depuis la boîte de Jordan (Jordan en copie), avec le bon de préparation et un bouton « Saisir la traçabilité » vers leur espace.</div>
               <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#374151", marginTop: 10 }}>Adresse(s) de Medina (séparées par une virgule)</label>
               <input defaultValue={medina.emails ?? EMAILS_MEDINA_DEFAUT} key={medina.emails ?? EMAILS_MEDINA_DEFAUT} onBlur={e => { const v = e.target.value.trim(); if (v !== (medina.emails ?? EMAILS_MEDINA_DEFAUT)) update(ref(db, "lidl_config/medina"), { emails: v }); }}
-                style={{ display: "block", marginTop: 4, width: "100%", maxWidth: 420, padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }} />
+                style={{ display: "block", marginTop: 4, width: "100%", maxWidth: 420, boxSizing: "border-box", padding: "8px 10px", border: "1.5px solid #e5e7eb", borderRadius: 8, fontSize: 13 }} />
               <div style={{ fontSize: 12, fontWeight: 700, color: "#374151", marginTop: 10 }}>Lien de leur espace</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center", marginTop: 4 }}>
                 {lienMedina ? <a href={lienMedina} target="_blank" rel="noreferrer" style={{ fontSize: 12, color: "#0050aa", wordBreak: "break-all" }}>{lienMedina}</a> : <span style={{ fontSize: 12, color: "#6b7280" }}>Créé automatiquement au premier envoi.</span>}
@@ -322,7 +322,7 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
             <div style={{ marginTop: 18 }}>
               <div style={{ fontSize: 13, fontWeight: 800, color: "#111827" }}>🏷️ Adresses de livraison des bases (étiquettes palettes)</div>
               <div style={{ fontSize: 11.5, color: "#6b7280", margin: "2px 0 8px" }}>Une ligne par ligne d'adresse, comme sur l'étiquette. Enregistré automatiquement en quittant la case. {Object.keys(BASES_LIDL).filter(k => !adresses[k]).length} base(s) sans adresse.</div>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(260px, 1fr))", gap: 10 }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(260px, 100%), 1fr))", gap: 10 }}>
                 {Object.entries(BASES_LIDL).sort((a, b) => a[1].nom.localeCompare(b[1].nom)).map(([code, b]) => {
                   const actuelle = (adresses[code] || []).join("\n");
                   return (
@@ -362,7 +362,7 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
               {carte("Prêtes", nbCmd ? `${nbPrets}/${nbCmd}` : "—", "#15803d", "✅", "#f0fdf4")}
               {carte("Bases servies", String(matrice.length), "#b45309", "🏪", "#fffbeb")}
             </div>
-            <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: 14, overflowX: "auto" }}>
+            <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 12, padding: 14, overflowX: "auto", WebkitOverflowScrolling: "touch" }}>
               {/* Toujours affichée : elle porte aussi le filtre de départ. */}
               {(
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10, fontSize: 12 }}>
@@ -374,7 +374,8 @@ export function LidlModule({ onClose, userName, admin }: { onClose: () => void; 
                 </div>
               )}
               {matrice.length === 0 ? <div style={{ textAlign: "center", color: "#9ca3af", padding: 20 }}>Rien cette semaine</div> : (
-                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12.5, tableLayout: "fixed" }}>
+                /* 15/10/2026 — téléphone : largeur mini, le tableau défile à l'horizontale au lieu d'écraser les colonnes */
+                <table style={{ width: "100%", minWidth: 640, borderCollapse: "collapse", fontSize: 12.5, tableLayout: "fixed" }}>
                   <colgroup><col style={{ width: "24%" }} />{Array.from({ length: NB_JOURS_AFF }, (_, n) => <col key={n} />)}<col style={{ width: 70 }} /><col style={{ width: 70 }} /></colgroup>
                   <thead>
                   {/* 14/10/2026 — Précision : ce sont les jours de LIVRAISON chez Lidl, pas de départ. */}

@@ -396,9 +396,9 @@ export function TachesModule({ onClose, userEmail, userName, catalogueArticles, 
         ))}
       </div>
 
-      {/* Toast */}
+      {/* Toast — 15/10/2026 — téléphone : centré même après l'animation (transform de base) et jamais plus large que l'écran. */}
       {toast && (
-        <div style={{ position: "fixed", top: 66, left: "50%", zIndex: 998, background: "#1a2e1a", color: "#fff", padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: 700, animation: "tacheToastIn 0.2s ease", boxShadow: "0 6px 18px rgba(0,0,0,0.25)" }}>
+        <div style={{ position: "fixed", top: 66, left: "50%", transform: "translate(-50%, 0)", maxWidth: "calc(100vw - 32px)", boxSizing: "border-box", textAlign: "center", zIndex: 998, background: "#1a2e1a", color: "#fff", padding: "8px 16px", borderRadius: 20, fontSize: 13, fontWeight: 700, animation: "tacheToastIn 0.2s ease", boxShadow: "0 6px 18px rgba(0,0,0,0.25)" }}>
           {toast}
         </div>
       )}
@@ -406,7 +406,7 @@ export function TachesModule({ onClose, userEmail, userName, catalogueArticles, 
       <div style={{ maxWidth: 720, margin: "0 auto", padding: "16px 16px 90px" }}>
 
         {erreur && (
-          <div style={{ background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "10px 14px", marginBottom: 14, color: "#b91c1c", fontSize: 12.5, fontWeight: 700 }}>
+          <div style={{ background: "#fef2f2", border: "1.5px solid #fca5a5", borderRadius: 12, padding: "10px 14px", marginBottom: 14, color: "#b91c1c", fontSize: 12.5, fontWeight: 700, overflowWrap: "anywhere" }}>
             {erreur}
           </div>
         )}
@@ -461,7 +461,7 @@ export function TachesModule({ onClose, userEmail, userName, catalogueArticles, 
             onChange={e => setNouvelleTache(e.target.value)}
             onKeyDown={e => { if (e.key === "Enter") ajouterTache(); }}
             placeholder="Ajouter une tâche…"
-            style={{ flex: 1 }}
+            style={{ flex: 1, minWidth: 0 }}
           />
           <button onClick={ajouterTache} style={{ padding: "0 20px", borderRadius: 10, border: "none", background: "#eab308", color: "#1a2e1a", fontWeight: 800, fontSize: 14, cursor: "pointer", whiteSpace: "nowrap" }}>
             + Ajouter
@@ -469,7 +469,7 @@ export function TachesModule({ onClose, userEmail, userName, catalogueArticles, 
         </div>
 
         {/* FILTRE */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
           {[
             { key: "actives" as const, label: `🟡 Actives (${nbActives})` },
             { key: "terminees" as const, label: `✅ Terminées (${nbTerminees})` },
@@ -513,7 +513,7 @@ export function TachesModule({ onClose, userEmail, userName, catalogueArticles, 
                     </div>
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <p style={{ margin: 0, fontSize: 14.5, fontWeight: 700, color: "#1a2e1a", textDecoration: termine ? "line-through" : "none" }}>{t.titre}</p>
+                    <p style={{ margin: 0, fontSize: 14.5, fontWeight: 700, color: "#1a2e1a", overflowWrap: "anywhere", textDecoration: termine ? "line-through" : "none" }}>{t.titre}</p>
                     {sousListe.length > 0 && (
                       <p style={{ margin: "2px 0 0", fontSize: 11.5, color: "#9ca3af" }}>{sousListe.filter(([, s]) => s.fait).length}/{sousListe.length} sous-tâche{sousListe.length > 1 ? "s" : ""}</p>
                     )}
@@ -530,7 +530,7 @@ export function TachesModule({ onClose, userEmail, userName, catalogueArticles, 
                           style={{ width: 20, height: 20, borderRadius: 6, border: `2px solid ${s.fait ? "#16a34a" : "#d1d5db"}`, background: s.fait ? "#16a34a" : "#fff", color: "#fff", fontSize: 12, fontWeight: 800, cursor: "pointer", flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
                           {s.fait ? "✓" : ""}
                         </button>
-                        <span style={{ flex: 1, fontSize: 13, color: s.fait ? "#9ca3af" : "#374151", textDecoration: s.fait ? "line-through" : "none" }}>{s.titre}</span>
+                        <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere", fontSize: 13, color: s.fait ? "#9ca3af" : "#374151", textDecoration: s.fait ? "line-through" : "none" }}>{s.titre}</span>
                         <button onClick={() => supprimerSousTache(t.id, subId)} style={{ border: "none", background: "transparent", color: "#e5e7eb", fontSize: 12, cursor: "pointer" }}>✕</button>
                       </div>
                     ))}
@@ -544,7 +544,7 @@ export function TachesModule({ onClose, userEmail, userName, catalogueArticles, 
                     onChange={e => setNouvelleSousTache(s => ({ ...s, [t.id]: e.target.value }))}
                     onKeyDown={e => { if (e.key === "Enter") ajouterSousTache(t.id); }}
                     placeholder="+ sous-tâche…"
-                    style={{ flex: 1, padding: "6px 10px", fontSize: 12.5, borderRadius: 8 }}
+                    style={{ flex: 1, minWidth: 0, padding: "6px 10px", fontSize: 12.5, borderRadius: 8 }}
                   />
                   <button onClick={() => ajouterSousTache(t.id)} style={{ padding: "0 12px", borderRadius: 8, border: "1.5px solid #f3e8c8", background: "#fef9e6", color: "#a16207", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>+</button>
                 </div>
@@ -580,7 +580,7 @@ export function TachesModule({ onClose, userEmail, userName, catalogueArticles, 
             <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 8 }}>
               {ncLignes.map((l, idx) => (
                 <div key={idx} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                  <div style={{ flex: 1 }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
                     <AutocompleteInput
                       value={l.produit}
                       onChange={v => modifierLigneProduitNote(idx, "produit", v)}
@@ -592,7 +592,7 @@ export function TachesModule({ onClose, userEmail, userName, catalogueArticles, 
                     value={l.quantite}
                     onChange={e => modifierLigneProduitNote(idx, "quantite", e.target.value)}
                     placeholder="Qté"
-                    style={{ width: 80, padding: "8px 10px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}
+                    style={{ width: 80, flexShrink: 0, padding: "8px 10px", border: "1.5px solid #e8e0d0", borderRadius: 8, fontSize: 13, boxSizing: "border-box" }}
                   />
                   {ncLignes.length > 1 && (
                     <button onClick={() => supprimerLigneProduitNote(idx)} style={{ border: "none", background: "transparent", color: "#d1d5db", fontSize: 15, cursor: "pointer", padding: 4 }}>✕</button>
@@ -604,7 +604,7 @@ export function TachesModule({ onClose, userEmail, userName, catalogueArticles, 
               + Ajouter un produit
             </button>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(200px, 100%), 1fr))", gap: 10, marginBottom: 10 }}>
               <div>
                 <label style={{ display: "block", fontSize: 11, fontWeight: 700, color: "#6b7280", marginBottom: 4 }}>N° commande fournisseur</label>
                 <input value={ncNumeroCommande} onChange={e => setNcNumeroCommande(e.target.value)} placeholder="Ex: CF-2026-1234"
@@ -638,7 +638,7 @@ export function TachesModule({ onClose, userEmail, userName, catalogueArticles, 
           </div>
 
           {/* FILTRE */}
-          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+          <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
             {[
               { key: "aTraiter" as const, label: `🔵 À traiter (${notesCommandes.filter(n => !n.traite).length})` },
               { key: "traitees" as const, label: `✅ Archivées (${notesCommandes.filter(n => n.traite).length})` },
@@ -664,7 +664,7 @@ export function TachesModule({ onClose, userEmail, userName, catalogueArticles, 
             {notesCommandes.filter(n => filtreCommandes === "aTraiter" ? !n.traite : n.traite).map(n => (
               <div key={n.id} style={{ background: "#fff", border: `1.5px solid ${n.traite ? "#bbf7d0" : "#bfdbfe"}`, borderRadius: 16, padding: "14px 16px", opacity: n.traite ? 0.85 : 1 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8 }}>
-                  <div>
+                  <div style={{ minWidth: 0, overflowWrap: "anywhere" }}>
                     <p style={{ margin: 0, fontSize: 15, fontWeight: 800, color: "#1a2e1a" }}>{n.client}</p>
                     <p style={{ margin: "2px 0 0", fontSize: 11, color: "#9ca3af" }}>
                       {new Date(n.ts).toLocaleDateString("fr-FR")} à {new Date(n.ts).toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}
@@ -677,21 +677,21 @@ export function TachesModule({ onClose, userEmail, userName, catalogueArticles, 
                 {n.lignes.length > 0 && (
                   <div style={{ marginTop: 8, background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 10, padding: "8px 10px" }}>
                     {n.lignes.map((l, i) => (
-                      <p key={i} style={{ margin: i > 0 ? "4px 0 0" : 0, fontSize: 12.5, color: "#374151" }}>
+                      <p key={i} style={{ margin: i > 0 ? "4px 0 0" : 0, fontSize: 12.5, color: "#374151", overflowWrap: "anywhere" }}>
                         <strong>{l.quantite || "?"}</strong> × {l.produit}
                       </p>
                     ))}
                   </div>
                 )}
 
-                <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8, fontSize: 11.5, color: "#6b7280" }}>
+                <div style={{ marginTop: 8, display: "flex", flexWrap: "wrap", gap: 8, fontSize: 11.5, color: "#6b7280", overflowWrap: "anywhere" }}>
                   {n.numeroCommande && <span style={{ background: "#f3f4f6", borderRadius: 6, padding: "3px 8px" }}>N° {n.numeroCommande}</span>}
                   {n.commercialFournisseur && <span style={{ background: "#f3f4f6", borderRadius: 6, padding: "3px 8px" }}>📞 {n.commercialFournisseur}</span>}
                   {n.commercialMoorea && <span style={{ background: "#f3f4f6", borderRadius: 6, padding: "3px 8px" }}>👤 Pour {n.commercialMoorea}</span>}
                 </div>
 
                 {n.commentaire && (
-                  <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "#6b7280", fontStyle: "italic" }}>💬 {n.commentaire}</p>
+                  <p style={{ margin: "8px 0 0", fontSize: 12.5, color: "#6b7280", fontStyle: "italic", overflowWrap: "anywhere" }}>💬 {n.commentaire}</p>
                 )}
 
                 {!n.traite ? (

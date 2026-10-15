@@ -128,8 +128,8 @@ export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrir
 
   const carte: React.CSSProperties = { minWidth: 0, boxSizing: "border-box", background: c.carte, border: `1px solid ${c.bord}`, borderRadius: 16, padding: "14px 16px", boxShadow: darkMode ? "none" : "0 1px 3px rgba(0,0,0,.05)" };
   const titreBloc = (t: string, droite?: React.ReactNode) => (
-    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-      <div style={{ flex: 1, fontSize: 14, fontWeight: 900 }}>{t}</div>{droite}
+    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+      <div style={{ flex: "1 1 160px", minWidth: 0, fontSize: 14, fontWeight: 900 }}>{t}</div>{droite}
     </div>
   );
   const kpi = (lib: string, val: string, sous: React.ReactNode, teinte: string) => (
@@ -164,20 +164,20 @@ export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrir
         const rapportLie = rapports.find(r => r.arrivage_id === a.id || (r.arrivage_ids || []).includes(a.id));
         const st = a.statut === "refusé" ? ["⛔ Refusé", ROUGE] : a.statut === "sous réserve" ? ["⚠️ Sous réserve", AMBRE] : ["✓ Validé", VERT];
         const ligne = (k: string, v: any) => v === undefined || v === null || v === "" ? null : (
-          <div style={{ display: "grid", gridTemplateColumns: "150px 1fr", gap: 8, padding: "6px 0", borderTop: `1px solid ${c.bord}`, fontSize: 13 }}>
-            <span style={{ color: c.gris, fontWeight: 700 }}>{k}</span><span style={{ fontWeight: 600, whiteSpace: "pre-wrap" }}>{String(v)}</span>
+          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 150px) minmax(0, 1fr)", gap: 8, padding: "6px 0", borderTop: `1px solid ${c.bord}`, fontSize: 13 }}>
+            <span style={{ color: c.gris, fontWeight: 700 }}>{k}</span><span style={{ fontWeight: 600, whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>{String(v)}</span>
           </div>
         );
         return (
           <div onClick={() => setArrivageOuvert(null)} style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,.5)", zIndex: 3000, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
             <div onClick={e => e.stopPropagation()} style={{ background: c.carte, color: c.texte, borderRadius: 18, width: "min(620px, 100%)", maxHeight: "90vh", overflowY: "auto", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
               <div style={{ padding: "16px 18px", background: st[1], color: "#fff", borderRadius: "18px 18px 0 0", display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
                   <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.85 }}>Arrivage du {a.date}{pointePar(a) ? ` · contrôlé par ${pointePar(a)}` : ""}</div>
                   <div style={{ fontSize: 18, fontWeight: 900 }}>{st[0]} — {a.produit}</div>
                   <div style={{ fontSize: 12.5, opacity: 0.9 }}>{a.fournisseur}</div>
                 </div>
-                <button type="button" onClick={() => setArrivageOuvert(null)} style={{ border: "none", background: "rgba(255,255,255,.2)", color: "#fff", width: 34, height: 34, borderRadius: 17, fontSize: 18, cursor: "pointer" }}>×</button>
+                <button type="button" onClick={() => setArrivageOuvert(null)} style={{ flexShrink: 0, border: "none", background: "rgba(255,255,255,.2)", color: "#fff", width: 34, height: 34, borderRadius: 17, fontSize: 18, cursor: "pointer" }}>×</button>
               </div>
               <div style={{ padding: "8px 18px 18px" }}>
                 {ligne("🌡️ Température", tempArr(a) !== null ? `${un(tempArr(a))} °C` : "")}
@@ -185,7 +185,7 @@ export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrir
                 {ligne("Colis attendus", a.quantite)}{ligne("Colis reçus", a.colisRecus)}
                 {ligne("Poids", [rp.poids_brut && `brut ${rp.poids_brut}`, rp.poids_net && `net ${rp.poids_net}`, rp.poids_mesure].filter(Boolean).join(" · "))}
                 {ligne("Qualité", rp.qualite)}{ligne("Observations", rp.observations || a.litige?.raison)}
-                {rapportLie && <button type="button" onClick={() => { setArrivageOuvert(null); setFicheOuverte(rapportLie); }} style={{ marginTop: 12, padding: "10px 14px", borderRadius: 10, border: "none", background: "#305a55", color: "#fff", fontWeight: 800, cursor: "pointer" }}>📋 Voir le rapport d'agréage {rapportLie.numeroRapport || ""}</button>}
+                {rapportLie && <button type="button" onClick={() => { setArrivageOuvert(null); setFicheOuverte(rapportLie); }} style={{ maxWidth: "100%", marginTop: 12, padding: "10px 14px", borderRadius: 10, border: "none", background: "#305a55", color: "#fff", fontWeight: 800, cursor: "pointer" }}>📋 Voir le rapport d'agréage {rapportLie.numeroRapport || ""}</button>}
               </div>
             </div>
           </div>
@@ -236,7 +236,7 @@ export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrir
 
         {/* Évolution par semaine */}
         <div style={{ ...carte, marginBottom: 14 }}>
-          {titreBloc("📈 Arrivages contrôlés par semaine", <span style={{ display: "flex", gap: 10, fontSize: 11.5, color: c.gris, fontWeight: 700 }}><span><span style={{ color: VERT }}>■</span> Validés</span><span><span style={{ color: AMBRE }}>■</span> Réserves</span><span><span style={{ color: ROUGE }}>■</span> Refus</span></span>)}
+          {titreBloc("📈 Arrivages contrôlés par semaine", <span style={{ display: "flex", flexWrap: "wrap", gap: 10, fontSize: 11.5, color: c.gris, fontWeight: 700 }}><span><span style={{ color: VERT }}>■</span> Validés</span><span><span style={{ color: AMBRE }}>■</span> Réserves</span><span><span style={{ color: ROUGE }}>■</span> Refus</span></span>)}
           <div style={{ display: "flex", alignItems: "flex-end", gap: 6, height: 150 }}>
             {d.semaines.map(w => {
               const t = w.conf + w.res + w.ref;
@@ -256,7 +256,7 @@ export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrir
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(340px, 100%), 1fr))", gap: 14, marginBottom: 14 }}>
           {/* Fournisseurs */}
           <div style={carte}>
-            {titreBloc("🏭 Fournisseurs", <span style={{ display: "flex", gap: 4 }}>
+            {titreBloc("🏭 Fournisseurs", <span style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
               <button type="button" onClick={() => setTriFourn("pb")} style={{ ...puce(triFourn === "pb"), padding: "4px 10px", fontSize: 11.5 }}>Les + à problème</button>
               <button type="button" onClick={() => setTriFourn("nb")} style={{ ...puce(triFourn === "nb"), padding: "4px 10px", fontSize: 11.5 }}>Les + livrés</button>
             </span>)}
@@ -321,7 +321,7 @@ export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrir
                 <button key={r.id || i} type="button" onClick={() => setArrivageOuvert(r)} style={{ display: "flex", gap: 10, alignItems: "center", width: "100%", padding: "7px 2px", border: "none", borderTop: i ? `1px solid ${c.bord}` : "none", background: "none", color: c.texte, cursor: "pointer", textAlign: "left" }}>
                   <span style={{ padding: "3px 8px", borderRadius: 8, background: "#fef2f2", color: ROUGE, fontSize: 12.5, fontWeight: 900, flexShrink: 0 }}>{un(tempArr(r))} °C</span>
                   <span style={{ flex: 1, minWidth: 0, fontSize: 12.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}><b>{r.produit}</b> · {r.fournisseur}</span>
-                  <span style={{ fontSize: 11.5, color: c.gris }}>{String(r.date || "").slice(0, 5)}</span>
+                  <span style={{ fontSize: 11.5, color: c.gris, flexShrink: 0 }}>{String(r.date || "").slice(0, 5)}</span>
                 </button>
               ))}
             </div>
@@ -330,7 +330,7 @@ export default function QualiteDashboard({ rapports, raccourcis, onClose, ouvrir
                 {titreBloc("👤 Arrivages contrôlés par personne")}
                 {d.agreeurs.map((x, i) => (
                   <div key={x.k} style={{ display: "grid", gridTemplateColumns: "1fr 90px 40px", gap: 10, alignItems: "center", padding: "6px 2px", borderTop: i ? `1px solid ${c.bord}` : "none" }}>
-                    <span style={{ fontSize: 13, fontWeight: 800 }}>{x.k}</span>
+                    <span style={{ fontSize: 13, fontWeight: 800, minWidth: 0, overflowWrap: "anywhere" }}>{x.k}</span>
                     {barre(x.conf, x.res, x.ref)}
                     <span style={{ fontSize: 13, fontWeight: 900, textAlign: "right" }}>{x.nb}</span>
                   </div>

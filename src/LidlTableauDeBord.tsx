@@ -57,8 +57,8 @@ export function LidlTableauDeBord({ lignes, envois }: { lignes: L[]; envois: Rec
   );
   const carte = (titre: string, contenu: any, action?: any) => (
     <div style={{ background: "#fff", border: "1.5px solid #e5e7eb", borderRadius: 14, padding: 14, marginBottom: 12 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <div style={{ fontWeight: 800, fontSize: 14, color: "#111827" }}>{titre}</div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10, flexWrap: "wrap" }}>
+        <div style={{ fontWeight: 800, fontSize: 14, color: "#111827", minWidth: 0 }}>{titre}</div>
         <div style={{ marginLeft: "auto" }}>{action}</div>
       </div>
       {contenu}
@@ -134,7 +134,7 @@ export function LidlTableauDeBord({ lignes, envois }: { lignes: L[]; envois: Rec
       {carte("Bases qui commandent le plus", bases.length === 0 ? <div style={{ color: "#9ca3af", fontSize: 13 }}>Aucune commande sur la période.</div> : (
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           {bases.slice(0, 12).map(b => (
-            <div key={b.base} title={`${infoBase(b.base)?.nom || b.base} : ${nbFr(b.colis)} colis, ${b.nb} commandes`} style={{ display: "grid", gridTemplateColumns: "130px 1fr 70px", alignItems: "center", gap: 10, fontSize: 13 }}>
+            <div key={b.base} title={`${infoBase(b.base)?.nom || b.base} : ${nbFr(b.colis)} colis, ${b.nb} commandes`} style={{ display: "grid", gridTemplateColumns: "minmax(0, 130px) minmax(40px, 1fr) auto", alignItems: "center", gap: 10, fontSize: 13 }}>
               <span style={{ fontWeight: 700, color: "#111827", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{infoBase(b.base)?.nom || b.base}</span>
               <span style={{ height: 12, background: "#f3f4f6", borderRadius: 4, overflow: "hidden" }}><span style={{ display: "block", height: "100%", width: `${(b.colis / maxBase) * 100}%`, background: COUL.paris, borderRadius: 4 }} /></span>
               <span style={{ textAlign: "right", fontWeight: 800, color: "#111827" }}>{nbFr(b.colis)}</span>

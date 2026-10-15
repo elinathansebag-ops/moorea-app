@@ -93,7 +93,7 @@ export function ConsultationLidl({ onClose, darkMode }: { onClose: () => void; d
             <button key={d} type="button" onClick={() => setDepart(d)} style={puce(depart === d)}>{d === "tous" ? "Tous les départs" : d === "paris" ? "Départ Paris" : "Départ Medina (Perpignan)"}</button>
           ))}
           <input value={recherche} onChange={e => setRecherche(e.target.value)} placeholder="🔍 Lot, producteur, base… (tous les jours)" aria-label="Rechercher"
-            style={{ flex: 1, minWidth: 220, padding: "8px 12px", borderRadius: 10, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 14 }} />
+            style={{ flex: 1, minWidth: "min(220px, 100%)", boxSizing: "border-box", padding: "8px 12px", borderRadius: 10, border: `1.5px solid ${bord}`, background: carte, color: texte, fontSize: 14 }} />
         </div>
 
         {!q && jourAffiche && (
@@ -124,8 +124,8 @@ export function ConsultationLidl({ onClose, darkMode }: { onClose: () => void; d
                   <button key={cmd.j} type="button" onClick={() => { setJour(cmd.j); setVueTableau(false); window.scrollTo(0, 0); }}
                     style={{ textAlign: "left", padding: 0, border: "none", borderRadius: 16, background: carte, color: texte, cursor: "pointer", overflow: "hidden", boxShadow: darkMode ? "none" : "0 1px 4px rgba(0,0,0,.07)", borderTop: `4px solid ${fini ? "#16a34a" : futur ? "#0050aa" : "#d97706"}` }}>
                     <div style={{ padding: "12px 14px" }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span style={{ flex: 1, fontSize: 16, fontWeight: 900, textTransform: "capitalize" }}>{dateLongueFr(cmd.j)}</span>
+                      <div style={{ display: "flex", alignItems: "center", gap: "4px 8px", flexWrap: "wrap" }}>
+                        <span style={{ flex: "1 1 auto", fontSize: 16, fontWeight: 900, textTransform: "capitalize" }}>{dateLongueFr(cmd.j)}</span>
                         <span title={envoyee ? "Traçabilité envoyée à Lidl" : "Traçabilité pas encore envoyée"} style={{ fontSize: 11.5, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: envoyee ? "#dcfce7" : "#fef3c7", color: envoyee ? "#166534" : "#92400e", whiteSpace: "nowrap" }}>{envoyee ? (() => { const [d, h] = String(env?.dernierEnvoi || env?.manuel?.le || "").split(" "); return `📤 Envoyée${d ? ` le ${d.slice(0, 5)}` : ""}${h ? ` à ${h.slice(0, 5)}` : ""}`; })() : "⏳ Pas envoyée"}</span>
                       </div>
                       <div style={{ fontSize: 12.5, color: gris, marginTop: 4 }}>{cmd.bases} base{cmd.bases > 1 ? "s" : ""} · {cmd.departs.join(" + ")}{cmd.produits.length ? ` · ${cmd.produits.slice(0, 2).join(", ")}${cmd.produits.length > 2 ? "…" : ""}` : ""}</div>
@@ -166,13 +166,13 @@ export function ConsultationLidl({ onClose, darkMode }: { onClose: () => void; d
               const b = infoBase(l.base), r = REFS_LIDL.find(x => x.k === l.refLidl), p = producteurs.find(x => x.pn === l.ferme);
               const pret = l.statut === "pret";
               return (
-                <div key={l.id} style={{ background: carte, borderRadius: 16, padding: "12px 14px", boxShadow: darkMode ? "none" : "0 1px 4px rgba(0,0,0,.07)", borderLeft: `5px solid ${pret ? "#16a34a" : "#d97706"}` }}>
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
+                <div key={l.id} style={{ background: carte, borderRadius: 16, padding: "12px 14px", minWidth: 0, overflowWrap: "anywhere", boxShadow: darkMode ? "none" : "0 1px 4px rgba(0,0,0,.07)", borderLeft: `5px solid ${pret ? "#16a34a" : "#d97706"}` }}>
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 8, flexWrap: "wrap" }}>
+                    <div style={{ flex: "1 1 160px", minWidth: 0 }}>
                       <div style={{ fontSize: 16, fontWeight: 900 }}>{b?.nom || l.base}</div>
                       <div style={{ fontSize: 11.5, color: gris }}>{b ? `Base n° ${b.nationale ? "nationale" : b.num} · ${l.base}` : ""}</div>
                     </div>
-                    <span style={{ fontSize: 11.5, fontWeight: 800, padding: "3px 9px", borderRadius: 999, background: "#eff6ff", color: "#1d4ed8", whiteSpace: "nowrap" }}>🚚 {l.depart === "paris" ? "Paris" : "Medina"}{l.transporteur ? ` · ${l.transporteur}` : ""}{l.camion ? ` · camion ${l.camion}` : ""}</span>
+                    <span style={{ fontSize: 11.5, fontWeight: 800, padding: "3px 9px", borderRadius: 999, background: "#eff6ff", color: "#1d4ed8", maxWidth: "100%" }}>🚚 {l.depart === "paris" ? "Paris" : "Medina"}{l.transporteur ? ` · ${l.transporteur}` : ""}{l.camion ? ` · camion ${l.camion}` : ""}</span>
                   </div>
                   <div style={{ fontSize: 13.5, fontWeight: 700, marginTop: 8 }}>{r ? `${r.article} — ${r.origine}` : [l.article, l.origine].filter(Boolean).join(" — ") || "—"}</div>
                   <div style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: "4px 10px", marginTop: 8, fontSize: 12.5 }}>
@@ -193,7 +193,7 @@ export function ConsultationLidl({ onClose, darkMode }: { onClose: () => void; d
         {visibles.length > 0 && (q || vueTableau) && (
           <>
             <p style={{ margin: "0 0 8px", fontSize: 12.5, color: gris }}>{visibles.length} ligne{visibles.length > 1 ? "s" : ""}</p>
-            <div style={{ overflowX: "auto", background: carte, border: `1px solid ${bord}`, borderRadius: 12, maxHeight: "70vh" }}>
+            <div style={{ overflowX: "auto", WebkitOverflowScrolling: "touch", background: carte, border: `1px solid ${bord}`, borderRadius: 12, maxHeight: "70vh" }}>
               <table style={{ borderCollapse: "collapse", width: "100%", minWidth: 1100 }}>
                 <thead>
                   <tr>

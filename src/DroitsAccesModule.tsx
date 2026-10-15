@@ -333,9 +333,9 @@ export default function DroitsAccesModule({ onClose, embarque = false }: { onClo
                       const aIcone = /\p{Extended_Pictographic}/u.test(icone);
                       return (
                         <button key={m.key} type="button" onClick={() => setModuleOuvert(m.key)}
-                          style={{ textAlign: "left", padding: "14px", borderRadius: 14, border: "1.5px solid #e8e0d0", background: "#fff", cursor: "pointer", display: "flex", flexDirection: "column", gap: 6, minHeight: 104, boxShadow: "0 1px 3px rgba(0,0,0,.05)" }}>
+                          style={{ minWidth: 0, textAlign: "left", padding: "14px", borderRadius: 14, border: "1.5px solid #e8e0d0", background: "#fff", cursor: "pointer", display: "flex", flexDirection: "column", gap: 6, minHeight: 104, boxShadow: "0 1px 3px rgba(0,0,0,.05)" }}>
                           <span style={{ fontSize: 26 }}>{aIcone ? icone : "🧩"}</span>
-                          <span style={{ fontSize: 13.5, fontWeight: 800, color: "#1a2e1a", lineHeight: 1.25 }}>{aIcone ? reste.join(" ") : m.label}</span>
+                          <span style={{ fontSize: 13.5, fontWeight: 800, color: "#1a2e1a", lineHeight: 1.25, overflowWrap: "anywhere" }}>{aIcone ? reste.join(" ") : m.label}</span>
                           {NATURE_MODULE[m.key] === "consultation" && <span style={{ alignSelf: "flex-start", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#eff6ff", color: "#1d4ed8" }}>👁️ Consultation seule</span>}
                           {NATURE_MODULE[m.key] === "reglage" && <span style={{ alignSelf: "flex-start", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#f5f3ff", color: "#6d28d9" }}>⚙️ Réglage d'affichage</span>}
                           {m.tabs?.length ? <span style={{ alignSelf: "flex-start", fontSize: 11, fontWeight: 800, padding: "2px 8px", borderRadius: 999, background: "#fef3c7", color: "#92400e" }}>🔧 {m.tabs.length} droit{m.tabs.length > 1 ? "s" : ""} détaillé{m.tabs.length > 1 ? "s" : ""}</span> : null}
@@ -353,8 +353,8 @@ export default function DroitsAccesModule({ onClose, embarque = false }: { onClo
                   <div onClick={() => setModuleOuvert(null)} style={{ position: "fixed", inset: 0, zIndex: 3000, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
                     <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, width: "min(520px, 100%)", maxHeight: "85vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
                       <div style={{ padding: "14px 18px", background: "#305a55", color: "#fff", borderRadius: "18px 18px 0 0", display: "flex", alignItems: "center", gap: 10 }}>
-                        <span style={{ flex: 1, fontSize: 16, fontWeight: 900 }}>{m.label}</span>
-                        <button type="button" onClick={() => setModuleOuvert(null)} style={{ border: "none", background: "rgba(255,255,255,.2)", color: "#fff", width: 32, height: 32, borderRadius: 16, fontSize: 18, cursor: "pointer" }}>×</button>
+                        <span style={{ flex: 1, minWidth: 0, fontSize: 16, fontWeight: 900, overflowWrap: "anywhere" }}>{m.label}</span>
+                        <button type="button" onClick={() => setModuleOuvert(null)} style={{ flexShrink: 0, border: "none", background: "rgba(255,255,255,.2)", color: "#fff", width: 32, height: 32, borderRadius: 16, fontSize: 18, cursor: "pointer" }}>×</button>
                       </div>
                       <div style={{ padding: "8px 14px 14px", overflowY: "auto", display: "grid", gap: 4 }}>
                         <p style={{ margin: "4px 2px 6px", fontSize: 12, color: "#6b7280" }}>
@@ -370,7 +370,7 @@ export default function DroitsAccesModule({ onClose, embarque = false }: { onClo
                                 <input type="checkbox" className="mrq-case-native" checked={visible} disabled={estAdmin} onChange={() => toggleModulePourEmail(m.key, email, visible)} />
                                 <span className="mrq-case-visuelle" />
                               </span>
-                              <span style={{ flex: 1, minWidth: 0 }}>
+                              <span style={{ flex: 1, minWidth: 0, overflowWrap: "anywhere" }}>
                                 {email}
                                 {estAdmin && <span style={{ fontSize: 10.5, color: "#9ca3af" }}> (admin — voit tout)</span>}
                                 {visible && !estAdmin && m.tabs?.length ? (
@@ -531,14 +531,14 @@ export default function DroitsAccesModule({ onClose, embarque = false }: { onClo
                 <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 4 }}>✉️ Inviter quelqu'un</div>
                 <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 10 }}>Un mail part de ta boîte avec le lien de l'appli et la marche à suivre. La personne apparaît ensuite « en attente » : tu choisis ses modules quand tu veux.</div>
                 <form onSubmit={e => { e.preventDefault(); envoyerInvitation(invitEmail, invitPrenom); }} style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                  <input value={invitPrenom} onChange={e => setInvitPrenom(e.target.value)} placeholder="Prénom" aria-label="Prénom" style={{ flex: "1 1 140px" }} />
-                  <input value={invitEmail} onChange={e => setInvitEmail(e.target.value)} placeholder="prenom.nom@moorea.fr" aria-label="Adresse mail" type="email" style={{ flex: "2 1 220px" }} />
+                  <input value={invitPrenom} onChange={e => setInvitPrenom(e.target.value)} placeholder="Prénom" aria-label="Prénom" style={{ flex: "1 1 140px", minWidth: 0 }} />
+                  <input value={invitEmail} onChange={e => setInvitEmail(e.target.value)} placeholder="prenom.nom@moorea.fr" aria-label="Adresse mail" type="email" style={{ flex: "2 1 220px", minWidth: 0 }} />
                   <button type="submit" className="btn-primary" disabled={invitEnCours || !invitEmail.trim()} style={{ width: "auto", padding: "0 18px" }}>{invitEnCours ? "Envoi…" : "Envoyer l'invitation"}</button>
                 </form>
                 {invitMessage && <div style={{ marginTop: 8, fontSize: 12.5, fontWeight: 700, color: invitMessage.ok ? "#15803d" : "#b91c1c" }}>{invitMessage.texte}</div>}
               </div>
-              <div className="card" style={{ padding: 14, marginBottom: 14, display: "flex", gap: 8 }}>
-                <input value={nouvelEmail} onChange={e => setNouvelEmail(e.target.value)} placeholder="adresse@moorea.fr (pas encore connectée)" onKeyDown={e => e.key === "Enter" && ajouterUtilisateur()} />
+              <div className="card" style={{ padding: 14, marginBottom: 14, display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <input value={nouvelEmail} onChange={e => setNouvelEmail(e.target.value)} placeholder="adresse@moorea.fr (pas encore connectée)" onKeyDown={e => e.key === "Enter" && ajouterUtilisateur()} style={{ flex: "1 1 200px", minWidth: 0 }} />
                 <button className="btn-primary" style={{ width: "auto", padding: "0 18px" }} onClick={ajouterUtilisateur}>+ Pré-configurer sans mail</button>
               </div>
 
@@ -564,7 +564,7 @@ export default function DroitsAccesModule({ onClose, embarque = false }: { onClo
                   const nbMod = c.email ? (estAdmin ? MODULE_DEFS.length : MODULE_DEFS.filter(m => calculerAcces(c.email, roles, users).hasModule(m.key)).length) : 0;
                   return (
                     <button key={uid} type="button" onClick={() => c.email ? ouvrirPanneau(c.email) : (window.confirm("Retirer cette fiche de connexion incomplète (sans email) ?") && remove(ref(db, `comptes/${uid}`)))}
-                      style={{ textAlign: "left", padding: 14, borderRadius: 14, border: `1.5px solid ${enAttente ? "#fbbf24" : "#e8e0d0"}`, background: enAttente ? "#fffbeb" : "#fff", cursor: "pointer", display: "flex", flexDirection: "column", gap: 4, boxShadow: "0 1px 3px rgba(0,0,0,.05)" }}>
+                      style={{ minWidth: 0, textAlign: "left", padding: 14, borderRadius: 14, border: `1.5px solid ${enAttente ? "#fbbf24" : "#e8e0d0"}`, background: enAttente ? "#fffbeb" : "#fff", cursor: "pointer", display: "flex", flexDirection: "column", gap: 4, boxShadow: "0 1px 3px rgba(0,0,0,.05)" }}>
                       <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
                         <span style={{ width: 36, height: 36, borderRadius: 18, background: enLigne ? "#dcfce7" : "#f3f4f6", color: enLigne ? "#166534" : "#6b7280", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 900, fontSize: 15, flexShrink: 0, position: "relative" }}>
                           {(c.displayName || c.email || "?").charAt(0).toUpperCase()}
@@ -595,7 +595,7 @@ export default function DroitsAccesModule({ onClose, embarque = false }: { onClo
                       const estBootstrap = ADMIN_BOOTSTRAP.includes((u.email || "").toLowerCase());
                       return (
                         <div key={cle} role="button" tabIndex={0} onClick={() => setCompteOuvert(cle)}
-                          style={{ padding: 14, borderRadius: 14, border: "1.5px dashed #e8e0d0", background: "#fff", cursor: "pointer", display: "flex", flexDirection: "column", gap: 4 }}>
+                          style={{ minWidth: 0, padding: 14, borderRadius: 14, border: "1.5px dashed #e8e0d0", background: "#fff", cursor: "pointer", display: "flex", flexDirection: "column", gap: 4 }}>
                           <span style={{ fontWeight: 800, fontSize: 14, color: "#1a2e1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.invitation?.prenom || u.email}</span>
                           {u.invitation?.prenom && <span style={{ fontSize: 11.5, color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{u.email}</span>}
                           <span style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 4 }}>
@@ -623,10 +623,10 @@ export default function DroitsAccesModule({ onClose, embarque = false }: { onClo
                     <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, width: "min(640px, 100%)", maxHeight: "88vh", display: "flex", flexDirection: "column", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
                       <div style={{ padding: "14px 18px", background: "#305a55", color: "#fff", borderRadius: "18px 18px 0 0", display: "flex", alignItems: "center", gap: 10 }}>
                         <span style={{ flex: 1, minWidth: 0 }}>
-                          <span style={{ display: "block", fontSize: 16, fontWeight: 900 }}>{nom}</span>
-                          <span style={{ display: "block", fontSize: 12, opacity: 0.85 }}>{email}</span>
+                          <span style={{ display: "block", fontSize: 16, fontWeight: 900, overflowWrap: "anywhere" }}>{nom}</span>
+                          <span style={{ display: "block", fontSize: 12, opacity: 0.85, overflowWrap: "anywhere" }}>{email}</span>
                         </span>
-                        <button type="button" onClick={() => setCompteOuvert(null)} style={{ border: "none", background: "rgba(255,255,255,.2)", color: "#fff", width: 32, height: 32, borderRadius: 16, fontSize: 18, cursor: "pointer" }}>×</button>
+                        <button type="button" onClick={() => setCompteOuvert(null)} style={{ flexShrink: 0, border: "none", background: "rgba(255,255,255,.2)", color: "#fff", width: 32, height: 32, borderRadius: 16, fontSize: 18, cursor: "pointer" }}>×</button>
                       </div>
                       <div style={{ padding: "0 18px 16px", overflowY: "auto" }}>
                         <PanneauEdition cle={compteOuvert} email={email} />

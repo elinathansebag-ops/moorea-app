@@ -75,7 +75,7 @@ export function SousComptesAcces({ permRoles, permUsers, darkMode }: { permRoles
           <button key={c} type="button" onClick={() => { setCompte(c); setPersonne(null); }} style={puce(c === compte)}>{c.split("@")[0]}</button>
         ))}
       </div>
-      <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 800, color: texte }}>Personnes de {compte} <span style={{ fontWeight: 500, color: gris }}>· ⭐ = favori ({MAX_FAVORIS} max, en gros boutons dans « Qui es-tu ? », les autres en liste déroulante)</span></p>
+      <p style={{ margin: "0 0 6px", fontSize: 12, fontWeight: 800, color: texte, overflowWrap: "anywhere" }}>Personnes de {compte} <span style={{ fontWeight: 500, color: gris }}>· ⭐ = favori ({MAX_FAVORIS} max, en gros boutons dans « Qui es-tu ? », les autres en liste déroulante)</span></p>
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 8 }}>
         {liste.personnes.map(p => {
           const n = nbRefuses(p), fav = liste.favoris.includes(p);
@@ -92,8 +92,8 @@ export function SousComptesAcces({ permRoles, permUsers, darkMode }: { permRoles
       </div>
       <form onSubmit={e => { e.preventDefault(); ajouter(); }} style={{ display: "flex", gap: 6, marginBottom: 12, maxWidth: 360 }}>
         <input value={nouveau} onChange={e => setNouveau(e.target.value)} placeholder="Ajouter une personne (prénom)" aria-label="Ajouter une personne"
-          style={{ flex: 1, padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${bord}`, fontSize: 12.5, background: darkMode ? "#171b21" : "#fff", color: texte }} />
-        <button type="submit" disabled={!nouveau.trim()} style={{ ...puce(true), opacity: nouveau.trim() ? 1 : 0.5 }}>+ Ajouter</button>
+          style={{ flex: 1, minWidth: 0, padding: "7px 10px", borderRadius: 8, border: `1.5px solid ${bord}`, fontSize: 12.5, background: darkMode ? "#171b21" : "#fff", color: texte }} />
+        <button type="submit" disabled={!nouveau.trim()} style={{ ...puce(true), flexShrink: 0, whiteSpace: "nowrap", opacity: nouveau.trim() ? 1 : 0.5 }}>+ Ajouter</button>
       </form>
       {!personne && <p style={{ margin: 0, fontSize: 12, color: gris }}>Touche une personne pour choisir ses modules. Par défaut, chacun a tous les modules du compte.</p>}
       {personne && (
@@ -103,7 +103,7 @@ export function SousComptesAcces({ permRoles, permUsers, darkMode }: { permRoles
             <button type="button" onClick={toutAutoriser} style={{ ...puce(false), padding: "5px 10px", fontSize: 11.5 }}>Tout autoriser</button>
           </div>
           {modulesCompte.length === 0 && <p style={{ fontSize: 12, color: gris, margin: 0 }}>Ce compte n'a encore accès à aucun module (Droits d'accès).</p>}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(230px, 1fr))", gap: "4px 12px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(230px, 100%), 1fr))", gap: "4px 12px" }}>
             {modulesCompte.map(m => (
               <label key={m.key} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, color: texte, cursor: "pointer", padding: "4px 0" }}>
                 <span className="mrq-case-conteneur">
