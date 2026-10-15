@@ -1,3 +1,4 @@
+import { chargerLogoMoorea, VERT_MOOREA } from "./logoMoorea";
 import { useState, useEffect, useRef, ChangeEvent, Fragment } from "react";
 import { BarreMailsRecond } from "./BarreMailsRecond";
 import { noterHistoriqueDemande, parDansHistorique } from "./historiqueRecond";
@@ -533,18 +534,20 @@ export async function genererBonPdf(demande: Demande): Promise<string> {
   const W = 210, M = 16, CW = W - M * 2;
   let y = 0;
 
-  // En-tête — même charte que les autres PDF Moorea (bandeau noir, filet or). Le numéro de
+  // En-tête — même charte que les autres PDF Moorea (bandeau vert et logo depuis le 16/10/2026). Le numéro de
   // reconditionnement (avec la date dedans, ex: RC260825-01) est mis en avant à côté du titre —
   // c'est LA référence à utiliser à l'oral/écrit avec le transporteur ou le reconditionneur.
-  doc.setFillColor(10, 10, 10); doc.rect(0, 0, W, 22, "F");
-  doc.setFillColor(200, 168, 75); doc.rect(0, 22, W, 2, "F");
-  doc.setTextColor(200, 168, 75); doc.setFont("helvetica", "bold"); doc.setFontSize(14);
-  doc.text("MOOREA", M, 14);
-  doc.setTextColor(255, 255, 255); doc.setFontSize(10);
-  doc.text("Bon de reconditionnement", M + 32, 14);
+  // 16/10/2026 — Bandeau aux couleurs de Moorea (vert, logo), comme les autres documents.
+  { const logo = await chargerLogoMoorea();
+    doc.setFillColor(...VERT_MOOREA); doc.rect(0, 0, W, 24, "F");
+    if (logo) { try { doc.addImage(logo, "PNG", M, 3, 18, 18); } catch { /* logo facultatif */ } }
+    doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
+    doc.text("Bon de reconditionnement", M + 22, 11.5);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(217, 231, 225);
+    doc.text("MOOREA COMMERCE FRUITS - 69 rue de Perpignan - 94632 Rungis Cedex", M + 22, 17.5); }
   doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
   doc.text(demande.numero || "-", W - M, 10.5, { align: "right" });
-  doc.setTextColor(170, 170, 170); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+  doc.setTextColor(217, 231, 225); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
   doc.text(demande.dateCreationFr, W - M, 16.5, { align: "right" });
   y = 32;
 
@@ -773,15 +776,17 @@ export async function genererBonEnvoiPaletteIfco(data: {
   const W = 210, M = 16, CW = W - M * 2;
   let y = 0;
 
-  doc.setFillColor(10, 10, 10); doc.rect(0, 0, W, 22, "F");
-  doc.setFillColor(200, 168, 75); doc.rect(0, 22, W, 2, "F");
-  doc.setTextColor(200, 168, 75); doc.setFont("helvetica", "bold"); doc.setFontSize(14);
-  doc.text("MOOREA", M, 14);
-  doc.setTextColor(255, 255, 255); doc.setFontSize(10);
-  doc.text("Bordereau d'envoi — palette IFCO", M + 32, 14);
+  // 16/10/2026 — Bandeau aux couleurs de Moorea (vert, logo), comme les autres documents.
+  { const logo = await chargerLogoMoorea();
+    doc.setFillColor(...VERT_MOOREA); doc.rect(0, 0, W, 24, "F");
+    if (logo) { try { doc.addImage(logo, "PNG", M, 3, 18, 18); } catch { /* logo facultatif */ } }
+    doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
+    doc.text("Bordereau d'envoi - palette IFCO", M + 22, 11.5);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(217, 231, 225);
+    doc.text("MOOREA COMMERCE FRUITS - 69 rue de Perpignan - 94632 Rungis Cedex", M + 22, 17.5); }
   doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(10);
   doc.text(data.numero || "-", W - M, 10.5, { align: "right" });
-  doc.setTextColor(170, 170, 170); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
+  doc.setTextColor(217, 231, 225); doc.setFont("helvetica", "normal"); doc.setFontSize(7.5);
   doc.text(data.dateFr, W - M, 16.5, { align: "right" });
   y = 32;
 

@@ -1,3 +1,4 @@
+import { chargerLogoMoorea, VERT_MOOREA } from "./logoMoorea";
 import jsPDF from "jspdf";
 import QRCode from "qrcode";
 import { db, ref, push } from "./firebase";
@@ -17,14 +18,19 @@ export type LigneBon = { base: string; nomBase: string; numBase?: number; produi
 const W = 210, H = 297, M = 12, CW = W - M * 2;
 type Col = { titre: string; l: number; align?: "left" | "right" | "center"; gras?: boolean };
 
+// 16/10/2026 — Bandeau aux couleurs de Moorea (vert, logo). Le logo est chargé une fois à l'avance
+// (entete() reste synchrone) ; s'il n'est pas encore là, le bandeau sort sans logo.
+let logoMoorea: string | null = null;
+chargerLogoMoorea().then(l => { logoMoorea = l; }).catch(() => {});
+
 function entete(doc: jsPDF, titre: string, sousTitre: string) {
-  doc.setFillColor(10, 10, 10); doc.rect(0, 0, W, 20, "F");
-  doc.setFillColor(200, 168, 75); doc.rect(0, 20, W, 1.5, "F");
-  doc.setTextColor(200, 168, 75); doc.setFont("helvetica", "bold"); doc.setFontSize(14);
-  doc.text("MOOREA", M, 13);
-  doc.setTextColor(255, 255, 255); doc.setFontSize(11);
-  doc.text(titre, M + 32, 13);
-  doc.setTextColor(0, 0, 0); doc.setFontSize(12);
+  doc.setFillColor(...VERT_MOOREA); doc.rect(0, 0, W, 21.5, "F");
+  if (logoMoorea) { try { doc.addImage(logoMoorea, "PNG", M, 3, 15, 15); } catch { /* logo facultatif */ } }
+  doc.setTextColor(255, 255, 255); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
+  doc.text(titre, M + 19, 11);
+  doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(217, 231, 225);
+  doc.text("MOOREA COMMERCE FRUITS - Rungis", M + 19, 16.5);
+  doc.setTextColor(0, 0, 0); doc.setFont("helvetica", "bold"); doc.setFontSize(12);
   doc.text(sousTitre, M, 30);
   return 36;
 }
