@@ -171,7 +171,9 @@ const TITRES: Record<string, string> = { client: "👤", article: "", famille: "
 export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; estAdmin?: boolean }) {
   const [don, setDon] = useState<Donnees | null>(null);
   const [erreur, setErreur] = useState("");
-  const [vue, setVue] = useState<"accueil" | "tableau" | "litiges">("accueil");
+  // 16/10/2026 — « les onglets doivent être des onglets de la recherche » : ce qui est dans la recherche
+  // (fiche ouverte, ou cases cochées, ou rien = tout Noël) est le SUJET ; les onglets en sont trois vues.
+  const [vue, setVue] = useState<"besoin" | "manque" | "litiges">("manque");
   const [fiche, setFiche] = useState<Fiche | null>(null);
   // 16/10/2026 — « je clique sur un jour du diagramme, je ne peux pas revenir en arrière » : les fiches
   // ouvertes depuis une fiche s'empilent ; « ← Retour » revient à la précédente.
@@ -234,7 +236,6 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   }, [don]);
   const lignes = useMemo(() => (don?.lignes || []).filter(compte), [don]);
   const jours = useMemo(() => [...new Set(lignes.map(l => l.d).filter(Boolean))].sort(), [lignes]);
-  const totaux = useMemo(() => lignes.reduce((t, l) => ({ q: t.q + l.q, lv: t.lv + l.lv, m: t.m + l.m }), { q: 0, lv: 0, m: 0 }), [lignes]);
 
   // Options de la recherche intelligente.
   const options = useMemo(() => {
@@ -271,30 +272,15 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       o.type === "jour" ? { type: "jour", valeur: `Livraisons du ${jjmm(cle)}`, filtre: l => l.d === cle, filtreR: r => r.d === cle, filtreL: x => x.d === cle } :
       o.type === "commande" ? { type: "bl", valeur: v, filtre: l => l.n === cle, filtreR: r => r.n === cle, filtreL: () => false } :
       { type: "bl", valeur: v, filtre: l => l.bl.replace(/\s/g, "").split(",").includes(v), filtreR: r => r.bl.includes(v), filtreL: x => x.bl === v };
-    allerA({ ...f, mode }); setCmdOuverte(null); if (!mode) setVue("accueil");
+    allerA({ ...f, mode }); setCmdOuverte(null);
   };
   const ouvrirType = (type: string, valeur: string, cle?: string, mode?: "besoin") => ouvrir({ type, valeur, cle } as any, mode);
 
   // Cases à cocher de la grande recherche (comme 📊 Stats) : plusieurs clients / produits / familles
   // ensemble → une fiche commune, ou le tableau jour par jour filtré sur la sélection.
   const cleOpt = (o: Option) => `${o.type}\u0001${o.valeur}`;
-  const cocher = (o: Option) => basculerT(o);
+  const cocher = (o: Option) => { fermerFiche(); basculerT(o); };
   const toutDecocher = () => { setTClients([]); setTArticles([]); setTFamilles([]); setTFournisseurs([]); };
-  const deType = (t: string) => selection.filter(o => o.type === t).map(o => o.valeur);
-  const ouvrirSelection = () => {
-    const cs = deType("client"), as = deType("article"), fs = deType("famille"), fo = deType("fournisseur");
-    const prod = (a: string, f: string) => (!as.length && !fs.length && !fo.length) || as.includes(a) || fs.includes(f) || fo.includes(fournisseurDe[a]);
-    allerA({
-      type: "selection", valeur: selection.map(o => o.valeur).join(" + "),
-      filtre: l => (!cs.length || cs.includes(l.c)) && prod(l.a, l.f),
-      filtreR: r => (!cs.length || cs.includes(r.c)) && prod(r.a, r.f),
-      filtreL: x => (!cs.length || cs.some(c => norm(x.c) === norm(c))) && prod(x.a, ""),
-    });
-    setCmdOuverte(null); window.scrollTo(0, 0);
-  };
-  const tableauSelection = () => {
-    fermerFiche(); setVue("tableau");
-  };
 
   const urlScan = (chemin: string, page?: string) => { const u = don?.scans[chemin]; return u ? `${u}${page ? `#page=${page}` : ""}` : ""; };
   const boutonScan = (l: Ligne) => {
@@ -457,7 +443,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const cmds = new Map<string, Ligne[]>(); ls.forEach(l => { const k = `${l.d}|${l.c}|${l.n}|${l.s}`; cmds.set(k, [...(cmds.get(k) || []), l]); });
     const listeCmds = [...cmds].sort((a, b) => a[1][0].d.localeCompare(b[1][0].d) || a[1][0].c.localeCompare(b[1][0].c));
     const icone = f.type === "article" ? emojiProduit(f.valeur) : TITRES[f.type] || "🔎";
-    const besoin = f.mode === "besoin";
+    const besoin = vue === "besoin", vueLitiges = vue === "litiges", global = f.type === "global";
     const nbClients = new Set(lc.map(l => l.c)).size;
     const tableBesoin = <div style={{ marginTop: 14 }}>{carteBesoin(construireTableau(lc.filter(l => (!periode.du || l.d >= periode.du) && (!periode.au || l.d <= periode.au))),
       <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 10 }}>📅 Besoin jour par jour <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— {f.valeur}</span></div>, f.valeur)}</div>;
@@ -473,48 +459,49 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const lsGraph = f.base ? (don?.lignes || []).filter(f.base.filtre) : ls;
     return (
       <div>
-        {historique.length > 0 && (
+        {(historique.length > 0 || f.base) && (
           <button type="button" onClick={revenir} style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "9px 14px", borderRadius: 10, border: "2px solid #305a55", background: "#fff", color: "#305a55", fontWeight: 900, fontSize: 13.5, cursor: "pointer", maxWidth: "100%" }}>
-            ← Revenir à <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{historique[historique.length - 1].valeur}</span>
+            ← Revenir à <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{historique.length ? historique[historique.length - 1].valeur : f.base?.valeur}</span>
           </button>
         )}
-        <div style={{ ...carte, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: besoin ? "#305a55" : "#8f1d1d", border: "none", color: "#fff", marginBottom: 10 }}>
-          <span style={{ fontSize: 38 }}>{icone}</span>
-          <div style={{ flex: 1, minWidth: 200 }}>
-            <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1.15 }}>{f.valeur}</div>
-            <div style={{ fontSize: 14, marginTop: 4, color: "#d9e7e1" }}>
-              {besoin ? <>📦 <b style={{ color: "#fff", fontSize: 17 }}>{ent(tot.q)} colis commandés</b> par {nbClients} client{nbClients > 1 ? "s" : ""} · {ent(tot.lv)} livrés{tot.m ? ` · ${ent(tot.m)} manquants` : ""}</>
-                : tot.m ? <>Il a manqué <b style={{ color: "#fecaca", fontSize: 17 }}>{ent(tot.m)} colis</b> sur {ent(tot.q)} commandés</> : <>✅ Tout a été livré ({ent(tot.q)} colis)</>}
+        {!global && (
+          <div style={{ ...carte, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: besoin ? "#305a55" : vueLitiges ? "#92400e" : "#8f1d1d", border: "none", color: "#fff", marginBottom: 12 }}>
+            <span style={{ fontSize: 38 }}>{icone}</span>
+            <div style={{ flex: 1, minWidth: 200 }}>
+              <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1.15 }}>{f.valeur}</div>
+              <div style={{ fontSize: 14, marginTop: 4, color: "#f3f4f6" }}>
+                {vueLitiges ? <>⚠️ <b style={{ fontSize: 17 }}>{lits.length} litige{lits.length > 1 ? "s" : ""}</b>{lits.length ? ` · ${ent(lits.reduce((t, x) => t + (Number(x.r) || 0), 0))} colis refusés` : ""}</>
+                  : besoin ? <>📦 <b style={{ fontSize: 17 }}>{ent(tot.q)} colis commandés</b> par {nbClients} client{nbClients > 1 ? "s" : ""} · {ent(tot.lv)} livrés{tot.m ? ` · ${ent(tot.m)} manquants` : ""}</>
+                  : tot.m ? <>Il a manqué <b style={{ color: "#fecaca", fontSize: 17 }}>{ent(tot.m)} colis</b> sur {ent(tot.q)} commandés</> : <>✅ Tout a été livré ({ent(tot.q)} colis)</>}
+              </div>
             </div>
+            {boutonsExport(f.valeur, ls)}
+            <button type="button" onClick={() => { fermerFiche(); if (f.type === "selection") toutDecocher(); }} style={{ padding: "8px 12px", borderRadius: 9, border: "1.5px solid rgba(255,255,255,.4)", background: "transparent", color: "#fff", fontWeight: 800, cursor: "pointer" }}>✕ Effacer</button>
           </div>
-          {boutonsExport(f.valeur, ls)}
-          <button type="button" onClick={fermerFiche} style={{ padding: "8px 12px", borderRadius: 9, border: "1.5px solid rgba(255,255,255,.4)", background: "transparent", color: "#fff", fontWeight: 800, cursor: "pointer" }}>✕ Fermer</button>
-        </div>
-        {/* 16/10/2026 — « j'ai du mal à différencier besoin et manquant » : deux grands onglets de couleur
-            (vert = ce qui a été commandé, rouge = ce qui n'a pas été livré) ; le bandeau prend la couleur. */}
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
-          {([
-            [true, "📦", "BESOIN", "Ce que les clients ont commandé", "#305a55", "#eef4f2"],
-            [false, "❌", "MANQUANTS", "Ce qui n'a pas pu être livré", "#b91c1c", "#fef2f2"],
-          ] as const).map(([estBesoin, ic, titre, detail, coul, doux]) => {
-            const on = estBesoin === besoin;
-            return (
-              <button key={titre} type="button" onClick={() => setFiche({ ...f, mode: estBesoin ? "besoin" : undefined })}
-                style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left", padding: "12px 16px", borderRadius: 14, cursor: on ? "default" : "pointer",
-                  border: `2.5px solid ${coul}`, background: on ? coul : doux, color: on ? "#fff" : coul, opacity: on ? 1 : 0.85 }}>
-                <span style={{ fontSize: 26 }}>{ic}</span>
-                <span style={{ minWidth: 0 }}>
-                  <span style={{ display: "block", fontSize: 16, fontWeight: 900, letterSpacing: 0.5 }}>{titre}{on ? " ✓" : ""}</span>
-                  <span style={{ display: "block", fontSize: 12, marginTop: 1, opacity: 0.9 }}>{detail}</span>
-                </span>
-              </button>
-            );
-          })}
-        </div>
+        )}
         {chiffres(tot, lits.length)}
-        {/* 16/10/2026 — « j'ai pas les besoins là » : le tableau du besoin aussi dans chaque fiche.
-            Mode besoin (ouvert depuis l'onglet Besoin) : commandes par jour et plus gros clients / produits. */}
-        {besoin ? (
+        {vueLitiges ? (
+          <div style={{ ...carte, marginTop: 14, overflowX: "auto", borderColor: "#fcd34d" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+              <span style={{ fontSize: 15, fontWeight: 900, color: "#b45309", flex: 1 }}>⚠️ Litiges — {f.valeur} ({lits.length})</span>
+            </div>
+            {!lits.length ? <p style={{ margin: 0, fontSize: 13.5, color: "#92400e" }}>Aucun litige pour {f.valeur}.</p> : (
+              <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
+                <thead><tr><th style={th}>Livraison</th><th style={th}>Client</th><th style={th}>BL</th><th style={th}>Article</th><th style={{ ...th, textAlign: "right" }}>Livrés</th><th style={{ ...th, textAlign: "right" }}>Refusés</th><th style={th}>Type · motif</th><th style={th}></th></tr></thead>
+                <tbody>
+                  {[...lits].sort((a, b) => a.d.localeCompare(b.d)).map((x, i) => (
+                    <tr key={i}>
+                      <td style={td}>{jjmm(x.d)}</td><td style={td}>{x.c}<div style={{ fontSize: 11, color: "#9ca3af" }}>{x.cf} {x.s}</div></td><td style={{ ...td, fontSize: 11.5 }}>{x.bl}</td>
+                      <td style={td}>{emojiProduit(x.a)} {x.a}</td><td style={{ ...td, textAlign: "right" }}>{x.lv}</td><td style={{ ...td, textAlign: "right", color: "#dc2626", fontWeight: 900 }}>{x.r}</td>
+                      <td style={{ ...td, fontSize: 11.5 }}>{x.ty}{x.mo ? ` · ${x.mo}` : ""}</td>
+                      <td style={td}>{x.lien && <a href={x.lien} target="_blank" rel="noreferrer" style={{ color: "#305a55", fontWeight: 800, fontSize: 12 }}>✉️ mail</a>}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ) : besoin ? (
           <>
             <div style={{ ...carte, marginTop: 14 }}>
               <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 8 }}>📦 Colis commandés par jour <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— en rouge la part qui a manqué{surJour ? " · touchez un jour pour le détail" : ""}</span></div>
@@ -530,9 +517,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
           </>
         ) : (
           <>
-            {tableBesoin}
             <div style={{ ...carte, marginTop: 14 }}>
-              <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 8 }}>📅 Manquants jour par jour</div>
+              <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 8 }}>📅 Colis manquants par jour{surJour ? <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}> — touchez un jour pour le détail</span> : null}</div>
               {barresJours(lsGraph, surJour, jours, f.jourChoisi)}
             </div>
             {f.type !== "bl" && (
@@ -543,10 +529,10 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             )}
           </>
         )}
-        {lits.length === 0 && (
-          <div style={{ ...carte, borderColor: "#fde68a", padding: "10px 16px", fontSize: 13.5, color: "#92400e" }}>⚠️ <b>Litiges</b> — aucun litige pour {f.valeur}. <span style={{ color: "#9ca3af" }}>Tous les litiges de Noël : onglet « ⚠️ Litiges » en haut.</span></div>
+        {!vueLitiges && (lits.length === 0 || global) && (
+          <button type="button" onClick={() => setVue("litiges")} style={{ ...carte, width: "100%", textAlign: "left", cursor: "pointer", borderColor: "#fde68a", padding: "10px 16px", fontSize: 13.5, color: "#92400e" }}>⚠️ <b>Litiges</b> — {lits.length ? `${lits.length} litiges` : `aucun litige pour ${f.valeur}`}{lits.length ? " · voir l'onglet ⚠️ Litiges ›" : ""}</button>
         )}
-        {lits.length > 0 && (
+        {!vueLitiges && !global && lits.length > 0 && (
           <div style={{ ...carte, borderColor: "#fcd34d" }}>
             <div style={{ fontSize: 15, fontWeight: 900, color: "#b45309", marginBottom: 6 }}>⚠️ Litiges ({lits.length})</div>
             {lits.map((x, i) => (
@@ -558,6 +544,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             ))}
           </div>
         )}
+        {!global && !vueLitiges && (
         <div style={carte}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
             <div style={{ fontSize: 15, fontWeight: 900, flex: 1 }}>🧾 Les commandes ({listeCmds.length})</div>
@@ -595,6 +582,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             {vueCmds === "date" && listeCmds.length > 200 && <p style={{ fontSize: 12, color: "#9ca3af" }}>… et {listeCmds.length - 200} autres : utilisez l'export Excel pour tout voir.</p>}
           </div>
         </div>
+        )}
       </div>
     );
   };
@@ -616,13 +604,10 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     return out;
   }, [lignes]);
   // Ce qui est coché en haut + la période : sert au résumé ET au tableau de l'onglet Besoin.
-  const filtreBesoin = (l: { d: string; c: string; a: string; f?: string }) => (!periode.du || l.d >= periode.du) && (!periode.au || l.d <= periode.au) && (!tClients.length || tClients.includes(l.c))
+  // Filtre des cases cochées (clients = filtre ; articles, familles, fournisseurs s'additionnent).
+  const filtreSel = (l: { c: string; a: string; f?: string }) => (!tClients.length || tClients.includes(l.c))
     && ((!tArticles.length && !tFamilles.length && !tFournisseurs.length) || tArticles.includes(l.a) || (!!l.f && tFamilles.includes(l.f)) || tFournisseurs.includes(fournisseurDe[l.a]));
   const familleDe = useMemo(() => { const m = new Map<string, string>(); lignes.forEach(l => { if (l.a && l.f) m.set(l.a, l.f); }); return m; }, [lignes]);
-  const lignesBesoin = useMemo(() => lignes.filter(filtreBesoin), [lignes, tClients, tArticles, tFamilles, tFournisseurs, periode, fournisseurDe]); // eslint-disable-line react-hooks/exhaustive-deps
-  const totBesoin = useMemo(() => lignesBesoin.reduce((t, l) => ({ q: t.q + l.q, lv: t.lv + l.lv, m: t.m + l.m }), { q: 0, lv: 0, m: 0 }), [lignesBesoin]);
-  const litigesBesoin = useMemo(() => (don?.litiges || []).filter(x => filtreBesoin({ d: x.d, c: tClients.find(c => norm(c) === norm(x.c)) || x.c, a: x.a, f: familleDe.get(x.a) })).length,
-    [don, tClients, tArticles, tFamilles, tFournisseurs, periode, fournisseurDe, familleDe]); // eslint-disable-line react-hooks/exhaustive-deps
   // Tableau du besoin pour un ensemble de lignes (onglet Besoin, et dans chaque fiche).
   const construireTableau = (filtrees: Ligne[]): LigneTab[] => {
     const ajouter = (r: Cellules, l: Ligne) => { const x = r[l.d] || { q: 0, lv: 0, m: 0 }; x.q += l.q; x.lv += l.lv; x.m += l.m; r[l.d] = x; };
@@ -662,7 +647,6 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     });
     return out.slice(0, 2500);
   };
-  const tableau = useMemo(() => construireTableau(lignesBesoin), [lignesBesoin, fournisseurDe, lignesPar, clientsFermes, baseDe]); // eslint-disable-line react-hooks/exhaustive-deps
   const joursT = useMemo(() => jours.filter(j => (!periode.du || j >= periode.du) && (!periode.au || j <= periode.au)), [jours, periode]);
   const groupe = lignesPar === "clientArticle" || lignesPar === "fournisseurArticle" || lignesPar === "articleClient";
   const iconeGroupe = (nom: string) => (lignesPar === "fournisseurArticle" ? "🏭" : lignesPar === "articleClient" ? emojiProduit(nom) : "👤");
@@ -783,10 +767,9 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             {/* Grande recherche intelligente */}
             <div style={{ ...carte, background: "linear-gradient(135deg, #305a55, #1f4440)", border: "none", color: "#fff" }}>
               <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 4 }}>🎯 Quoi ?</div>
-              <div style={{ fontSize: 13, color: "#d9e7e1", marginBottom: 10 }}>Clients, fournisseurs, articles, familles : <b>cochez-en plusieurs</b> pour filtrer, ou touchez un nom pour sa fiche. Aussi un jour (« 19/12 »), un BL ou un n° de commande.</div>
-              <RechercheIntelligente options={options} placeholder="🏭 Yukon · 👤 Carrefour · 🫛 hv · 🗂️ passion · 📅 19/12 · 🧾 BL…" onChoisir={o => ouvrir(o, (!fiche && vue === "tableau") || fiche?.mode === "besoin" ? "besoin" : undefined)} c={C} grand extra={extra}
-                onCocher={cocher} estChoisi={estCocheT}
-                actionSelection={selection.length ? { libelle: `🔎 Voir la sélection (${selection.length})`, onClick: ouvrirSelection } : null} />
+              <div style={{ fontSize: 13, color: "#d9e7e1", marginBottom: 10 }}>Touchez un client, un fournisseur, un article (ou <b>cochez-en plusieurs</b>), un jour (« 19/12 »), un BL… puis choisissez l'onglet <b>Besoin</b>, <b>Manquants</b> ou <b>Litiges</b>. Barre vide = tout Noël.</div>
+              <RechercheIntelligente options={options} placeholder="🏭 Yukon · 👤 Carrefour · 🫛 hv · 🗂️ passion · 📅 19/12 · 🧾 BL…" onChoisir={o => { toutDecocher(); setHistorique([]); ouvrir(o); }} c={C} grand extra={extra}
+                onCocher={cocher} estChoisi={estCocheT} />
               {selection.length > 0 && (
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
                   {selection.map(o => (
@@ -800,95 +783,45 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
               )}
             </div>
 
-            {/* 16/10/2026 — Demande d'Elinathan : les deux actions de la sélection dans deux cases bien visibles, hors de la recherche. */}
-            {selection.length > 0 && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 12, marginBottom: 14 }}>
-                {([
-                  ["fiche", "🔎", "Voir la sélection", "Résumé, manquants jour par jour, produits, clients, commandes par base, litiges", fiche?.type === "selection", ouvrirSelection],
-                  ["besoin", "📅", "Besoin jour par jour", "Tableau du besoin par réf, client et base — par jour ou par semaine, Excel / PDF", !fiche && vue === "tableau", tableauSelection],
-                ] as const).map(([k, ic, titre, detail, actif, clic]) => (
-                  <button key={k} type="button" onClick={clic}
-                    style={{ display: "flex", alignItems: "center", gap: 14, textAlign: "left", padding: "14px 18px", borderRadius: 16, cursor: "pointer",
-                      border: `2px solid ${actif ? "#305a55" : "#cfdcd7"}`, background: actif ? "#305a55" : "#fff", color: actif ? "#fff" : "#1a2e1a", boxShadow: actif ? "0 4px 14px rgba(48,90,85,.25)" : "none" }}>
-                    <span style={{ fontSize: 30 }}>{ic}</span>
-                    <span style={{ flex: 1, minWidth: 0 }}>
-                      <span style={{ display: "block", fontSize: 16.5, fontWeight: 900 }}>{titre}</span>
-                      <span style={{ display: "block", fontSize: 12, marginTop: 2, color: actif ? "#d9e7e1" : "#6b7280" }}>{detail}</span>
-                    </span>
-                    <span style={{ fontSize: 20, opacity: actif ? 1 : 0.5 }}>{actif ? "✓" : "›"}</span>
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* 16/10/2026 — « où est litige ? » : les onglets restent visibles même quand une fiche est ouverte
-                (toucher un onglet ferme la fiche). */}
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-              {([["accueil", "🏠 Résumé"], ["tableau", "📅 Besoin jour par jour"], ["litiges", `⚠️ Litiges (${don.litiges.length})`]] as const).map(([v, lib]) => {
-                const on = !fiche && vue === v;
-                return <button key={v} type="button" onClick={() => { fermerFiche(); setVue(v); window.scrollTo(0, 0); }} style={{ padding: "9px 16px", borderRadius: 10, border: `2px solid ${on ? "#305a55" : "#e8e0d0"}`, background: on ? "#305a55" : "#fff", color: on ? "#fff" : "#374151", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>{lib}</button>;
-              })}
-            </div>
-            {fiche ? rendreFiche(fiche) : (
-              <>
-
-                {vue === "accueil" && (
-                  <>
-                    {chiffres(totaux, don.litiges.length)}
-                    <div style={{ ...carte, marginTop: 14 }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
-                        <span style={{ fontSize: 15, fontWeight: 900, flex: 1 }}>📅 Colis manquants par jour <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— touchez un jour pour le détail</span></span>
-                        {boutonsExport("toutes les commandes", don.lignes)}
-                      </div>
-                      {barresJours(don.lignes, iso => ouvrirType("jour", "", iso))}
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap: 14 }}>
-                      {listeTop("❌ Produits qui ont le plus manqué", topManques(don.lignes, "a", 15), "article")}
-                      {listeTop("👤 Clients les plus touchés", topManques(don.lignes, "c", 15), "client")}
-                    </div>
-                  </>
-                )}
-
-                {vue === "tableau" && (
-                  <>
-                  {/* 16/10/2026 — « présenté comme Résumé en haut » : chiffres + manquants par jour de la sélection. */}
-                  {chiffres(totBesoin, litigesBesoin)}
-                  <div style={{ ...carte, marginTop: 14 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
-                      <span style={{ fontSize: 15, fontWeight: 900, flex: 1 }}>📅 Colis manquants par jour <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— {selection.length ? "sélection cochée" : "tout Noël"}{periode.du || periode.au ? ` du ${jjmm(joursT[0] || "")} au ${jjmm(joursT[joursT.length - 1] || "")}` : ""} · touchez un jour pour le détail</span></span>
-                      {boutonsExport(selection.length ? selection.map(o => o.valeur).join(" + ") : "toutes les commandes", lignesBesoin)}
-                    </div>
-                    {barresJours(lignesBesoin, iso => {
-                      const fl = (x: Litige) => filtreBesoin({ d: x.d, c: tClients.find(c => norm(c) === norm(x.c)) || x.c, a: x.a, f: familleDe.get(x.a) });
-                      const origine: Fiche = { type: "selection", valeur: selection.length ? selection.map(o => o.valeur).join(" + ") : "Tout Noël", filtre: filtreBesoin, filtreR: filtreBesoin, filtreL: fl };
-                      allerA({ ...origine, base: origine, jourChoisi: iso, valeur: `${origine.valeur} · ${jjmm(iso)}`,
-                        filtre: l => l.d === iso && filtreBesoin(l), filtreR: r => r.d === iso && filtreBesoin(r), filtreL: x => x.d === iso && fl(x) });
-                      setCmdOuverte(null); window.scrollTo(0, 0);
-                    }, joursT)}
+            {/* Onglets = vues du sujet de la recherche (fiche ouverte, cases cochées, ou tout Noël). */}
+            {(() => {
+              const sujetSel: Fiche | null = selection.length ? {
+                type: "selection", valeur: selection.map(o => o.valeur).join(" + "),
+                filtre: l => filtreSel(l), filtreR: r => filtreSel(r),
+                filtreL: x => filtreSel({ c: tClients.find(c => norm(c) === norm(x.c)) || x.c, a: x.a, f: familleDe.get(x.a) }),
+              } : null;
+              const sujet: Fiche = fiche || sujetSel || { type: "global", valeur: "Tout Noël 2025", filtre: () => true, filtreR: () => true, filtreL: () => true };
+              const nbLit = don.litiges.filter(sujet.filtreL).length;
+              const onglets = [
+                ["besoin", "📦", "Besoin", "Ce qui a été commandé", "#305a55", "#eef4f2"],
+                ["manque", "❌", "Manquants", "Ce qui n'a pas été livré", "#b91c1c", "#fef2f2"],
+                ["litiges", "⚠️", `Litiges (${nbLit})`, "Refus et litiges clients", "#b45309", "#fffbeb"],
+              ] as const;
+              return (
+                <>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginBottom: 6 }}>
+                    {onglets.map(([v, ic, titre, detail, coul, doux]) => {
+                      const on = vue === v;
+                      return (
+                        <button key={v} type="button" onClick={() => setVue(v)}
+                          style={{ display: "flex", alignItems: "center", gap: 10, textAlign: "left", padding: "10px 14px", borderRadius: 14, cursor: "pointer", minWidth: 0,
+                            border: `2.5px solid ${coul}`, background: on ? coul : doux, color: on ? "#fff" : coul }}>
+                          <span style={{ fontSize: 22 }}>{ic}</span>
+                          <span style={{ minWidth: 0 }}>
+                            <span style={{ display: "block", fontSize: 15, fontWeight: 900 }}>{titre}{on ? " ✓" : ""}</span>
+                            <span style={{ display: "block", fontSize: 11.5, opacity: 0.9, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detail}</span>
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
-                  {carteBesoin(tableau, !selection.length && <p style={{ margin: "0 0 10px", fontSize: 12.5, color: "#6b7280" }}>Rien de coché dans « 🎯 Quoi ? » en haut : tous les clients et tous les produits. Cochez par exemple 🏭 Yukon ou une réf pour filtrer.</p>)}
-                  </>
-                )}
-
-                {vue === "litiges" && (
-                  <div style={{ ...carte, overflowX: "auto" }}>
-                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
-                      <thead><tr><th style={th}>Livraison</th><th style={th}>Client</th><th style={th}>BL</th><th style={th}>Article</th><th style={{ ...th, textAlign: "right" }}>Livrés</th><th style={{ ...th, textAlign: "right" }}>Refusés</th><th style={th}>Type · motif</th><th style={th}></th></tr></thead>
-                      <tbody>
-                        {[...don.litiges].sort((a, b) => a.d.localeCompare(b.d)).map((x, i) => (
-                          <tr key={i}>
-                            <td style={td}>{jjmm(x.d)}</td><td style={td}>{x.c}<div style={{ fontSize: 11, color: "#9ca3af" }}>{x.cf} {x.s}</div></td><td style={{ ...td, fontSize: 11.5 }}>{x.bl}</td>
-                            <td style={td}>{emojiProduit(x.a)} {x.a}</td><td style={{ ...td, textAlign: "right" }}>{x.lv}</td><td style={{ ...td, textAlign: "right", color: "#dc2626", fontWeight: 900 }}>{x.r}</td>
-                            <td style={{ ...td, fontSize: 11.5 }}>{x.ty}{x.mo ? ` · ${x.mo}` : ""}</td>
-                            <td style={td}>{x.lien && <a href={x.lien} target="_blank" rel="noreferrer" style={{ color: "#305a55", fontWeight: 800, fontSize: 12 }}>✉️ mail</a>}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div style={{ fontSize: 12, color: "#6b7280", margin: "0 2px 12px" }}>
+                    {sujet.type === "global" ? <>🎄 <b>Tout Noël 2025</b> — tapez un nom dans « Quoi ? » pour ne voir que lui.</> : <>🔎 Pour : <b style={{ color: "#1a2e1a" }}>{sujet.valeur}</b></>}
                   </div>
-                )}
-              </>
-            )}
+                  {rendreFiche(sujet)}
+                </>
+              );
+            })()}
           </>
         )}
 
