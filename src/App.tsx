@@ -4344,7 +4344,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     {/* 14/10/2026 — ImgBB n'affiche plus les photos hors de son site : recopie vers Firebase Storage. */}
                     {/* 16/10/2026 — Raccourci vers l'import des commandes de Noël 2025 (fichiers + scans PDF). */}
                     <CarteReglage titre="🎄 Commandes Noël 2025" desc="Importer les commandes scannées, ruptures, litiges et les scans PDF (dossier « Import Noël 2025 » sur le Bureau).">
-                      <BoutonReglage label="📦 Ouvrir l'import Noël 2025 →" onClick={() => { try { sessionStorage.setItem("noel-ouvrir-donnees", "1"); } catch { /* ignore */ } setShowAdmin(false); setStatsDepart({ onglet: "noel" } as any); setShowExtractions(true); }} />
+                      <BoutonReglage label="📦 Ouvrir l'import Noël 2025 →" onClick={() => { try { sessionStorage.setItem("noel-ouvrir-donnees", "1"); } catch { /* ignore */ } setShowAdmin(false); setShowAccueil(false); setStatsDepart({ onglet: "noel" } as any); setShowExtractions(true); }} />
                     </CarteReglage>
                     <CarteReglage titre="📷 Photos des rapports" desc="Recopie les anciennes photos (hébergées sur ImgBB) vers Firebase, puis met chaque rapport à jour. Se relance sans risque : les photos déjà recopiées sont ignorées.">
                       <RecopiePhotos />
