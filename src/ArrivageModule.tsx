@@ -1198,7 +1198,7 @@ export function familleProduit(produit: string): FamilleArrivage {
   return "autres";
 }
 
-export function FournisseurBlock({ couleurFamille, ouvert, onBasculer, enGrille = false, fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, onReporterGroupe, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
+export function FournisseurBlock({ logo, couleurFamille, ouvert, onBasculer, enGrille = false, fournisseur, produits, traites = [], onValidate, onDelete, onOuvreRapport, onImprimerMulti, onReporterDate, onReporterGroupe, selectMode, selectedArrivages, onToggleSelect, gencodeArticles, date, reconditionnementDemandesById, canValider = true, onEcartDetecte, onReserveGroupe }: any) {
   // 15/10/2026 — Un seul fournisseur ouvert à la fois : si le jour fournit ouvert/onBasculer,
   // c'est lui qui décide (ouvrir un fournisseur referme le précédent).
   const [openLocal, setOpenLocal] = useState(false);
@@ -1333,7 +1333,13 @@ export function FournisseurBlock({ couleurFamille, ouvert, onBasculer, enGrille 
       <div onClick={() => setOpen(!open)} style={{ minHeight: enGrille ? 52 : undefined, boxSizing: "border-box", height: enGrille ? "100%" : undefined, padding: enGrille ? "7px 14px" : "11px 16px", display: "flex", flexWrap: open && !enGrille ? "wrap" : undefined, rowGap: 6, justifyContent: "space-between", alignItems: "center", cursor: "pointer", background: open && enGrille ? "#fff" : headerBg, borderBottom: open && enGrille ? "none" : open ? "1px solid #e8e0d0" : headerBorder }}>
         {/* 14/10/2026 — Nom à gauche ; « en attente » / « traités » toujours au même endroit, à droite. */}
         <div style={{ display: "flex", alignItems: "center", gap: 10, flex: 1, minWidth: 0 }}>
-          <span>{allDone ? "✅" : "🏭"}</span>
+          {/* 16/10/2026 — Logo du fournisseur (Admin › Modules › Fournisseurs), sinon l'icône habituelle. */}
+          {logo ? (
+            <span style={{ width: 44, height: 28, flexShrink: 0, borderRadius: 6, background: "#52655d", display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 3, boxSizing: "border-box", position: "relative" }}>
+              <img src={logo} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} />
+              {allDone && <span style={{ position: "absolute", right: -5, bottom: -5, fontSize: 12 }}>✅</span>}
+            </span>
+          ) : <span>{allDone ? "✅" : "🏭"}</span>}
           <span style={{ fontWeight: 700, fontSize: 14, color: nomColor, fontFamily: "'Syne', sans-serif", minWidth: 0, overflowWrap: "anywhere" }}>{fournisseur}</span>
         </div>
         <div style={{ display: "flex", flexDirection: open && !enGrille ? "row" : "column", alignItems: open && !enGrille ? "center" : "flex-end", gap: 4, margin: "0 8px 0 10px", flexShrink: 0, ...(open && !enGrille ? { flex: 1, justifyContent: "center" } : {}) }}>
@@ -2850,6 +2856,8 @@ export function DateBlock({ enColonnes = true, date, arrivages, arrivagesArchive
   const [fournOuvert, setFournOuvert] = useState<string | null>(null);
   const [famillesChoisies, setFamillesChoisies] = useState<Record<string, string>>({});
   useEffect(() => onValue(ref(db, "config/familles_fournisseurs"), snap => setFamillesChoisies(snap.val() || {})), []);
+  const [logosFournisseurs, setLogosFournisseurs] = useState<Record<string, string>>({});
+  useEffect(() => onValue(ref(db, "config/logos_fournisseurs"), snap => setLogosFournisseurs(snap.val() || {})), []);
   const [validatingAll, setValidatingAll] = useState(false);
   const scanInputId = `scan-date-${date.replace(/\//g, "-")}`;
   // Aperçu PDF traçabilité intégré à la page (au lieu d'un iframe hors-écran qui déclenche
@@ -3138,7 +3146,7 @@ export function DateBlock({ enColonnes = true, date, arrivages, arrivagesArchive
                   </div>
                 ) : null,
                 <div key={`grille-${fam}`}>{grille(lot.map(({ cle, f, produits, traites }) => (
-            <FournisseurBlock key={cle} enGrille={enColonnes} fournisseur={f} couleurFamille={plusieurs ? F.couleur : undefined}
+            <FournisseurBlock key={cle} enGrille={enColonnes} fournisseur={f} couleurFamille={plusieurs ? F.couleur : undefined} logo={logosFournisseurs[cleFournisseurConfig(f)]}
               ouvert={fournOuvert === cle} onBasculer={(v: boolean) => setFournOuvert(v ? cle : null)}
               produits={produits}
               traites={traites}

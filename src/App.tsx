@@ -3061,6 +3061,19 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     }
     doc.setTextColor(217, 231, 225); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
     doc.text(`${r.date} a ${r.heure}`, W - M, 18, { align: "right" });
+    // 16/10/2026 — Logo du fournisseur (s'il a été importé) dans le bandeau, à gauche du n° de rapport.
+    const urlLogoF = logosFourn[cleLogoFourn(r.fournisseur)];
+    if (urlLogoF) {
+      try {
+        const dataLogo = await chargerImageEnDataUrl(urlLogoF);
+        if (dataLogo) {
+          const dims = await new Promise<{ w: number; h: number }>(ok => { const im = new Image(); im.onload = () => ok({ w: im.naturalWidth || 1, h: im.naturalHeight || 1 }); im.onerror = () => ok({ w: 1, h: 1 }); im.src = dataLogo; });
+          const hMax = 20, wMax = 44; let lw = wMax, lh = (dims.h / dims.w) * wMax; if (lh > hMax) { lh = hMax; lw = (dims.w / dims.h) * hMax; }
+          doc.setFillColor(82, 101, 93); doc.roundedRect(W - M - 52 - wMax - 4, 4, wMax + 6, 22, 2, 2, "F");
+          doc.addImage(dataLogo, dataLogo.startsWith("data:image/png") ? "PNG" : "JPEG", W - M - 52 - wMax - 1 + (wMax - lw) / 2, 5 + (hMax - lh) / 2, lw, lh);
+        }
+      } catch { /* logo facultatif */ }
+    }
     y = 38;
 
     const dc = decisionColor(r.decision);
@@ -7061,7 +7074,10 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                           <span style={{ fontSize: 11.5, color: "#9ca3af", fontWeight: 700 }}>{r.date}{r.numeroRapport ? ` · ${r.numeroRapport}` : ""}{r.agreeur ? ` · 👤 ${String(r.agreeur).split("@")[0]}` : ""}</span>
                         </div>
                         <div style={{ fontSize: 14.5, fontWeight: 800, color: "#1a2e1a", lineHeight: 1.25, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical", overflow: "hidden" }}>{r.produit}</div>
-                        <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.fournisseur}{r.origine ? ` · ${r.origine}` : ""}</div>
+                        <div style={{ fontSize: 12, color: "#6b7280", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
+                          {logosFourn[cleLogoFourn(r.fournisseur)] && <span style={{ width: 34, height: 20, flexShrink: 0, borderRadius: 4, background: FOND_LOGO, display: "inline-flex", alignItems: "center", justifyContent: "center", padding: 2, boxSizing: "border-box" }}><img src={logosFourn[cleLogoFourn(r.fournisseur)]} alt="" style={{ maxWidth: "100%", maxHeight: "100%", objectFit: "contain" }} /></span>}
+                          <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>{r.fournisseur}{r.origine ? ` · ${r.origine}` : ""}</span>
+                        </div>
                       </div>
                       {r.score ? <div style={{ flexShrink: 0, width: 46, height: 46, borderRadius: 23, border: `3px solid ${Number(r.score) >= 4 ? "#16a34a" : Number(r.score) >= 3 ? "#d97706" : "#dc2626"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 900, color: "#1a2e1a" }}>{Number(r.score).toLocaleString("fr-FR", { maximumFractionDigits: 1 })}</div> : null}
                     </div>
