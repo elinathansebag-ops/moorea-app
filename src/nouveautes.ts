@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 83, date: "16/10", pages: ["reconditionnement"], texte: "🔄 Reconditionnement Andès : un GINGEMBRE 2 KG revient par défaut en carton BABY BLANC (« Oui » pré-coché, modifiable), en demande simple comme en demande groupée." },
   { id: 82, date: "16/10", pages: ["admin.modules", "rapports"], texte: "🏭 « Importer tous les logos d'un coup » : on sélectionne tous les fichiers, l'appli reconnaît chaque fournisseur d'après le nom du fichier, on vérifie et on importe. Logos affichés sur fond vert-gris foncé (les logos blancs restent lisibles)." },
   { id: 81, date: "16/10", pages: ["admin.modules"], texte: "🏭 Fournisseurs : la liste affiche maintenant la famille actuelle de chaque fournisseur (d'après ses produits) au lieu de « Auto », signale les produits mélangés, et prend toute la largeur." },
   { id: 80, date: "16/10", pages: ["admin.modules", "arrivages"], texte: "🏭 Admin › Modules › « Fournisseurs : logos et familles » : tous les fournisseurs triés par nombre d'arrivages, avec leurs rapports, l'import du logo et le choix de leur famille dans Pointer arrivage (Auto, Haricots & pois, Grand export, Le reste)." },

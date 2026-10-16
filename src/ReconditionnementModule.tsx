@@ -921,6 +921,12 @@ const CSS_RECOND_TELEPHONE = `
 }
 `;
 
+// 16/10/2026 — Article fini « gingembre 2 kg » (GINGEMBRE … 2KG / 2 KG / 2.0 KG).
+export function babyBlancParDefaut(articleFini: string): boolean {
+  const t = String(articleFini || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+  return /GINGEMBRE/.test(t) && /(^|[^0-9.,])2([.,]0+)?\s*KG/.test(t);
+}
+
 export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesConfig, demandesRecondExterne, demandesRecondChargees, peutVoirOnglet, isAdmin }: {
   // 01/10/2026 — Seul un admin peut supprimer une demande dont l'arrivage est validé.
   isAdmin?: boolean;
@@ -1129,6 +1135,11 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   const [dejaChezReconditionneur, setDejaChezReconditionneur] = useBrouillon(brouillonDemande, "dejaChezReconditionneur", false);
   const [pdfFile, setPdfFile] = useBrouillon<{ nom: string; base64: string } | null>(brouillonDemande, "pdfFile", null);
   const [editDemandeId, setEditDemandeId] = useBrouillon<string | null>(brouillonDemande, "editDemandeId", null);
+  // 16/10/2026 — Demande d'Elinathan : chez Andès, le GINGEMBRE 2 KG revient par défaut en BABY BLANC
+  // (« Oui » pré-coché, modifiable).
+  useEffect(() => {
+    if (depot === "andes" && !editDemandeId && retourBabyBlanc === "" && babyBlancParDefaut(articleFini)) setRetourBabyBlanc("oui");
+  }, [depot, articleFini, editDemandeId]); // eslint-disable-line react-hooks/exhaustive-deps
   const [lectureEnCours, setLectureEnCours] = useState(false);
   // Retient la dernière valeur d'emballage suggérée automatiquement (règle générale : 1 caisse
   // IFCO par colis fini à entrer), pour ne pas écraser une correction manuelle du commercial
@@ -2965,6 +2976,12 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   };
   const [lignesGroupe, setLignesGroupe] = useState<LigneGroupe[]>([]);
   const [groupeDepot, setGroupeDepot] = useState<Depot | "">("");
+  // 16/10/2026 — Même règle en demande groupée : Andès + GINGEMBRE 2 KG → retour BABY BLANC « Oui » par défaut.
+  useEffect(() => {
+    if (groupeDepot !== "andes") return;
+    if (!lignesGroupe.some(l => !l.retourBabyBlanc && babyBlancParDefaut(l.articleFini))) return;
+    setLignesGroupe(ls => ls.map(l => (!l.retourBabyBlanc && babyBlancParDefaut(l.articleFini) ? { ...l, retourBabyBlanc: "oui" } : l)));
+  }, [groupeDepot, lignesGroupe]);
   const [groupeTransporteurId, setGroupeTransporteurId] = useState("");
   // 29/09/2026 — Saisie de l'écran groupé enregistrée au fil de l'eau (comme le formulaire bon
   // par bon) : un rafraîchissement ne fait plus perdre les corrections faites sur les cartes.
