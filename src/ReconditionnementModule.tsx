@@ -1,4 +1,4 @@
-import { PALETTES_IFCO } from "./prestatairesCatalogue";
+import { PALETTES_IFCO, CARTONS_CATALOGUE } from "./prestatairesCatalogue";
 import { chargerLogoMoorea, VERT_MOOREA } from "./logoMoorea";
 import { useState, useEffect, useRef, useMemo, ChangeEvent, Fragment } from "react";
 import { BarreMailsRecond } from "./BarreMailsRecond";
@@ -69,7 +69,9 @@ function formatCaisses(caisses: number): string {
 // 16/10/2026 — Prochaines livraisons de palettes IFCO commandées (module Prestataires) : affichées dans
 // la case « IFCO — Moorea » (ex. « 4 palettes · arrivent le 21/10 »).
 type LivraisonIfco = { date: string; palettes: number; caisses: number };
-function StockCardsIfco({ moorea, nlt, cartonAndes, nltEngage, nltAujourdhui, livraisonsMoorea = [] }: { moorea: number; nlt: number; cartonAndes: number; nltEngage?: number; nltAujourdhui?: { caisses: number; nb: number }; livraisonsMoorea?: LivraisonIfco[] }) {
+// 16/10/2026 — Andès : prochaines livraisons de cartons commandés (module Prestataires) et production du jour.
+type LivraisonCartons = { date: string; palettes: number; cartons: number; types: string };
+function StockCardsIfco({ moorea, nlt, cartonAndes, nltEngage, nltAujourdhui, livraisonsMoorea = [], livraisonsAndes = [], andesAujourdhui }: { moorea: number; nlt: number; cartonAndes: number; nltEngage?: number; nltAujourdhui?: { caisses: number; nb: number }; livraisonsMoorea?: LivraisonIfco[]; livraisonsAndes?: LivraisonCartons[]; andesAujourdhui?: { nb: number; colis: number; cartons: number } }) {
   const carte = (label: string, total: number, couleur: string, bg: string, extra?: any) => {
     // 11/09/2026 — Demande d'Elinathan : signaler clairement quand le stock de caisses est
     // NÉGATIF (plus de caisses sorties que ce qui était réellement disponible), au lieu d'afficher
@@ -140,6 +142,22 @@ function StockCardsIfco({ moorea, nlt, cartonAndes, nltEngage, nltAujourdhui, li
         <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 Carton Andès</div>
         <div style={{ fontSize: 26, fontWeight: 800, color: "#f59e0b" }}>{cartonAndes || 0}</div>
         <div style={{ fontSize: 11, color: "#999" }}>colis</div>
+        {livraisonsAndes.length > 0 && (
+          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #d1d5db", textAlign: "left" }}>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: "#6b7280", marginBottom: 3 }}>🚚 Prochaines livraisons</div>
+            {livraisonsAndes.slice(0, 4).map((l, i) => {
+              const [a, m, j] = l.date.split("-");
+              return <div key={i} style={{ fontSize: 12, color: "#92400e", fontWeight: 700 }}>{l.palettes} palette{l.palettes > 1 ? "s" : ""} <span style={{ fontWeight: 500, color: "#6b7280" }}>({l.cartons.toLocaleString("fr-FR")} cartons{l.types ? ` ${l.types}` : ""})</span> · le {j}/{m}{a && a !== String(new Date().getFullYear()) ? `/${a}` : ""}</div>;
+            })}
+          </div>
+        )}
+        {andesAujourdhui && andesAujourdhui.nb > 0 && (
+          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #d1d5db", textAlign: "left" }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#b45309" }}>
+              📅 Aujourd'hui : {andesAujourdhui.nb} demande{andesAujourdhui.nb > 1 ? "s" : ""} · {andesAujourdhui.colis.toLocaleString("fr-FR")} colis à produire{andesAujourdhui.cartons ? ` · −${andesAujourdhui.cartons.toLocaleString("fr-FR")} cartons BABY BLANC` : ""}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1243,6 +1261,19 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // transfert moorea → nlt ; le retour de caisses pleines est un transfert nlt → moorea.
   const [stockIfco, setStockIfco] = useState<{ moorea: number; transit: number; nlt: number }>({ moorea: 0, transit: 0, nlt: 0 });
   const [livraisonsIfco, setLivraisonsIfco] = useState<LivraisonIfco[]>([]);
+  const [livraisonsAndes, setLivraisonsAndes] = useState<LivraisonCartons[]>([]);
+  useEffect(() => onValue(ref(db, "prestataires_cartons"), snap => {
+    const auj = new Date().toISOString().slice(0, 10);
+    const parDate = new Map<string, LivraisonCartons & { t: Set<string> }>();
+    Object.values(snap.val() || {}).forEach((c: any) => {
+      if (!c || c.statut !== "commandé" || !c.dateLivraisonPrevue || c.dateLivraisonPrevue < auj) return;
+      if (!(c.horsSite || /andes|andès|potager|mariane/i.test(String(c.lieuLivraison || "")))) return;
+      const x = parDate.get(c.dateLivraisonPrevue) || { date: c.dateLivraisonPrevue, palettes: 0, cartons: 0, types: "", t: new Set<string>() };
+      (c.lignes || []).forEach((l: any) => { const n = Number(l?.nbPalettes) || 0; x.palettes += n; x.cartons += n * (CARTONS_CATALOGUE[l?.type as keyof typeof CARTONS_CATALOGUE]?.parPalette || 0); if (l?.type) x.t.add(String(l.type)); });
+      parDate.set(c.dateLivraisonPrevue, x);
+    });
+    setLivraisonsAndes([...parDate.values()].sort((a, b) => a.date.localeCompare(b.date)).map(({ t, ...x }) => ({ ...x, types: [...t].join(" + ") })));
+  }), []);
   useEffect(() => onValue(ref(db, "ifco_palettes_commandes"), snap => {
     const auj = new Date().toISOString().slice(0, 10);
     const parDate = new Map<string, LivraisonIfco>();
@@ -3524,6 +3555,12 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   const demandesAujourdhuiNlt = demandes.filter(d => d.depot === "nlt" && retourEnIfcoDemande(d) && (d.dateCreationFr || "").startsWith(aujourdHuiFr));
   const caissesAujourdhuiNlt = demandesAujourdhuiNlt.reduce((s, d) => s + (d.nbColisAEntrer || 0), 0);
   const nltAujourdhui = { caisses: caissesAujourdhuiNlt, nb: demandesAujourdhuiNlt.length };
+  const demandesAujourdhuiAndes = demandes.filter(d => d.depot === "andes" && d.statut !== "annulé" && (d.dateCreationFr || "").startsWith(aujourdHuiFr));
+  const andesAujourdhui = {
+    nb: demandesAujourdhuiAndes.length,
+    colis: demandesAujourdhuiAndes.reduce((s, d) => s + (d.nbColisAEntrer || 0), 0),
+    cartons: demandesAujourdhuiAndes.reduce((s, d) => s + (d.retourEnBabyBlanc ? (d.cartonsBabyBlancEnvoyes ?? d.nbColisAEntrer ?? 0) : 0), 0),
+  };
   const besoinCaissesIfcoNlt = demandes
     .filter(d => d.depot === "nlt" && d.statut === "en attente" && retourEnIfcoDemande(d))
     .reduce((s, d) => s + (d.nbColisAEntrer || 0), 0) + caissesEngageesNlt;
@@ -4201,7 +4238,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
 
             {/* Stock — même bloc que sur "Nouvelle demande", pour l'avoir sous les yeux sans
                 changer d'onglet en consultant les demandes en cours (demande du 27/08/2026). */}
-            <StockCardsIfco livraisonsMoorea={livraisonsIfco} moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt} nltAujourdhui={nltAujourdhui} />
+            <StockCardsIfco livraisonsMoorea={livraisonsIfco} livraisonsAndes={livraisonsAndes} andesAujourdhui={andesAujourdhui} moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt} nltAujourdhui={nltAujourdhui} />
             <BesoinIfcoHebdo demandes={demandes} stockMoorea={stockIfco.moorea} stockNlt={stockIfco.nlt} />
 
             {/* 04/09/2026 — La correction manuelle du stock (IFCO NLT / carton Andès) vit
@@ -4572,7 +4609,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             <button type="button" onClick={() => setActiveTab("en_cours")} style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray600, background: "transparent", border: "none", cursor: "pointer", padding: 0, marginBottom: 12 }}>← Retour (les bons restent en attente)</button>
             {/* 29/09/2026 — « combien de caisses IFCO vont être utilisées aujourd'hui » : le
                 compteur « Aujourd'hui » inclut les bons de cet écran (NLT, retour IFCO Oui). */}
-            <StockCardsIfco livraisonsMoorea={livraisonsIfco} moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt}
+            <StockCardsIfco livraisonsMoorea={livraisonsIfco} livraisonsAndes={livraisonsAndes} andesAujourdhui={andesAujourdhui} moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt}
               nltAujourdhui={{ caisses: nltAujourdhui.caisses + caissesIfcoBonsGroupe.caisses, nb: nltAujourdhui.nb + caissesIfcoBonsGroupe.nb }} />
             {caissesIfcoBonsGroupe.nb > 0 && (
               <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: 12, padding: "10px 14px", margin: "4px 0 12px", fontSize: 13, color: "#1e3a8a", fontWeight: 700 }}>
@@ -4771,7 +4808,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             )}
 
             {/* Stock, en couleur pâle pour repérer chaque compteur d'un coup d'œil */}
-            <StockCardsIfco livraisonsMoorea={livraisonsIfco} moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt} nltAujourdhui={nltAujourdhui} />
+            <StockCardsIfco livraisonsMoorea={livraisonsIfco} livraisonsAndes={livraisonsAndes} andesAujourdhui={andesAujourdhui} moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt} nltAujourdhui={nltAujourdhui} />
             <BesoinIfcoHebdo demandes={demandes} stockMoorea={stockIfco.moorea} stockNlt={stockIfco.nlt} />
 
             {/* 11/09/2026 — Demande d'Elinathan : un seul bouton d'import (voir importerPdf) au
