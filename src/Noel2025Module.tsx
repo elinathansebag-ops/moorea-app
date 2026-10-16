@@ -190,6 +190,10 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const [ventesGeslot, setVentesGeslot] = useState<VenteGeslot[] | null>(null);
   const [erreurGeslot, setErreurGeslot] = useState("");
   const [compPar, setCompPar] = useState<"client" | "jour" | "article">("client");
+  // 16/10/2026 — « 5 colis en mail ou appel et 5 colis Geslot = 5, pas 10 » : Besoin / Manquants peuvent
+  // compter les scans + le complément Geslot SANS DOUBLON (voir lignesComplement).
+  const [avecGeslot, setAvecGeslotEtat] = useState(() => { try { return localStorage.getItem("noel-source") !== "scans"; } catch { return true; } });
+  const setAvecGeslot = (v: boolean) => { setAvecGeslotEtat(v); try { localStorage.setItem("noel-source", v ? "total" : "scans"); } catch { /* */ } };
   const [fiche, setFiche] = useState<Fiche | null>(null);
   // 16/10/2026 — « je clique sur un jour du diagramme, je ne peux pas revenir en arrière » : les fiches
   // ouvertes depuis une fiche s'empilent ; « ← Retour » revient à la précédente.
@@ -270,6 +274,27 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       return { i: `g${k}`, d: v.d, c, cf: v.c, s: "", n: "", cc: "", l: v.a, o: "", q, u: "", lv: q, m: 0, st: "geslot", an: "", rq: "", f: fam.get(v.a) || "", ca: "", a: v.a, src: "geslot", bl: "", v: "", pdf: "", scan: "", p: "" };
     });
   }, [ventesGeslot, don, jours]);
+  // Complément Geslot sans doublon : par client × jour × article, Geslot ne s'ajoute que pour ce qu'il a
+  // livré EN PLUS de ce que les scans ont commandé (rajout / commande au téléphone). Scan 5 + Geslot 5 = 5.
+  const lignesComplement = useMemo((): Ligne[] => {
+    if (!lignesGeslot.length || !don) return [];
+    // La réf lue sur un scan n'est pas toujours exactement celle facturée dans Geslot : le complément d'un
+    // client un jour donné est plafonné à (livré Geslot ce jour − commandé scans ce jour) chez ce client.
+    const cj = (l: Ligne) => `${l.c}\u0001${l.d}`, cle = (l: Ligne) => `${cj(l)}\u0001${l.a}`;
+    const scan = new Map<string, number>(), scanJ = new Map<string, number>();
+    don.lignes.filter(compte).forEach(l => { scan.set(cle(l), (scan.get(cle(l)) || 0) + l.q); scanJ.set(cj(l), (scanJ.get(cj(l)) || 0) + l.q); });
+    const ges = new Map<string, { l: Ligne; g: number }>(), gesJ = new Map<string, number>();
+    lignesGeslot.forEach(l => { const k = cle(l), x = ges.get(k); if (x) x.g += l.q; else ges.set(k, { l, g: l.q }); gesJ.set(cj(l), (gesJ.get(cj(l)) || 0) + l.q); });
+    const plusParJ = new Map<string, { l: Ligne; plus: number }[]>();
+    ges.forEach(({ l, g }, k) => { const plus = g - (scan.get(k) || 0); if (plus > 0) { const j = cj(l); plusParJ.set(j, [...(plusParJ.get(j) || []), { l, plus }]); } });
+    const out: Ligne[] = [];
+    plusParJ.forEach((items, j) => {
+      const somme = items.reduce((t, x) => t + x.plus, 0), plafond = Math.max(0, (gesJ.get(j) || 0) - (scanJ.get(j) || 0));
+      const ratio = somme > plafond ? plafond / somme : 1;
+      items.forEach(({ l, plus }) => { const q = Math.round(plus * ratio); if (q > 0) out.push({ ...l, i: `h${out.length}`, q, lv: q, m: 0, s: "📞 Hors scan (Geslot)", st: "hors scan" }); });
+    });
+    return out;
+  }, [lignesGeslot, don]);
 
   // Options de la recherche intelligente.
   const options = useMemo(() => {
@@ -579,10 +604,12 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   };
 
   const rendreFiche = (f: Fiche) => {
-    const ls = (don?.lignes || []).filter(f.filtre), lc = ls.filter(compte);
+    const avecCompl = avecGeslot && (vue === "besoin" || vue === "manque");
+    const source = avecCompl ? [...(don?.lignes || []), ...lignesComplement] : (don?.lignes || []);
+    const ls = source.filter(f.filtre), lc = ls.filter(compte);
     const tot = lc.reduce((t, l) => ({ q: t.q + l.q, lv: t.lv + l.lv, m: t.m + l.m }), { q: 0, lv: 0, m: 0 });
     const lits = (don?.litiges || []).filter(f.filtreL);
-    const cmds = new Map<string, Ligne[]>(); ls.forEach(l => { const k = `${l.d}|${l.c}|${l.n}|${l.s}`; cmds.set(k, [...(cmds.get(k) || []), l]); });
+    const cmds = new Map<string, Ligne[]>(); ls.filter(l => l.st !== "hors scan").forEach(l => { const k = `${l.d}|${l.c}|${l.n}|${l.s}`; cmds.set(k, [...(cmds.get(k) || []), l]); });
     const listeCmds = [...cmds].sort((a, b) => a[1][0].d.localeCompare(b[1][0].d) || a[1][0].c.localeCompare(b[1][0].c));
     const icone = f.type === "article" ? emojiProduit(f.valeur) : TITRES[f.type] || "🔎";
     const besoin = vue === "besoin", vueLitiges = vue === "litiges", vueGeslot = vue === "geslot", global = f.type === "global";
@@ -598,7 +625,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       else if (iso === f.jourChoisi) revenir();
       else { setFiche(ficheJour(iso)); }
     };
-    const lsGraph = f.base ? (don?.lignes || []).filter(f.base.filtre) : ls;
+    const lsGraph = f.base ? source.filter(f.base.filtre) : ls;
     return (
       <div>
         {(historique.length > 0 || f.base) && (
@@ -623,14 +650,23 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
         )}
         {!vueGeslot && chiffres(tot, lits.length)}
         {!vueGeslot && !vueLitiges && lignesGeslot.length > 0 && (() => {
-          const gs = lignesGeslot.filter(f.filtre), tg = gs.reduce((t, l) => t + l.q, 0);
-          if (!tg) return null;
-          const scannes = new Set(lc.map(l => `${l.c}|${l.d}`)), sans = gs.filter(l => !scannes.has(`${l.c}|${l.d}`)).reduce((t, l) => t + l.q, 0);
-          if (sans < tg * 0.05) return null;
+          const compl = lc.filter(l => l.st === "hors scan").reduce((t, l) => t + l.q, 0);
+          const complSujet = lignesComplement.filter(f.filtre).reduce((t, l) => t + l.q, 0);
           return (
-            <button type="button" onClick={() => setVue("geslot")} style={{ ...carte, width: "100%", textAlign: "left", cursor: "pointer", marginTop: 12, marginBottom: 0, padding: "10px 14px", borderColor: "#93c5fd", background: "#eff6ff", color: "#1e3a8a", fontSize: 13 }}>
-              🧾 D'après <b>Geslot</b>, {f.type === "global" ? "Noël" : f.valeur} = <b>{ent(tg)} colis livrés</b>, dont <b>{ent(sans)}</b> ({Math.round((sans / tg) * 100)} %) des jours sans commande scannée (téléphone, mail…). Les chiffres ci-dessous ne comptent que les scans. <u>Comparer ›</u>
-            </button>
+            <div style={{ ...carte, marginTop: 12, marginBottom: 0, padding: "10px 14px", borderColor: "#93c5fd", background: "#eff6ff", color: "#1e3a8a", fontSize: 13, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+              <span style={{ fontWeight: 800 }}>Compter :</span>
+              <span style={{ display: "inline-flex", border: "1.5px solid #1d4ed8", borderRadius: 9, overflow: "hidden" }}>
+                {([[false, "📄 Scans seulement"], [true, "🟰 Scans + Geslot (sans doublon)"]] as const).map(([v, lib]) => (
+                  <button key={lib} type="button" onClick={() => setAvecGeslot(v)} style={{ padding: "6px 10px", border: "none", background: avecGeslot === v ? "#1d4ed8" : "#fff", color: avecGeslot === v ? "#fff" : "#1d4ed8", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>{lib}</button>
+                ))}
+              </span>
+              <span style={{ flex: "1 1 260px" }}>
+                {avecGeslot
+                  ? <>Inclut <b>{ent(compl)} colis</b> livrés d'après Geslot sans commande scannée (téléphone, rajouts). Une commande à la fois scannée et dans Geslot n'est comptée qu'une fois.</>
+                  : complSujet ? <><b>{ent(complSujet)} colis</b> livrés d'après Geslot n'ont pas de commande scannée et ne sont pas comptés ici.</> : <>Toutes les livraisons Geslot ont une commande scannée.</>}
+                {" "}<u style={{ cursor: "pointer" }} onClick={() => setVue("geslot")}>Comparer ›</u>
+              </span>
+            </div>
           );
         })()}
         {vueGeslot ? rendreComparaison(f) : vueLitiges ? (
@@ -779,7 +815,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       const c = groupeDe(l), arts = parClient.get(c) || new Map<string, Cellules>(), r = arts.get(sousCle(l)) || {};
       ajouter(r, l); arts.set(sousCle(l), r); parClient.set(c, arts);
       if (lignesPar === "articleClient") {
-        const k = `${c}\u0001${sousCle(l)}`, bs = parBase.get(k) || new Map<string, Cellules>(), b = baseDe.get(l.i) || "Site non précisé", rb = bs.get(b) || {};
+        const k = `${c}\u0001${sousCle(l)}`, bs = parBase.get(k) || new Map<string, Cellules>(), b = baseDe.get(l.i) || (l.st === "hors scan" ? "📞 Hors scan (Geslot)" : "Site non précisé"), rb = bs.get(b) || {};
         ajouter(rb, l); bs.set(b, rb); parBase.set(k, bs);
       }
     });
