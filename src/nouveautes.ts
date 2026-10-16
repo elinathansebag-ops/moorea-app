@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 114, date: "16/10", pages: ["refus_signer"], texte: "✅ Refus à faire signer : bouton « Accepter quand même (décision commerciale) » sur chaque refus — on choisit le commercial (Jordan, Sandra…) et le motif ; la palette repasse « validée » dans les arrivages et le rapport garde la mention « Accepté quand même · nom »." },
   { id: 112, date: "16/10", pages: ["admin.acces"], texte: "🔄 Accès & comptes : « Refus à faire signer » est maintenant un module à part (groupe 🏭 Entrepôt) — à cocher pour le compte entrepôt sans lui donner les rapports d'agréage." },
   { id: 111, date: "16/10", pages: ["yukon"], texte: "🌿 Yukon : le récap commande et le texte « 📋 Copier la commande » reprennent maintenant exactement les quantités Cmd Sam / Cmd Mar de l'onglet 📊 Calcul (60 % samedi / 40 % mardi) — avant, ils utilisaient une autre formule et pouvaient donner d'autres chiffres." },
   { id: 110, date: "16/10", pages: ["catalogue"], texte: "📚 Catalogue : avec « ⚪ Non assignés », la recherche s'applique aussi, et « Aucun résultat » / « …et N autres » correspondent bien à la liste affichée." },

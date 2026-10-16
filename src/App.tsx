@@ -4,7 +4,7 @@
 import { noterHistoriqueDemande } from "./historiqueRecond";
 import { Calculatrice } from "./Calculatrice";
 import { useState, useEffect, useRef, useMemo, lazy, createElement, Suspense } from "react";
-import { useProfilGenerique, avecProfil, ouvrirWhatsApp, nomSignataire } from "./ProfilGenerique";
+import { useProfilGenerique, avecProfil, ouvrirWhatsApp, nomSignataire, COMPTES_GENERIQUES } from "./ProfilGenerique";
 import { CameraMulti } from "./CameraMulti";
 import { AccueilModulesV2, ordonnerModules, COULEURS_PASTEL } from "./AccueilModulesV2";
 import { NOUVEAUTES, NOUVEAUTES_POUR } from "./nouveautes";
@@ -521,7 +521,20 @@ export default function App() {
   const [aSignerSeul, setASignerSeul] = useState(false);
   const [imprimerBonEntrepot, setImprimerBonEntrepot] = useState(false);
   const [confirmerToutRecupere, setConfirmerToutRecupere] = useState(false);
-  const refusASigner = (r: any) => r?.decision === "refus" && !r?.transporteur?.signatureBase64 && !r?.recupereSansSig;
+  // 16/10/2026 — Demande d'Elinathan : sur la page « Refus à faire signer », pouvoir quand même
+  // accepter une palette refusée sur décision du commercial (qui + pourquoi, gardé dans le rapport).
+  const [accepterRefus, setAccepterRefus] = useState<{ cle: string; commercial: string; motif: string } | null>(null);
+  const accepterRefusCommercial = async (r: any, commercial: string, motif: string) => {
+    if (!r?.firebaseKey) return;
+    const le = new Date(), info = { commercial, motif: motif.trim(), par: nomSignataire() || "", le: le.toLocaleString("fr-FR").slice(0, 16), ts: le.getTime() };
+    const maj: Record<string, any> = { [`rapports/${r.firebaseKey}/accepteCommercial`]: info };
+    [r.arrivage_id, ...(r.arrivage_ids || [])].filter(Boolean).forEach((id: string) => {
+      maj[`arrivages/${id}/statut`] = "validé"; maj[`arrivages/${id}/accepteCommercial`] = info;
+    });
+    try { await update(ref(db), maj); showToast(`✅ Palette acceptée sur décision de ${commercial}`); setAccepterRefus(null); }
+    catch (e: any) { showToast("Erreur : " + (e?.message || e), "error"); }
+  };
+  const refusASigner = (r: any) => r?.decision === "refus" && !r?.transporteur?.signatureBase64 && !r?.recupereSansSig && !r?.accepteCommercial;
   const [showStats, setShowStats] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState("date_desc");
@@ -6575,10 +6588,36 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                         <div style={{ fontSize: 14.5, fontWeight: 900, color: "#1a2e1a", lineHeight: 1.2 }}>{r.fournisseur || "Fournisseur ?"}</div>
                         <div style={{ fontSize: 12.5, color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.produit} · {r.date}</div>
                         <div style={{ fontSize: 19, fontWeight: 900, color: "#dc2626", margin: "2px 0 8px" }}>{r.nbColisRefuses ?? "?"} <span style={{ fontSize: 13, fontWeight: 700 }}>colis refusés{r.nbColisTotal ? ` / ${r.nbColisTotal}` : ""}</span></div>
-                        <button type="button" onClick={() => { setImprimerBonEntrepot(true); genererBonRetour(r); }}
-                          style={{ marginTop: "auto", padding: "10px 0", borderRadius: 10, border: "none", background: "#dc2626", color: "#fff", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>
-                          🖨️ Faire signer et imprimer
-                        </button>
+                        {accepterRefus?.cle === r.firebaseKey ? (
+                          <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 6, padding: 10, borderRadius: 12, background: "#f0fdf4", border: "1.5px solid #86efac" }}>
+                            <span style={{ fontSize: 12.5, fontWeight: 900, color: "#15803d" }}>✅ Accepter quand même en stock</span>
+                            <span style={{ fontSize: 11.5, fontWeight: 700, color: "#374151" }}>Décision de quel commercial ?</span>
+                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                              {(COMPTES_GENERIQUES["commercial@moorea.fr"] || []).map(n => (
+                                <button key={n} type="button" onClick={() => setAccepterRefus(a => a && { ...a, commercial: n })}
+                                  style={{ padding: "4px 9px", borderRadius: 8, fontSize: 12, fontWeight: 800, cursor: "pointer", border: `1.5px solid ${accepterRefus.commercial === n ? "#15803d" : "#d1d5db"}`, background: accepterRefus.commercial === n ? "#15803d" : "#fff", color: accepterRefus.commercial === n ? "#fff" : "#374151" }}>{n}</button>
+                              ))}
+                            </div>
+                            <textarea value={accepterRefus.motif} onChange={e => setAccepterRefus(a => a && { ...a, motif: e.target.value })} rows={2} placeholder="Pourquoi ? (ex. client d'accord, tri fait…)"
+                              style={{ width: "100%", boxSizing: "border-box", padding: "6px 8px", borderRadius: 8, border: "1.5px solid #d1d5db", fontSize: 12.5, fontFamily: "inherit", resize: "vertical" }} />
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <button type="button" disabled={!accepterRefus.commercial} onClick={() => accepterRefusCommercial(r, accepterRefus.commercial, accepterRefus.motif)}
+                                style={{ flex: 1, padding: "8px 0", borderRadius: 9, border: "none", background: accepterRefus.commercial ? "#15803d" : "#9ca3af", color: "#fff", fontSize: 13, fontWeight: 800, cursor: accepterRefus.commercial ? "pointer" : "default" }}>✅ Accepter</button>
+                              <button type="button" onClick={() => setAccepterRefus(null)} style={{ padding: "8px 10px", borderRadius: 9, border: "1.5px solid #d1d5db", background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <button type="button" onClick={() => { setImprimerBonEntrepot(true); genererBonRetour(r); }}
+                              style={{ marginTop: "auto", padding: "10px 0", borderRadius: 10, border: "none", background: "#dc2626", color: "#fff", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>
+                              🖨️ Faire signer et imprimer
+                            </button>
+                            <button type="button" onClick={() => setAccepterRefus({ cle: r.firebaseKey, commercial: "", motif: "" })}
+                              style={{ marginTop: 6, padding: "8px 0", borderRadius: 10, border: "2px solid #16a34a", background: "#fff", color: "#15803d", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
+                              ✅ Accepter quand même (décision commerciale)
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   );
@@ -7138,6 +7177,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       {r.score ? <div style={{ flexShrink: 0, width: 46, height: 46, borderRadius: 23, border: `3px solid ${Number(r.score) >= 4 ? "#16a34a" : Number(r.score) >= 3 ? "#d97706" : "#dc2626"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 900, color: "#1a2e1a" }}>{Number(r.score).toLocaleString("fr-FR", { maximumFractionDigits: 1 })}</div> : null}
                     </div>
                     <div style={{ padding: "0 14px 8px", display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {r.accepteCommercial && <span title={r.accepteCommercial.motif || ""} style={{ fontSize: 12, fontWeight: 800, color: "#15803d", background: "#dcfce7", borderRadius: 8, padding: "3px 8px" }}>✅ Accepté quand même · {r.accepteCommercial.commercial}</span>}
                       {(r.decision === "reserve" || r.decision === "refus") && r.nbColisRefuses != null && <span style={{ fontSize: 12, fontWeight: 800, color: d.f, background: d.c, borderRadius: 8, padding: "3px 8px" }}>{r.nbColisRefuses} / {r.nbColisTotal} colis</span>}
                       {r.lotMoorea && <span style={{ fontSize: 11.5, background: "#faf8f0", color: "#8a6f2e", borderRadius: 8, padding: "3px 8px", fontWeight: 700 }}>Lot {r.lotMoorea}</span>}
                       {r.temperature && <span style={{ fontSize: 11.5, background: "#eff6ff", color: "#1d4ed8", borderRadius: 8, padding: "3px 8px", fontWeight: 700 }}>🌡 {r.temperature}°C</span>}
@@ -7154,7 +7194,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       {(["fr", "en"] as const).map(l => <span key={l} style={{ display: "contents" }}>{petitBouton(l === "fr" ? "Télécharger le PDF en français" : "Télécharger le PDF en anglais", pdfLangueOccupe(r, l) ? "⏳" : <span style={{ fontSize: 10.5, fontWeight: 900, lineHeight: 1.05, textAlign: "center" }}>⬇<br />{l.toUpperCase()}</span>, () => telechargerRapport(r, l), { desactive: !!pdfLangueEnCours })}</span>)}
                       {petitBouton("Envoyer au commercial par mail", envoi ? "⏳" : "✉️", () => envoyerEmail(r), { desactive: envoi })}
                       {petitBouton("Partager sur WhatsApp", <svg width="18" height="18" viewBox="0 0 24 24" fill="#16a34a"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.6.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.2.1-.1 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.1 5.1 0 0 0 1.1 2.7 11.7 11.7 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6a2.7 2.7 0 0 0 1.8-1.3 2.2 2.2 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3z"/></svg>, () => partagerWhatsApp(r))}
-                      {r.decision === "refus" && !r.bonRepriseSigné && !r.recupereSansSig && petitBouton("Bon de retour à faire signer", "🔄", () => genererBonRetour(r), { fond: "#fef2f2", texte: "#dc2626" })}
+                      {r.decision === "refus" && !r.bonRepriseSigné && !r.recupereSansSig && !r.accepteCommercial && petitBouton("Bon de retour à faire signer", "🔄", () => genererBonRetour(r), { fond: "#fef2f2", texte: "#dc2626" })}
                       <span style={{ flex: 1 }} />
                       {petitBouton("Modifier le rapport", "✏️", () => chargerRapportEdition(r), { fond: "#eff6ff" })}
                     </div>
