@@ -51,6 +51,8 @@ const COLORS = {
 // Même valeur que le module Prestataires & IFCO (formatCaisses / enregistrerCaissesEtEnvoyer) :
 // une palette IFCO complète = 640 caisses.
 const CAISSES_PAR_PALETTE = 640;
+// 16/10/2026 — Demande d'Elinathan : une palette de colis BABY chez Andès = 360 colis.
+const COLIS_ANDES_PAR_PALETTE = 360;
 
 // Affiche un stock de caisses IFCO en palettes (unité de référence côté entrepôt), avec le
 // détail en caisses entre parenthèses — cohérent avec IFCOModule / PrestatairesModule.
@@ -141,7 +143,22 @@ function StockCardsIfco({ moorea, nlt, cartonAndes, nltEngage, nltAujourdhui, li
       <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 Carton Andès</div>
         <div style={{ fontSize: 26, fontWeight: 800, color: "#f59e0b" }}>{cartonAndes || 0}</div>
-        <div style={{ fontSize: 11, color: "#999" }}>colis</div>
+        <div style={{ fontSize: 11, color: "#999", marginBottom: 8 }}>colis</div>
+        {(() => {
+          // 16/10/2026 — Même bandeau « = X palette(s) + Y » que les cases IFCO, avec 360 colis par palette BABY.
+          const total = cartonAndes || 0;
+          const negatif = total < 0;
+          const abs = Math.abs(total);
+          const palettes = Math.floor(abs / COLIS_ANDES_PAR_PALETTE);
+          const reste = abs % COLIS_ANDES_PAR_PALETTE;
+          return (
+            <div style={{ fontSize: 13, fontWeight: 700, color: negatif ? COLORS.danger : "#3a3a3a", background: negatif ? COLORS.dangerLight : "#fef3c7", borderRadius: 8, padding: "5px 8px" }}>
+              {negatif
+                ? `⚠️ stock négatif — il manque ${abs} colis`
+                : `= ${palettes > 0 ? `${palettes} palette${palettes > 1 ? "s" : ""}${reste > 0 ? ` + ${reste} colis` : ""}` : `${total} colis (moins d'une palette)`}`}
+            </div>
+          );
+        })()}
         {livraisonsAndes.length > 0 && (
           <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #d1d5db", textAlign: "left" }}>
             <div style={{ fontSize: 10.5, fontWeight: 700, color: "#6b7280", marginBottom: 3 }}>🚚 Prochaines livraisons</div>

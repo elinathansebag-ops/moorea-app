@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 97, date: "16/10", pages: ["reconditionnement"], texte: "📦 Case « Carton Andès » : le stock de colis est aussi affiché en palettes BABY (1 palette = 360 colis), ex. « = 1 palette + 40 colis », comme dans les cases IFCO." },
   { id: 96, date: "16/10", pages: ["stock"], texte: "🗑️ Chaque jeudi, juste après l'envoi du stock, Jennifer reçoit (depuis entrepot@) le rapport des destructions semaine par semaine : 8 dernières semaines (colis, kg, valeur d'achat) + détail par article. Réglable et testable dans Admin › Accès › « Qui envoie quel mail à qui » (🧪 M'envoyer un test)." },
   { id: 95, date: "16/10", pages: ["stock"], texte: "📈 Stock : nouveau bouton « Écarts par semaine » — une ligne par article, une colonne par semaine (écart compté − Geslot), bilan de chaque semaine (lignes en écart, colis en moins / en plus), GMS ou Prestige, 4 à 26 semaines, export Excel." },
   { id: 94, date: "16/10", pages: ["extractions"], texte: "🎄 Noël 2025 : dans une fiche, les commandes sont rangées par client puis par base (729 Dammartin, Savigny, Base 10 Coudray…) avec le total livré / manquant de chaque base. Bouton « 📅 Par date » pour revenir à l'ancienne liste." },
