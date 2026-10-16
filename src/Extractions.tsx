@@ -98,7 +98,7 @@ async function exporterExcel(nomFichier: string, titre: string, entetes: string[
 }
 
 // ── Recherche intelligente ──
-type Option = { type: string; valeur: string; detail?: string; poids?: number };
+export type Option = { type: string; valeur: string; detail?: string; poids?: number };
 const ICONES: Record<string, string> = { client: "👤", fournisseur: "🏭", article: "🥬", famille: "🗂️", jour: "📅", semaine: "🗓️", litiges: "⛔", reserves: "⚠️" };
 // 14/10/2026 — Emoji le plus proche du produit (demande d'Elinathan : « pas une salade pour des cerises »).
 // Premier mot-clé trouvé dans le nom de l'article ou de la famille ; 🥬 si rien ne correspond.
@@ -116,7 +116,7 @@ const EMOJIS_PRODUITS: [RegExp, string][] = [
   [/germe|alfalfa|pousse/, "🌱"], [/passion|grenade|figue|datte|litchi|lychee|ramboutan|mangoustan|pitaya|fruit du dragon|physalis|goyave|papaye|kaki|carambole/, "🍑"],
   [/asperge/, "🎋"], [/potiron|potimarron|courge|butternut|citrouille/, "🎃"], [/olive/, "🫒"], [/artichaut|fenouil|celeri|blette/, "🥬"],
 ];
-function emojiProduit(nom: string, famille = ""): string {
+export function emojiProduit(nom: string, famille = ""): string {
   const t = norm(`${nom} ${famille}`);
   for (const [re, e] of EMOJIS_PRODUITS) if (re.test(t)) return e;
   return "🥬";
@@ -144,8 +144,15 @@ function resultatsSpeciaux(q: string, maxDate: string): Option[] {
   return out;
 }
 // 14/10/2026 — Plus de limite de résultats (demande d'Elinathan : « tout ce qui contient un c »).
+// 16/10/2026 — Abréviations du métier (« hv » = haricot vert…), comprises partout dans la recherche.
+const ABREVIATIONS: Record<string, string> = {
+  hv: "haricot vert", hvf: "haricot vert fin", pg: "pois gourmand", ps: "pois sucre", pp: "petits pois", ss: "sugar snap",
+  mc: "mini carotte", mp: "mini poivron", pd: "patate douce", gb: "gingembre", ging: "gingembre", fdp: "passion", pas: "passion",
+  cv: "citron vert", ml: "mini legume", mlm: "mini legumes mixte", bb: "baby", ana: "ananas", mang: "mangue", av: "avocat",
+};
+const developper = (q: string) => norm(q).split(/\s+/).filter(Boolean).flatMap(m => (ABREVIATIONS[m] || m).split(" "));
 function chercher(options: Option[], q: string, max = Infinity): Option[] {
-  const mots = norm(q).split(/\s+/).filter(Boolean);
+  const mots = developper(q);
   if (!mots.length) return [];
   const res: { o: Option; s: number }[] = [];
   for (const o of options) {
@@ -164,7 +171,7 @@ function chercher(options: Option[], q: string, max = Infinity): Option[] {
 // 14/10/2026 — onCocher : case à cocher à part (sélection), le nom garde son action (ouvrir) ;
 // actionSelection : bouton en bas de la liste quand quelque chose est coché.
 const TYPES_COCHABLES = ["article", "famille", "client", "fournisseur"];
-function RechercheIntelligente({ options, placeholder, onChoisir, c, grand, autoFocus, extra, multi, estChoisi, onCocher, actionSelection }: { options: Option[]; placeholder: string; onChoisir: (o: Option) => void; c: Couleurs; grand?: boolean; autoFocus?: boolean; extra?: (q: string) => Option[]; multi?: boolean; estChoisi?: (o: Option) => boolean; onCocher?: (o: Option) => void; actionSelection?: { libelle: string; onClick: () => void } | null }) {
+export function RechercheIntelligente({ options, placeholder, onChoisir, c, grand, autoFocus, extra, multi, estChoisi, onCocher, actionSelection }: { options: Option[]; placeholder: string; onChoisir: (o: Option) => void; c: Couleurs; grand?: boolean; autoFocus?: boolean; extra?: (q: string) => Option[]; multi?: boolean; estChoisi?: (o: Option) => boolean; onCocher?: (o: Option) => void; actionSelection?: { libelle: string; onClick: () => void } | null }) {
   const [q, setQ] = useState("");
   const [actif, setActif] = useState(0);
   const [ouvert, setOuvert] = useState(false);
@@ -451,6 +458,18 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
                   )}
                 </div>
               </div>
+            )}
+            {/* 16/10/2026 — Accès bien visible aux commandes de Noël 2025, juste au-dessus de « Mes rapports ». */}
+            {voirExtractions && (
+              <button type="button" onClick={() => setOnglet("noel")}
+                style={{ display: "flex", alignItems: "center", gap: 14, width: "100%", textAlign: "left", padding: "14px 18px", marginBottom: 14, borderRadius: 16, border: "none", cursor: "pointer", background: "linear-gradient(135deg, #305a55, #1f4440)", color: "#fff", boxShadow: "0 4px 14px rgba(48,90,85,.25)" }}>
+                <span style={{ fontSize: 34 }}>🎄</span>
+                <span style={{ flex: 1, minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 17, fontWeight: 900 }}>Commandes Noël 2025</span>
+                  <span style={{ display: "block", fontSize: 12.5, color: "#d9e7e1" }}>Ce qui a été demandé, livré et ce qui a manqué — par client, produit, jour ou BL · scans · Excel / PDF</span>
+                </span>
+                <span style={{ fontSize: 22, fontWeight: 900 }}>›</span>
+              </button>
             )}
             {voirExtractions && email && <MesRapports c={c} email={email} ouvrir={r => { setPreset({ rapport: r }); setOnglet("produits"); }} />}
             {voirExtractions && ventes && ventes.length > 0 && <TableauBordStats c={c} ventes={ventes} voirMarge={voirMarge} voirEuros={voirEuros} ouvrir={(o, p) => { setPreset(p); setOnglet(o); }} />}

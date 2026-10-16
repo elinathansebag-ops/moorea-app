@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { db, ref, get, update, set, stockage } from "./firebase";
 import { PageHeader } from "./shared";
+import { RechercheIntelligente, emojiProduit, type Option, type Couleurs } from "./Extractions";
 
 // ─── 🎄 Commandes Noël 2025 (📊 Stats) ───
 // 16/10/2026 — Demande d'Elinathan (récap « RECAP_TOTAL_POUR_CLAUDE_CODE.md ») : les commandes clients
@@ -149,68 +150,232 @@ async function envoyerScans(fichiers: File[], dejaLa: Record<string, string>, pr
 }
 
 // ── Écran ────────────────────────────────────────────────────────────────────
-type Vue = "recherche" | "demande" | "manquants" | "litiges";
+// 16/10/2026 (bis) — « interface simple, recherche intelligente avec les emojis comme le Programme
+// d'achat, fun et simple à utiliser, avec PDF et Excel » : une grande recherche (👤 client, 🥬 article,
+// 🗂️ famille, 📅 jour, 🧾 BL / commande — « hv » = haricot vert…) ouvre une FICHE claire : chiffres,
+// ce qui a manqué, jour par jour, commandes avec le scan, litiges, export Excel / PDF.
+type Fiche = { type: string; valeur: string; filtre: (l: Ligne) => boolean; filtreR: (r: Rupture) => boolean; filtreL: (x: Litige) => boolean };
+const C: Couleurs = { fond: "#f5f3ee", carte: "#fff", texte: "#1a2e1a", gris: "#6b7280", bord: "#e8e0d0", vert: "#305a55", sombre: false };
+const pct = (a: number, b: number) => (b ? `${(a / b * 100).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %` : "—");
+const TITRES: Record<string, string> = { client: "👤", article: "", famille: "🗂️", jour: "📅", bl: "🧾" };
 
 export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; estAdmin?: boolean }) {
   const [don, setDon] = useState<Donnees | null>(null);
   const [erreur, setErreur] = useState("");
-  const [vue, setVue] = useState<Vue>("recherche");
-  const [q, setQ] = useState("");
+  const [vue, setVue] = useState<"accueil" | "tableau" | "litiges">("accueil");
+  const [fiche, setFiche] = useState<Fiche | null>(null);
   const [importEtat, setImportEtat] = useState("");
   const [rechargement, setRechargement] = useState(0);
+  const [voirDonnees, setVoirDonnees] = useState(false);
   const [filtreClient, setFiltreClient] = useState("");
   const [filtreFamille, setFiltreFamille] = useState("");
   const [mesure, setMesure] = useState<"q" | "lv" | "m" | "taux">("q");
   const [filtreArticle, setFiltreArticle] = useState("");
-  const [jourManquants, setJourManquants] = useState("");
+  const [cmdOuverte, setCmdOuverte] = useState<string | null>(null);
 
   useEffect(() => { setDon(null); charger().then(setDon).catch(e => setErreur(e?.message || "lecture impossible")); }, [rechargement]);
 
   const lignes = useMemo(() => (don?.lignes || []).filter(compte), [don]);
-  const clients = useMemo(() => [...new Set(lignes.map(l => l.c).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr")), [lignes]);
-  const familles = useMemo(() => [...new Set(lignes.map(l => l.f).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr")), [lignes]);
   const jours = useMemo(() => [...new Set(lignes.map(l => l.d).filter(Boolean))].sort(), [lignes]);
   const totaux = useMemo(() => lignes.reduce((t, l) => ({ q: t.q + l.q, lv: t.lv + l.lv, m: t.m + l.m }), { q: 0, lv: 0, m: 0 }), [lignes]);
+
+  // Options de la recherche intelligente.
+  const options = useMemo(() => {
+    const m = new Map<string, Option>();
+    const ajout = (type: string, valeur: string, q: number, man: number) => {
+      if (!valeur) return; const k = type + "|" + valeur; const o: any = m.get(k) || { type, valeur, poids: 0, man: 0 };
+      o.poids += q; o.man += man; o.detail = `${ent(o.poids)} colis commandés${o.man ? ` · ${ent(o.man)} manquants` : " · tout livré"}`; m.set(k, o);
+    };
+    lignes.forEach(l => { ajout("client", l.c, l.q, l.m); ajout("article", l.a, l.q, l.m); ajout("famille", l.f, l.q, l.m); });
+    return [...m.values()];
+  }, [lignes]);
+  const extra = (q: string): Option[] => {
+    const t = q.trim(); const out: Option[] = [];
+    const j = t.match(/^(\d{1,2})[/.-](\d{1,2})/);
+    if (j) { const iso = `2025-${j[2].padStart(2, "0")}-${j[1].padStart(2, "0")}`; if (jours.includes(iso)) out.push({ type: "jour", valeur: `Livraisons du ${jjmm(iso)}/2025`, detail: "Tout ce qui a été commandé, livré et manqué ce jour-là", cle: iso } as any); }
+    const ch = t.replace(/\D/g, "");
+    if (ch.length >= 5 && don) {
+      const bls = new Set<string>();
+      don.lignes.forEach(l => l.bl.split(/[,\s]+/).forEach(b => { if (b.replace(/\D/g, "").includes(ch)) bls.add(b.replace(/\s/g, "")); }));
+      [...bls].slice(0, 6).forEach(b => out.push({ type: "bl", valeur: b, detail: "Bon de livraison : ce qui a été commandé, livré, manqué et les litiges" } as any));
+      const cmds = new Set<string>(); don.lignes.forEach(l => { if (l.n.replace(/\D/g, "").includes(ch)) cmds.add(`${l.n}|${l.c}`); });
+      [...cmds].slice(0, 6).forEach(x => { const [n, c] = x.split("|"); out.push({ type: "commande", valeur: `Commande ${n}`, detail: c, cle: n } as any); });
+    }
+    return out;
+  };
+  const ouvrir = (o: Option) => {
+    const cle = (o as any).cle;
+    const v = o.valeur;
+    const f: Fiche =
+      o.type === "client" ? { type: "client", valeur: v, filtre: l => l.c === v, filtreR: r => r.c === v, filtreL: x => norm(x.c) === norm(v) || norm(x.cf).includes(norm(v)) } :
+      o.type === "article" ? { type: "article", valeur: v, filtre: l => l.a === v, filtreR: r => r.a === v, filtreL: x => x.a === v } :
+      o.type === "famille" ? { type: "famille", valeur: v, filtre: l => l.f === v, filtreR: r => r.f === v, filtreL: () => false } :
+      o.type === "jour" ? { type: "jour", valeur: `Livraisons du ${jjmm(cle)}`, filtre: l => l.d === cle, filtreR: r => r.d === cle, filtreL: x => x.d === cle } :
+      o.type === "commande" ? { type: "bl", valeur: v, filtre: l => l.n === cle, filtreR: r => r.n === cle, filtreL: () => false } :
+      { type: "bl", valeur: v, filtre: l => l.bl.replace(/\s/g, "").split(",").includes(v), filtreR: r => r.bl.includes(v), filtreL: x => x.bl === v };
+    setFiche(f); setCmdOuverte(null); setVue("accueil"); window.scrollTo(0, 0);
+  };
+  const ouvrirType = (type: string, valeur: string, cle?: string) => ouvrir({ type, valeur, cle } as any);
 
   const urlScan = (chemin: string, page?: string) => { const u = don?.scans[chemin]; return u ? `${u}${page ? `#page=${page}` : ""}` : ""; };
   const boutonScan = (l: Ligne) => {
     const u = l.scan ? urlScan(l.scan, l.p) : "", u2 = l.pdf ? urlScan(l.pdf) : "";
-    if (!u && !u2) return l.pdf || l.scan ? <span style={{ fontSize: 11, color: "#9ca3af" }} title="Scans pas encore envoyés dans l'appli">scan non importé</span> : null;
-    return <a href={u || u2} target="_blank" rel="noreferrer" style={{ fontSize: 11.5, fontWeight: 800, color: "#305a55", whiteSpace: "nowrap" }}>📄 Scan{u && l.p ? ` p.${l.p}` : ""}</a>;
+    if (!u && !u2) return l.pdf || l.scan ? <span style={{ fontSize: 11, color: "#9ca3af" }} title="Les scans PDF ne sont pas encore envoyés dans l'appli">📄 scan à importer</span> : null;
+    return <a href={u || u2} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 12, fontWeight: 800, color: "#fff", background: "#305a55", borderRadius: 8, padding: "4px 10px", whiteSpace: "nowrap", textDecoration: "none" }}>📄 Voir le scan{u && l.p ? ` (p. ${l.p})` : ""}</a>;
   };
 
-  // Recherche : BL, n° de commande, jour (12/12), client, article, famille…
-  const resultats = useMemo(() => {
-    const t = q.trim();
-    if (!don || t.length < 2) return null;
-    const chiffres = t.replace(/\D/g, "");
-    const estBL = /^bl/i.test(t) || (chiffres.length >= 7 && chiffres === t.replace(/\s/g, ""));
-    const jour = t.match(/^(\d{1,2})[/.-](\d{1,2})$/);
-    let ls: Ligne[], rs: Rupture[], lis: Litige[];
-    if (jour) {
-      const iso = `2025-${jour[2].padStart(2, "0")}-${jour[1].padStart(2, "0")}`;
-      ls = don.lignes.filter(l => l.d === iso); rs = don.ruptures.filter(r => r.d === iso); lis = don.litiges.filter(x => x.d === iso);
-    } else if (estBL) {
-      ls = don.lignes.filter(l => l.bl.replace(/\D/g, "").includes(chiffres) || l.n.replace(/\D/g, "") === chiffres);
-      rs = don.ruptures.filter(r => r.bl.replace(/\D/g, "").includes(chiffres) || r.n.replace(/\D/g, "") === chiffres);
-      lis = don.litiges.filter(x => x.bl.replace(/\D/g, "").includes(chiffres));
-    } else {
-      const mots = norm(t).split(/\s+/).filter(Boolean);
-      const ok = (s: string) => mots.every(m => s.includes(m));
-      ls = don.lignes.filter(l => ok(norm(`${l.c} ${l.cf} ${l.s} ${l.n} ${l.l} ${l.a} ${l.ca} ${l.f} ${l.st}`)));
-      rs = don.ruptures.filter(r => ok(norm(`${r.c} ${r.cf} ${r.s} ${r.n} ${r.l} ${r.a} ${r.ca} ${r.f}`)));
-      lis = don.litiges.filter(x => ok(norm(`${x.c} ${x.cf} ${x.s} ${x.a} ${x.ca} ${x.mo}`)));
-    }
-    const groupes = new Map<string, Ligne[]>();
-    ls.forEach(l => { const k = `${l.d}|${l.c}|${l.n}|${l.s}`; groupes.set(k, [...(groupes.get(k) || []), l]); });
-    const comptees = ls.filter(compte);
-    return {
-      groupes: [...groupes.values()].sort((a, b) => a[0].d.localeCompare(b[0].d) || a[0].c.localeCompare(b[0].c)),
-      ruptures: rs, litiges: lis,
-      tot: comptees.reduce((t, l) => ({ q: t.q + l.q, lv: t.lv + l.lv, m: t.m + l.m }), { q: 0, lv: 0, m: 0 }),
-      mRupt: rs.reduce((t, r) => t + r.m, 0),
+  const exporter = async (format: "excel" | "pdf", titre: string, ls: Ligne[]) => {
+    const { exporterExcelMoorea, exporterPdfMoorea } = await import("./exportsMoorea");
+    const e = {
+      nomFichier: `Noel 2025 - ${titre}`, titre: `Commandes Noël 2025 — ${titre}`, sousTitre: "Livraisons du 08/12 au 30/12/2025",
+      entetes: ["Date", "Client", "Site", "N° commande", "Article", "Colis commandés", "Colis livrés", "Colis manquants", "Statut", "BL"],
+      lignes: ls.filter(compte).sort((a, b) => a.d.localeCompare(b.d) || a.c.localeCompare(b.c)).map(l => [jjmm(l.d), l.c, l.s, l.n, l.a || l.l, l.q, l.lv, l.m, l.st, l.bl]),
+      total: ["TOTAL", "", "", "", "", ls.filter(compte).reduce((t, l) => t + l.q, 0), ls.filter(compte).reduce((t, l) => t + l.lv, 0), ls.filter(compte).reduce((t, l) => t + l.m, 0), "", ""],
     };
-  }, [q, don]);
+    if (format === "excel") await exporterExcelMoorea(e); else await exporterPdfMoorea(e);
+  };
+  const boutonsExport = (titre: string, ls: Ligne[]) => (
+    <span style={{ display: "inline-flex", gap: 6 }}>
+      <button type="button" onClick={() => exporter("excel", titre, ls)} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #16a34a", background: "#f0fdf4", color: "#15803d", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>📊 Excel</button>
+      <button type="button" onClick={() => exporter("pdf", titre, ls)} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #dc2626", background: "#fef2f2", color: "#b91c1c", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>📄 PDF</button>
+    </span>
+  );
+
+  const carte = { background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 16, padding: 16, marginBottom: 14 } as const;
+  const th = { padding: "6px 8px", fontSize: 11, color: "#6b7280", textAlign: "left" as const, whiteSpace: "nowrap" as const, borderBottom: "1px solid #eee8dc", background: "#faf8f3" };
+  const td = { padding: "6px 8px", fontSize: 12.5, borderBottom: "1px solid #f3f0e8", verticalAlign: "top" as const };
+  const sel = { padding: "8px 10px", borderRadius: 9, border: "1.5px solid #e8e0d0", fontSize: 13, background: "#fff", maxWidth: "100%" } as const;
+  const chiffres = (t: { q: number; lv: number; m: number }, nbLitiges?: number) => (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(150px, 100%), 1fr))", gap: 10 }}>
+      {[["📦 Commandés", ent(t.q), "#1a2e1a"], ["✅ Livrés", ent(t.lv), "#15803d"], ["❌ Manquants", ent(t.m), "#dc2626"], ["🎯 Taux de service", pct(t.lv, t.q), "#305a55"], ...(nbLitiges != null ? [["⚠️ Litiges", String(nbLitiges), "#b45309"]] : [])].map(([lib, v, c]) => (
+        <div key={lib} style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: "10px 14px" }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: "#6b7280" }}>{lib}</div>
+          <div style={{ fontSize: 23, fontWeight: 900, color: c }}>{v}</div>
+        </div>
+      ))}
+    </div>
+  );
+  const barresJours = (ls: Ligne[], surClic?: (iso: string) => void) => {
+    const parJ = new Map<string, { q: number; m: number }>(); ls.filter(compte).forEach(l => { const x = parJ.get(l.d) || { q: 0, m: 0 }; x.q += l.q; x.m += l.m; parJ.set(l.d, x); });
+    const max = Math.max(1, ...[...parJ.values()].map(x => x.m));
+    return (
+      <div style={{ display: "flex", gap: 5, alignItems: "flex-end", overflowX: "auto", paddingBottom: 4 }}>
+        {jours.map(j => { const x = parJ.get(j); return (
+          <button key={j} type="button" disabled={!surClic} onClick={() => surClic?.(j)} title={x ? `${jjmm(j)} : ${ent(x.q)} commandés, ${ent(x.m)} manquants` : jjmm(j)}
+            style={{ border: "none", background: "none", padding: 0, cursor: surClic ? "pointer" : "default", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, minWidth: 30 }}>
+            <span style={{ fontSize: 10, fontWeight: 800, color: "#dc2626", minHeight: 12 }}>{x?.m ? ent(x.m) : ""}</span>
+            <span style={{ width: 22, height: Math.max(3, Math.round(((x?.m || 0) / max) * 70)), borderRadius: 4, background: x?.m ? "#f87171" : "#e5e7eb" }} />
+            <span style={{ fontSize: 10, color: "#6b7280" }}>{jjmm(j)}</span>
+          </button>
+        ); })}
+      </div>
+    );
+  };
+  const topManques = (ls: Ligne[], par: "a" | "c", n = 12) => {
+    const m = new Map<string, { q: number; m: number }>(); ls.filter(compte).forEach(l => { const k = (par === "a" ? l.a : l.c) || "—"; const x = m.get(k) || { q: 0, m: 0 }; x.q += l.q; x.m += l.m; m.set(k, x); });
+    return [...m].filter(([, x]) => x.m > 0).sort((a, b) => b[1].m - a[1].m).slice(0, n);
+  };
+  const listeTop = (titre: string, items: [string, { q: number; m: number }][], type: "article" | "client") => (
+    <div style={carte}>
+      <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 10 }}>{titre}</div>
+      {!items.length && <div style={{ fontSize: 13, color: "#15803d", fontWeight: 700 }}>✅ Rien n'a manqué</div>}
+      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+        {items.map(([k, x]) => (
+          <button key={k} type="button" onClick={() => ouvrirType(type, k)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 10px", borderRadius: 10, border: "1px solid #f3e8e8", background: "#fff", cursor: "pointer", textAlign: "left" }}>
+            <span style={{ fontSize: 18 }}>{type === "article" ? emojiProduit(k) : "👤"}</span>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: "#1a2e1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={k}>{k}</span>
+            <span style={{ fontSize: 13.5, fontWeight: 900, color: "#dc2626", whiteSpace: "nowrap" }}>−{ent(x.m)}</span>
+            <span style={{ fontSize: 11, color: "#9ca3af", whiteSpace: "nowrap" }}>sur {ent(x.q)}</span>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  // ── Fiche (client, article, famille, jour, BL / commande) ──
+  const rendreFiche = (f: Fiche) => {
+    const ls = (don?.lignes || []).filter(f.filtre), lc = ls.filter(compte);
+    const tot = lc.reduce((t, l) => ({ q: t.q + l.q, lv: t.lv + l.lv, m: t.m + l.m }), { q: 0, lv: 0, m: 0 });
+    const lits = (don?.litiges || []).filter(f.filtreL);
+    const cmds = new Map<string, Ligne[]>(); ls.forEach(l => { const k = `${l.d}|${l.c}|${l.n}|${l.s}`; cmds.set(k, [...(cmds.get(k) || []), l]); });
+    const listeCmds = [...cmds].sort((a, b) => a[1][0].d.localeCompare(b[1][0].d) || a[1][0].c.localeCompare(b[1][0].c));
+    const icone = f.type === "article" ? emojiProduit(f.valeur) : TITRES[f.type] || "🔎";
+    return (
+      <div>
+        <div style={{ ...carte, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: "#305a55", border: "none", color: "#fff" }}>
+          <span style={{ fontSize: 38 }}>{icone}</span>
+          <div style={{ flex: 1, minWidth: 200 }}>
+            <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1.15 }}>{f.valeur}</div>
+            <div style={{ fontSize: 14, marginTop: 4, color: "#d9e7e1" }}>
+              {tot.m ? <>Il a manqué <b style={{ color: "#fecaca", fontSize: 17 }}>{ent(tot.m)} colis</b> sur {ent(tot.q)} commandés</> : <>✅ Tout a été livré ({ent(tot.q)} colis)</>}
+            </div>
+          </div>
+          {boutonsExport(f.valeur, ls)}
+          <button type="button" onClick={() => setFiche(null)} style={{ padding: "8px 12px", borderRadius: 9, border: "1.5px solid rgba(255,255,255,.4)", background: "transparent", color: "#fff", fontWeight: 800, cursor: "pointer" }}>✕ Fermer</button>
+        </div>
+        {chiffres(tot, lits.length)}
+        <div style={{ ...carte, marginTop: 14 }}>
+          <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 8 }}>📅 Manquants jour par jour</div>
+          {barresJours(ls, f.type === "jour" ? undefined : iso => setFiche({ ...f, valeur: `${f.valeur} · ${jjmm(iso)}`, filtre: l => f.filtre(l) && l.d === iso, filtreR: r => f.filtreR(r) && r.d === iso, filtreL: x => f.filtreL(x) && x.d === iso }))}
+        </div>
+        {f.type !== "bl" && (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap: 14 }}>
+            {f.type !== "article" && listeTop("❌ Produits qui ont manqué", topManques(ls, "a"), "article")}
+            {f.type !== "client" && listeTop("👤 Clients touchés", topManques(ls, "c"), "client")}
+          </div>
+        )}
+        {lits.length > 0 && (
+          <div style={{ ...carte, borderColor: "#fcd34d" }}>
+            <div style={{ fontSize: 15, fontWeight: 900, color: "#b45309", marginBottom: 6 }}>⚠️ Litiges ({lits.length})</div>
+            {lits.map((x, i) => (
+              <div key={i} style={{ fontSize: 12.5, padding: "5px 0", borderTop: i ? "1px solid #fef3c7" : "none", display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <b>{jjmm(x.d)}</b><span>{x.c}</span><span style={{ color: "#6b7280" }}>{x.bl}</span><span>{emojiProduit(x.a)} <b>{x.a}</b></span>
+                <span style={{ color: "#dc2626", fontWeight: 800 }}>{x.r} refusé{x.r > 1 ? "s" : ""} / {x.lv}</span><span style={{ color: "#6b7280" }}>{x.ty}{x.mo ? ` · ${x.mo}` : ""}</span>
+                {x.lien && <a href={x.lien} target="_blank" rel="noreferrer" style={{ color: "#305a55", fontWeight: 800 }}>✉️ voir le mail</a>}
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={carte}>
+          <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 8 }}>🧾 Les commandes ({listeCmds.length})</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            {listeCmds.slice(0, 200).map(([k, g]) => {
+              const l0 = g[0], t = g.filter(compte).reduce((a, l) => ({ q: a.q + l.q, m: a.m + l.m }), { q: 0, m: 0 }), ouvert = cmdOuverte === k;
+              return (
+                <div key={k} style={{ border: `1.5px solid ${t.m ? "#fecaca" : "#e5e7eb"}`, borderRadius: 12, overflow: "hidden" }}>
+                  <div onClick={() => setCmdOuverte(ouvert ? null : k)} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "9px 12px", cursor: "pointer", background: t.m ? "#fff7f7" : "#fff" }}>
+                    <span style={{ fontSize: 13, fontWeight: 900, minWidth: 48 }}>📅 {jjmm(l0.d)}</span>
+                    <span style={{ fontSize: 13, fontWeight: 800 }}>👤 {l0.c}</span>
+                    <span style={{ fontSize: 12, color: "#6b7280", flex: "1 1 160px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l0.s}{l0.n ? ` · cde ${l0.n}` : ""}</span>
+                    <span style={{ fontSize: 12.5, fontWeight: 900, color: t.m ? "#dc2626" : "#15803d", whiteSpace: "nowrap" }}>{t.m ? `−${ent(t.m)} / ${ent(t.q)}` : `✓ ${ent(t.q)}`}</span>
+                    {boutonScan(l0)}
+                    <span style={{ color: "#9ca3af", transform: ouvert ? "rotate(90deg)" : "none", transition: "transform .15s" }}>›</span>
+                  </div>
+                  {ouvert && (
+                    <div style={{ overflowX: "auto", borderTop: "1px solid #f3f0e8" }}>
+                      <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 620 }}>
+                        <thead><tr><th style={th}>Commandé par le client</th><th style={th}>Article Moorea</th><th style={{ ...th, textAlign: "right" }}>Cdé</th><th style={{ ...th, textAlign: "right" }}>Livré</th><th style={{ ...th, textAlign: "right" }}>Manque</th><th style={th}>Statut</th><th style={th}>BL</th></tr></thead>
+                        <tbody>{g.map(l => (
+                          <tr key={l.i} style={{ opacity: compte(l) ? 1 : 0.45, background: l.m ? "#fef2f2" : undefined }}>
+                            <td style={td}>{l.l}{l.an ? <span style={{ color: "#9ca3af", fontSize: 11 }}> · « {l.an} »</span> : null}</td>
+                            <td style={td}>{l.a ? `${emojiProduit(l.a)} ${l.a}` : "—"}</td>
+                            <td style={{ ...td, textAlign: "right" }}>{ent(l.q)}</td><td style={{ ...td, textAlign: "right", color: "#15803d" }}>{ent(l.lv)}</td>
+                            <td style={{ ...td, textAlign: "right", color: "#dc2626", fontWeight: 900 }}>{l.m ? ent(l.m) : ""}</td>
+                            <td style={{ ...td, fontSize: 11.5 }}>{l.st}</td><td style={{ ...td, fontSize: 11, color: "#6b7280" }}>{l.bl}</td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {listeCmds.length > 200 && <p style={{ fontSize: 12, color: "#9ca3af" }}>… et {listeCmds.length - 200} autres : utilisez l'export Excel pour tout voir.</p>}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // Tableau article × jour
   const tableau = useMemo(() => {
@@ -220,7 +385,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       if (filtreClient && l.c !== filtreClient) return;
       if (filtreFamille && l.f !== filtreFamille) return;
       const art = l.a || `(${l.l})`;
-      if (fa && !norm(art).includes(fa)) return;
+      if (fa && !norm(art).includes(fa) && !(fa === "hv" && /haricot vert/i.test(art))) return;
       const r = m.get(art) || {}; const x = r[l.d] || { q: 0, lv: 0, m: 0 };
       x.q += l.q; x.lv += l.lv; x.m += l.m; r[l.d] = x; m.set(art, r);
     });
@@ -232,266 +397,154 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     if (mesure === "taux") return x.q ? `${Math.round((x.lv / x.q) * 100)} %` : "";
     const v = x[mesure]; return v ? ent(v) : "";
   };
-
-  const parJourRupt = useMemo(() => {
-    const m = new Map<string, number>(); (don?.ruptures || []).forEach(r => m.set(r.d, (m.get(r.d) || 0) + r.m));
-    return [...m].sort((a, b) => a[0].localeCompare(b[0]));
-  }, [don]);
-
-  const carte = { background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: 14, marginBottom: 12 } as const;
-  const th = { padding: "6px 8px", fontSize: 11, color: "#6b7280", textAlign: "left" as const, whiteSpace: "nowrap" as const, borderBottom: "1px solid #eee8dc", background: "#faf8f3" };
-  const td = { padding: "6px 8px", fontSize: 12.5, borderBottom: "1px solid #f3f0e8", verticalAlign: "top" as const };
-  const sel = { padding: "7px 10px", borderRadius: 9, border: "1.5px solid #e8e0d0", fontSize: 13, background: "#fff", maxWidth: "100%" } as const;
+  const clients = useMemo(() => [...new Set(lignes.map(l => l.c).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr")), [lignes]);
+  const familles = useMemo(() => [...new Set(lignes.map(l => l.f).filter(Boolean))].sort((a, b) => a.localeCompare(b, "fr")), [lignes]);
+  const exporterTableau = async (format: "excel" | "pdf") => {
+    const { exporterExcelMoorea, exporterPdfMoorea } = await import("./exportsMoorea");
+    const lib = { q: "commandés", lv: "livrés", m: "manquants", taux: "taux de service" }[mesure];
+    const e = { nomFichier: `Noel 2025 - demande par produit et par jour`, titre: `Noël 2025 — colis ${lib} par produit et par jour`, filtres: [filtreClient && `Client : ${filtreClient}`, filtreFamille && `Famille : ${filtreFamille}`].filter(Boolean) as string[],
+      entetes: ["Article", ...jours.map(jjmm), "Total"], lignes: tableau.map(({ art, r, tq, tlv, tm }) => [art, ...jours.map(j => valeur(r[j])), valeur({ q: tq, lv: tlv, m: tm })]) };
+    if (format === "excel") await exporterExcelMoorea(e); else await exporterPdfMoorea(e);
+  };
 
   const vide = don && !don.lignes.length;
+  const nbScans = Object.keys(don?.scans || {}).length;
 
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee" }}>
-      <PageHeader titre="🎄 Commandes Noël 2025" couleur="#305a55" onBack={onClose} onHome={onClose} />
+      <PageHeader titre="🎄 Commandes Noël 2025" couleur="#305a55" onBack={fiche ? () => setFiche(null) : onClose} onHome={onClose} />
       <div style={{ maxWidth: 1250, margin: "0 auto", padding: "16px 16px 60px", boxSizing: "border-box" }}>
         {erreur && <div style={{ ...carte, color: "#b91c1c", fontWeight: 700 }}>Lecture impossible : {erreur}</div>}
-        {!don && !erreur && <p style={{ textAlign: "center", color: "#9ca3af", padding: 30 }}>Chargement des commandes de Noël…</p>}
+        {!don && !erreur && <p style={{ textAlign: "center", color: "#9ca3af", padding: 30 }}>🎄 Chargement des commandes de Noël…</p>}
 
         {don && !vide && (
           <>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(170px, 100%), 1fr))", gap: 10, marginBottom: 12 }}>
-              {[["Colis commandés", ent(totaux.q), "#1a2e1a"], ["Colis livrés", ent(totaux.lv), "#15803d"], ["Colis manquants", ent(totaux.m), "#dc2626"], ["Taux de service", totaux.q ? `${(totaux.lv / totaux.q * 100).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %` : "—", "#305a55"], ["Litiges", String(don.litiges.length), "#b45309"]].map(([lib, v, c]) => (
-                <div key={lib} style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "10px 14px" }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, color: "#6b7280" }}>{lib}</div>
-                  <div style={{ fontSize: 22, fontWeight: 900, color: c }}>{v}</div>
-                </div>
-              ))}
+            {/* Grande recherche intelligente */}
+            <div style={{ ...carte, background: "linear-gradient(135deg, #305a55, #1f4440)", border: "none", color: "#fff" }}>
+              <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 4 }}>🔎 Qu'est-ce qui a manqué à Noël ?</div>
+              <div style={{ fontSize: 13, color: "#d9e7e1", marginBottom: 10 }}>Tapez un client, un produit (« hv », « passion »…), une famille, un jour (« 19/12 »), un BL ou un n° de commande.</div>
+              <RechercheIntelligente options={options} placeholder="👤 Carrefour · 🫛 haricot vert · 📅 19/12 · 🧾 BL2025125313…" onChoisir={ouvrir} c={C} grand extra={extra} />
             </div>
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-              {([["recherche", "🔎 Recherche"], ["demande", "📅 Demande produit × jour"], ["manquants", "❌ Manquants"], ["litiges", "⚠️ Litiges"]] as const).map(([v, lib]) => (
-                <button key={v} type="button" onClick={() => setVue(v)} style={{ padding: "9px 16px", borderRadius: 10, border: `2px solid ${vue === v ? "#305a55" : "#e8e0d0"}`, background: vue === v ? "#305a55" : "#fff", color: vue === v ? "#fff" : "#374151", fontWeight: 800, fontSize: 13, cursor: "pointer" }}>{lib}</button>
-              ))}
-            </div>
-          </>
-        )}
 
-        {don && !vide && vue === "recherche" && (
-          <div>
-            <input value={q} onChange={e => setQ(e.target.value)} autoFocus placeholder="BL (BL2025121666 ou 2025121666), n° de commande, jour (19/12), client, article…"
-              style={{ width: "100%", boxSizing: "border-box", padding: "12px 14px", borderRadius: 12, border: "2px solid #305a55", fontSize: 15, marginBottom: 12 }} />
-            {!resultats && <p style={{ color: "#9ca3af", fontSize: 13 }}>Tapez au moins 2 caractères. Exemples : « 19/12 », « Carrefour haricot », « BL2025125313 », « passion ».</p>}
-            {resultats && (
+            {fiche ? rendreFiche(fiche) : (
               <>
-                <div style={{ ...carte, display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center" }}>
-                  <span style={{ fontSize: 13, fontWeight: 800 }}>{resultats.groupes.length} commande{resultats.groupes.length > 1 ? "s" : ""}</span>
-                  <span style={{ fontSize: 13 }}>Commandé <b>{ent(resultats.tot.q)}</b></span>
-                  <span style={{ fontSize: 13, color: "#15803d" }}>Livré <b>{ent(resultats.tot.lv)}</b></span>
-                  <span style={{ fontSize: 14, color: "#dc2626", fontWeight: 800 }}>Il a manqué {ent(resultats.tot.m)} colis</span>
-                  {resultats.litiges.length > 0 && <span style={{ fontSize: 13, color: "#b45309", fontWeight: 700 }}>· {resultats.litiges.length} litige{resultats.litiges.length > 1 ? "s" : ""}</span>}
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+                  {([["accueil", "🏠 Résumé"], ["tableau", "📅 Demande produit × jour"], ["litiges", "⚠️ Litiges"]] as const).map(([v, lib]) => (
+                    <button key={v} type="button" onClick={() => setVue(v)} style={{ padding: "9px 16px", borderRadius: 10, border: `2px solid ${vue === v ? "#305a55" : "#e8e0d0"}`, background: vue === v ? "#305a55" : "#fff", color: vue === v ? "#fff" : "#374151", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>{lib}</button>
+                  ))}
                 </div>
-                {resultats.litiges.length > 0 && (
-                  <div style={{ ...carte, borderColor: "#fcd34d" }}>
-                    <div style={{ fontSize: 13, fontWeight: 800, color: "#b45309", marginBottom: 6 }}>⚠️ Litiges</div>
-                    {resultats.litiges.slice(0, 30).map((x, i) => (
-                      <div key={i} style={{ fontSize: 12.5, padding: "4px 0", borderTop: i ? "1px solid #fef3c7" : "none", display: "flex", gap: 8, flexWrap: "wrap" }}>
-                        <b>{jjmm(x.d)}</b><span>{x.c} · {x.cf}</span><span>{x.bl}</span><span style={{ fontWeight: 700 }}>{x.a}</span>
-                        <span style={{ color: "#dc2626", fontWeight: 800 }}>{x.r} refusé{x.r > 1 ? "s" : ""}/{x.lv}</span><span style={{ color: "#6b7280" }}>{x.ty}{x.mo ? ` · ${x.mo}` : ""}</span>
-                        {x.lien && <a href={x.lien} target="_blank" rel="noreferrer" style={{ color: "#305a55", fontWeight: 700 }}>✉️ mail</a>}
+
+                {vue === "accueil" && (
+                  <>
+                    {chiffres(totaux, don.litiges.length)}
+                    <div style={{ ...carte, marginTop: 14 }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+                        <span style={{ fontSize: 15, fontWeight: 900, flex: 1 }}>📅 Colis manquants par jour <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— touchez un jour pour le détail</span></span>
+                        {boutonsExport("toutes les commandes", don.lignes)}
                       </div>
-                    ))}
+                      {barresJours(don.lignes, iso => ouvrirType("jour", "", iso))}
+                    </div>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap: 14 }}>
+                      {listeTop("❌ Produits qui ont le plus manqué", topManques(don.lignes, "a", 15), "article")}
+                      {listeTop("👤 Clients les plus touchés", topManques(don.lignes, "c", 15), "client")}
+                    </div>
+                  </>
+                )}
+
+                {vue === "tableau" && (
+                  <div style={carte}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+                      <select value={filtreClient} onChange={e => setFiltreClient(e.target.value)} style={sel}><option value="">👤 Tous les clients</option>{clients.map(c => <option key={c}>{c}</option>)}</select>
+                      <select value={filtreFamille} onChange={e => setFiltreFamille(e.target.value)} style={sel}><option value="">🗂️ Toutes les familles</option>{familles.map(f => <option key={f} value={f}>{emojiProduit(f)} {f}</option>)}</select>
+                      <input value={filtreArticle} onChange={e => setFiltreArticle(e.target.value)} placeholder="🥬 Article… (hv, passion…)" style={{ ...sel, flex: "1 1 160px" }} />
+                      <span style={{ display: "inline-flex", border: "1.5px solid #e8e0d0", borderRadius: 9, overflow: "hidden" }}>
+                        {([["q", "📦 Commandé"], ["lv", "✅ Livré"], ["m", "❌ Manquant"], ["taux", "🎯 Taux"]] as const).map(([v, lib]) => (
+                          <button key={v} type="button" onClick={() => setMesure(v)} style={{ padding: "7px 11px", border: "none", background: mesure === v ? (v === "m" ? "#dc2626" : "#305a55") : "#fff", color: mesure === v ? "#fff" : "#374151", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>{lib}</button>
+                        ))}
+                      </span>
+                      <span style={{ display: "inline-flex", gap: 6 }}>
+                        <button type="button" onClick={() => exporterTableau("excel")} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #16a34a", background: "#f0fdf4", color: "#15803d", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>📊 Excel</button>
+                        <button type="button" onClick={() => exporterTableau("pdf")} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #dc2626", background: "#fef2f2", color: "#b91c1c", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>📄 PDF</button>
+                      </span>
+                    </div>
+                    <div style={{ overflow: "auto", maxHeight: "70vh", border: "1px solid #eee8dc", borderRadius: 10 }}>
+                      <table style={{ borderCollapse: "collapse", fontSize: 12 }}>
+                        <thead><tr>
+                          <th style={{ ...th, position: "sticky", left: 0, top: 0, zIndex: 2, minWidth: 280 }}>Article</th>
+                          {jours.map(j => <th key={j} style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>{jjmm(j)}</th>)}
+                          <th style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>Total</th>
+                        </tr></thead>
+                        <tbody>
+                          {!tableau.length && <tr><td style={{ ...td, color: "#9ca3af" }} colSpan={jours.length + 2}>Aucun article pour ces filtres.</td></tr>}
+                          {tableau.map(({ art, r, tq, tm, tlv }) => (
+                            <tr key={art}>
+                              <td style={{ ...td, position: "sticky", left: 0, background: "#fff", fontWeight: 700, maxWidth: 340, cursor: "pointer" }} onClick={() => ouvrirType("article", art)} title="Ouvrir la fiche du produit">{emojiProduit(art)} {art}</td>
+                              {jours.map(j => <td key={j} style={{ ...td, textAlign: "right", color: mesure === "m" ? "#dc2626" : r[j]?.m && mesure === "q" ? "#b91c1c" : "#1f2937" }} title={r[j] ? `Commandé ${r[j].q} · livré ${r[j].lv} · manquant ${r[j].m}` : ""}>{valeur(r[j])}</td>)}
+                              <td style={{ ...td, textAlign: "right", fontWeight: 900 }}>{valeur({ q: tq, lv: tlv, m: tm })}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                    <p style={{ fontSize: 11, color: "#9ca3af", margin: "8px 0 0" }}>Rouge = il a manqué ce jour-là. Touchez un article pour sa fiche. Hors lignes « pas de commande » et doublons.</p>
                   </div>
                 )}
-                {resultats.groupes.slice(0, 80).map(g => {
-                  const l0 = g[0], tot = g.filter(compte).reduce((t, l) => ({ q: t.q + l.q, m: t.m + l.m }), { q: 0, m: 0 });
-                  return (
-                    <div key={`${l0.d}|${l0.c}|${l0.n}|${l0.s}`} style={carte}>
-                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "baseline", marginBottom: 6 }}>
-                        <span style={{ fontSize: 14, fontWeight: 900, color: "#1a2e1a" }}>{jjmm(l0.d)} · {l0.c}</span>
-                        <span style={{ fontSize: 12, color: "#6b7280" }}>{l0.s}{l0.n ? ` · cde ${l0.n}` : ""}{l0.cf ? ` · ${l0.cf}` : ""}</span>
-                        <span style={{ marginLeft: "auto", fontSize: 12.5, fontWeight: 800, color: tot.m ? "#dc2626" : "#15803d" }}>{tot.m ? `manque ${ent(tot.m)} / ${ent(tot.q)}` : `tout livré (${ent(tot.q)})`}</span>
-                        {boutonScan(l0)}
-                      </div>
-                      <div style={{ overflowX: "auto" }}>
-                        <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 640 }}>
-                          <thead><tr><th style={th}>Commandé par le client</th><th style={th}>Article Moorea</th><th style={{ ...th, textAlign: "right" }}>Cdé</th><th style={{ ...th, textAlign: "right" }}>Livré</th><th style={{ ...th, textAlign: "right" }}>Manque</th><th style={th}>Statut</th><th style={th}>BL</th></tr></thead>
-                          <tbody>
-                            {g.map(l => (
-                              <tr key={l.i} style={{ opacity: compte(l) ? 1 : 0.45, background: l.m ? "#fef2f2" : undefined }}>
-                                <td style={td}>{l.l}{l.an ? <span style={{ color: "#9ca3af", fontSize: 11 }}> · « {l.an} »</span> : null}</td>
-                                <td style={{ ...td, color: "#374151" }}>{l.a || "—"}</td>
-                                <td style={{ ...td, textAlign: "right" }}>{ent(l.q)}</td>
-                                <td style={{ ...td, textAlign: "right", color: "#15803d" }}>{ent(l.lv)}</td>
-                                <td style={{ ...td, textAlign: "right", color: "#dc2626", fontWeight: 800 }}>{l.m ? ent(l.m) : ""}</td>
-                                <td style={{ ...td, fontSize: 11.5 }}>{l.st}</td>
-                                <td style={{ ...td, fontSize: 11, color: "#6b7280" }}>{l.bl}</td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    </div>
-                  );
-                })}
-                {resultats.groupes.length > 80 && <p style={{ fontSize: 12, color: "#9ca3af" }}>… {resultats.groupes.length - 80} autres commandes : précisez la recherche.</p>}
-              </>
-            )}
-          </div>
-        )}
 
-        {don && !vide && vue === "demande" && (
-          <div style={carte}>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-              <select value={filtreClient} onChange={e => setFiltreClient(e.target.value)} style={sel}><option value="">Tous les clients</option>{clients.map(c => <option key={c}>{c}</option>)}</select>
-              <select value={filtreFamille} onChange={e => setFiltreFamille(e.target.value)} style={sel}><option value="">Toutes les familles</option>{familles.map(f => <option key={f}>{f}</option>)}</select>
-              <input value={filtreArticle} onChange={e => setFiltreArticle(e.target.value)} placeholder="Article…" style={{ ...sel, flex: "1 1 160px" }} />
-              <span style={{ display: "inline-flex", border: "1.5px solid #e8e0d0", borderRadius: 9, overflow: "hidden" }}>
-                {([["q", "Commandé"], ["lv", "Livré"], ["m", "Manquant"], ["taux", "Taux"]] as const).map(([v, lib]) => (
-                  <button key={v} type="button" onClick={() => setMesure(v)} style={{ padding: "7px 11px", border: "none", background: mesure === v ? (v === "m" ? "#dc2626" : "#305a55") : "#fff", color: mesure === v ? "#fff" : "#374151", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>{lib}</button>
-                ))}
-              </span>
-            </div>
-            <div style={{ overflow: "auto", maxHeight: "70vh", border: "1px solid #eee8dc", borderRadius: 10 }}>
-              <table style={{ borderCollapse: "collapse", fontSize: 12 }}>
-                <thead><tr>
-                  <th style={{ ...th, position: "sticky", left: 0, top: 0, zIndex: 2, minWidth: 260 }}>Article</th>
-                  {jours.map(j => <th key={j} style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>{jjmm(j)}</th>)}
-                  <th style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>Total</th>
-                </tr></thead>
-                <tbody>
-                  {tableau.map(({ art, r, tq, tm, tlv }) => (
-                    <tr key={art}>
-                      <td style={{ ...td, position: "sticky", left: 0, background: "#fff", fontWeight: 700, maxWidth: 320 }}>{art}</td>
-                      {jours.map(j => <td key={j} style={{ ...td, textAlign: "right", color: mesure === "m" ? "#dc2626" : r[j]?.m && mesure === "q" ? "#b91c1c" : "#1f2937" }} title={r[j] ? `Commandé ${r[j].q} · livré ${r[j].lv} · manquant ${r[j].m}` : ""}>{valeur(r[j])}</td>)}
-                      <td style={{ ...td, textAlign: "right", fontWeight: 900 }}>{valeur({ q: tq, lv: tlv, m: tm })}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p style={{ fontSize: 11, color: "#9ca3af", margin: "8px 0 0" }}>Hors lignes « pas de commande » et doublons. Survolez une case pour voir commandé / livré / manquant.</p>
-          </div>
-        )}
-
-        {don && !vide && vue === "manquants" && (
-          <div>
-            <div style={{ ...carte, display: "flex", gap: 6, flexWrap: "wrap", alignItems: "flex-end" }}>
-              {parJourRupt.map(([d, m]) => {
-                const max = Math.max(...parJourRupt.map(x => x[1]), 1);
-                return (
-                  <button key={d} type="button" onClick={() => setJourManquants(jourManquants === d ? "" : d)} style={{ border: "none", background: "none", cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, padding: 0 }}>
-                    <span style={{ fontSize: 10, fontWeight: 800, color: "#dc2626" }}>{ent(m)}</span>
-                    <span style={{ width: 26, height: Math.max(4, Math.round((m / max) * 80)), borderRadius: 4, background: jourManquants === d ? "#991b1b" : "#f87171" }} />
-                    <span style={{ fontSize: 10, color: jourManquants === d ? "#1a2e1a" : "#6b7280", fontWeight: jourManquants === d ? 800 : 500 }}>{jjmm(d)}</span>
-                  </button>
-                );
-              })}
-              <span style={{ fontSize: 11, color: "#9ca3af", flexBasis: "100%" }}>Colis manquants par jour de livraison — cliquez un jour pour le détail.</span>
-            </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
-              <select value={filtreClient} onChange={e => setFiltreClient(e.target.value)} style={sel}><option value="">Tous les clients</option>{[...new Set(don.ruptures.map(r => r.c))].sort().map(c => <option key={c}>{c}</option>)}</select>
-              {jourManquants && <button type="button" onClick={() => setJourManquants("")} style={{ ...sel, cursor: "pointer", fontWeight: 700 }}>✕ {jjmm(jourManquants)}</button>}
-            </div>
-            {(() => {
-              const rs = don.ruptures.filter(r => (!filtreClient || r.c === filtreClient) && (!jourManquants || r.d === jourManquants));
-              const parArt = new Map<string, { m: number; clients: Set<string> }>();
-              rs.forEach(r => { const k = r.a || r.l; const x = parArt.get(k) || { m: 0, clients: new Set() }; x.m += r.m; x.clients.add(r.c); parArt.set(k, x); });
-              return (
-                <>
-                  <div style={carte}>
-                    <div style={{ fontSize: 13, fontWeight: 800, marginBottom: 6 }}>Produits les plus manqués <span style={{ color: "#dc2626" }}>({ent(rs.reduce((t, r) => t + r.m, 0))} colis)</span></div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(300px, 100%), 1fr))", gap: 6 }}>
-                      {[...parArt].sort((a, b) => b[1].m - a[1].m).slice(0, 24).map(([a, x]) => (
-                        <div key={a} style={{ display: "flex", gap: 8, fontSize: 12.5, padding: "5px 8px", borderRadius: 8, background: "#fef2f2" }}>
-                          <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", fontWeight: 700 }} title={a}>{a}</span>
-                          <span style={{ color: "#dc2626", fontWeight: 900 }}>{ent(x.m)}</span><span style={{ color: "#9ca3af", fontSize: 11 }}>{x.clients.size} cl.</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                {vue === "litiges" && (
                   <div style={{ ...carte, overflowX: "auto" }}>
                     <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
-                      <thead><tr><th style={th}>Jour</th><th style={th}>Client</th><th style={th}>Commande</th><th style={th}>Article</th><th style={{ ...th, textAlign: "right" }}>Cdé</th><th style={{ ...th, textAlign: "right" }}>Livré</th><th style={{ ...th, textAlign: "right" }}>Manque</th><th style={th}>Statut</th><th style={th}>BL</th></tr></thead>
+                      <thead><tr><th style={th}>Livraison</th><th style={th}>Client</th><th style={th}>BL</th><th style={th}>Article</th><th style={{ ...th, textAlign: "right" }}>Livrés</th><th style={{ ...th, textAlign: "right" }}>Refusés</th><th style={th}>Type · motif</th><th style={th}></th></tr></thead>
                       <tbody>
-                        {rs.sort((a, b) => a.d.localeCompare(b.d) || a.c.localeCompare(b.c)).slice(0, 700).map((r, i) => (
+                        {[...don.litiges].sort((a, b) => a.d.localeCompare(b.d)).map((x, i) => (
                           <tr key={i}>
-                            <td style={td}>{jjmm(r.d)}</td><td style={td}>{r.c}<div style={{ fontSize: 11, color: "#9ca3af" }}>{r.s}</div></td><td style={{ ...td, fontSize: 11.5 }}>{r.n}</td>
-                            <td style={td}>{r.a || r.l}{r.a && r.l ? <div style={{ fontSize: 11, color: "#9ca3af" }}>{r.l}</div> : null}</td>
-                            <td style={{ ...td, textAlign: "right" }}>{ent(r.q)}</td><td style={{ ...td, textAlign: "right", color: "#15803d" }}>{ent(r.lv)}</td><td style={{ ...td, textAlign: "right", color: "#dc2626", fontWeight: 900 }}>{ent(r.m)}</td>
-                            <td style={{ ...td, fontSize: 11 }}>{r.st}</td><td style={{ ...td, fontSize: 11, color: "#6b7280" }}>{r.bl}</td>
+                            <td style={td}>{jjmm(x.d)}</td><td style={td}>{x.c}<div style={{ fontSize: 11, color: "#9ca3af" }}>{x.cf} {x.s}</div></td><td style={{ ...td, fontSize: 11.5 }}>{x.bl}</td>
+                            <td style={td}>{emojiProduit(x.a)} {x.a}</td><td style={{ ...td, textAlign: "right" }}>{x.lv}</td><td style={{ ...td, textAlign: "right", color: "#dc2626", fontWeight: 900 }}>{x.r}</td>
+                            <td style={{ ...td, fontSize: 11.5 }}>{x.ty}{x.mo ? ` · ${x.mo}` : ""}</td>
+                            <td style={td}>{x.lien && <a href={x.lien} target="_blank" rel="noreferrer" style={{ color: "#305a55", fontWeight: 800, fontSize: 12 }}>✉️ mail</a>}</td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
                   </div>
-                </>
-              );
-            })()}
-          </div>
+                )}
+              </>
+            )}
+          </>
         )}
 
-        {don && !vide && vue === "litiges" && (
-          <div style={{ ...carte, overflowX: "auto" }}>
-            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 760 }}>
-              <thead><tr><th style={th}>Livraison</th><th style={th}>Client</th><th style={th}>BL</th><th style={th}>Article</th><th style={{ ...th, textAlign: "right" }}>Livrés</th><th style={{ ...th, textAlign: "right" }}>Refusés</th><th style={th}>Type · motif</th><th style={th}></th></tr></thead>
-              <tbody>
-                {[...don.litiges].sort((a, b) => a.d.localeCompare(b.d)).map((x, i) => (
-                  <tr key={i}>
-                    <td style={td}>{jjmm(x.d)}</td><td style={td}>{x.c}<div style={{ fontSize: 11, color: "#9ca3af" }}>{x.cf} {x.s}</div></td><td style={{ ...td, fontSize: 11.5 }}>{x.bl}</td>
-                    <td style={td}>{x.a}</td><td style={{ ...td, textAlign: "right" }}>{x.lv}</td><td style={{ ...td, textAlign: "right", color: "#dc2626", fontWeight: 900 }}>{x.r}</td>
-                    <td style={{ ...td, fontSize: 11.5 }}>{x.ty}{x.mo ? ` · ${x.mo}` : ""}</td>
-                    <td style={td}>{x.lien && <a href={x.lien} target="_blank" rel="noreferrer" style={{ color: "#305a55", fontWeight: 700, fontSize: 12 }}>✉️ mail</a>}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* Import (admin) : fichiers de la base + scans PDF */}
+        {/* Données (admin) : rangé en bas, fermé quand tout est déjà importé */}
         {don && (estAdmin || vide) && (
-          <div style={{ ...carte, marginTop: 20, borderStyle: "dashed" }}>
-            <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 4 }}>⚙️ Importer les données de Noël</div>
-            {/* 16/10/2026 — « je ne sais pas où trouver les fichiers » : un dossier « Import Noël 2025 » sur le
-                Bureau contient tout (3 fichiers + SCANS_COMMANDES) ; un seul bouton importe le dossier entier. */}
-            <label style={{ display: "block", textAlign: "center", padding: "16px 18px", borderRadius: 12, background: "#305a55", color: "#fff", fontWeight: 900, fontSize: 15, cursor: "pointer", marginBottom: 10 }}>
-              📦 Tout importer : choisir le dossier « Import Noël 2025 » (sur le Bureau)
-              <span style={{ display: "block", fontSize: 11.5, fontWeight: 500, opacity: .85, marginTop: 3 }}>Commandes, ruptures, litiges et scans PDF en une fois — laisser la page ouverte jusqu'au ✅</span>
-              <input type="file" multiple style={{ display: "none" }} {...({ webkitdirectory: "", directory: "" } as any)} onChange={async e => {
-                const fs = Array.from(e.target.files || []); e.target.value = "";
-                if (!fs.length) return;
-                try {
-                  const donnees = fs.filter(f => /\.(xlsx|xls|csv)$/i.test(f.name) && !/\/SCANS_COMMANDES\//.test((f as any).webkitRelativePath || ""));
-                  const r1 = donnees.length ? await importerFichiers(donnees, setImportEtat) : [];
-                  const r2 = await envoyerScans(fs, don.scans, setImportEtat);
-                  setImportEtat("✅ " + [...r1, r2].join(" · ")); setRechargement(x => x + 1);
-                } catch (err: any) { setImportEtat("❌ " + (err?.message || "import impossible")); }
-              }} />
-            </label>
-            <div style={{ fontSize: 11.5, color: "#9ca3af", margin: "0 0 8px" }}>Ou fichier par fichier :</div>
-            <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 10px", lineHeight: 1.5 }}>
-              1) Fichiers : <b>BASE_COMMANDES_SCANNEES_DEC2025.xlsx</b> (dossier 0_BASE), <b>ruptures_commandes_dec2025.csv</b> (4_RUPTURES › A_IMPORTER) et <b>litiges_surs_verifies.csv</b> (3_LITIGES_REFUS › A_IMPORTER) — on peut les choisir ensemble ; réimporter remplace l'ancienne version.<br />
-              2) Scans : choisir le dossier <b>4_RUPTURES › SCANS_COMMANDES</b> (≈ 300 PDF, 370 Mo — laisser la page ouverte pendant l'envoi ; les PDF déjà envoyés sont sautés).
-            </p>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-              <label style={{ padding: "9px 14px", borderRadius: 10, background: "#305a55", color: "#fff", fontWeight: 800, fontSize: 13, cursor: "pointer" }}>
-                📥 Importer les fichiers
-                <input type="file" multiple accept=".xlsx,.xls,.csv" style={{ display: "none" }} onChange={async e => {
-                  const fs = Array.from(e.target.files || []); e.target.value = "";
-                  if (!fs.length) return;
-                  try { const r = await importerFichiers(fs, setImportEtat); setImportEtat("✅ " + r.join(" · ")); setRechargement(x => x + 1); }
-                  catch (err: any) { setImportEtat("❌ " + (err?.message || "import impossible")); }
-                }} />
-              </label>
-              <label style={{ padding: "9px 14px", borderRadius: 10, border: "1.5px solid #305a55", color: "#305a55", fontWeight: 800, fontSize: 13, cursor: "pointer", background: "#fff" }}>
-                📄 Envoyer le dossier des scans
-                <input type="file" multiple style={{ display: "none" }} {...({ webkitdirectory: "", directory: "" } as any)} onChange={async e => {
-                  const fs = Array.from(e.target.files || []); e.target.value = "";
-                  if (!fs.length) return;
-                  try { const r = await envoyerScans(fs, don.scans, setImportEtat); setImportEtat("✅ " + r); setRechargement(x => x + 1); }
-                  catch (err: any) { setImportEtat("❌ " + (err?.message || "envoi impossible")); }
-                }} />
-              </label>
-              <span style={{ fontSize: 12, color: "#6b7280", alignSelf: "center" }}>{Object.keys(don.scans).length} scan(s) dans l'appli{don.meta?.importeLe ? ` · données importées le ${new Date(don.meta.importeLe).toLocaleString("fr-FR")}` : ""}</span>
-            </div>
-            {importEtat && <p style={{ fontSize: 12.5, fontWeight: 700, margin: "10px 0 0", color: importEtat.startsWith("❌") ? "#b91c1c" : "#305a55", overflowWrap: "anywhere" }}>{importEtat}</p>}
+          <div style={{ marginTop: 20 }}>
+            {!vide && !voirDonnees ? (
+              <button type="button" onClick={() => setVoirDonnees(true)} style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px dashed #c8c2b4", background: "transparent", color: "#6b7280", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>
+                ⚙️ Données ({ent(don.lignes.length)} lignes · {nbScans} scan{nbScans > 1 ? "s" : ""} PDF{!nbScans ? " — scans à importer" : ""})
+              </button>
+            ) : (
+              <div style={{ ...carte, borderStyle: "dashed" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                  <span style={{ fontSize: 14, fontWeight: 800, flex: 1 }}>⚙️ Importer les données de Noël</span>
+                  {!vide && <button type="button" onClick={() => setVoirDonnees(false)} style={{ border: "none", background: "none", color: "#9ca3af", fontSize: 16, cursor: "pointer" }}>✕</button>}
+                </div>
+                <label style={{ display: "block", textAlign: "center", padding: "16px 18px", borderRadius: 12, background: "#305a55", color: "#fff", fontWeight: 900, fontSize: 15, cursor: "pointer", marginBottom: 8 }}>
+                  📦 Tout importer : choisir le dossier « Import Noël 2025 » (sur le Bureau)
+                  <span style={{ display: "block", fontSize: 11.5, fontWeight: 500, opacity: .85, marginTop: 3 }}>Commandes, ruptures, litiges et scans PDF en une fois — laisser la page ouverte jusqu'au ✅</span>
+                  <input type="file" multiple style={{ display: "none" }} {...({ webkitdirectory: "", directory: "" } as any)} onChange={async e => {
+                    const fs = Array.from(e.target.files || []); e.target.value = "";
+                    if (!fs.length) return;
+                    try {
+                      const donnees = fs.filter(f => /\.(xlsx|xls|csv)$/i.test(f.name) && !/\/SCANS_COMMANDES\//.test((f as any).webkitRelativePath || ""));
+                      const r1 = donnees.length ? await importerFichiers(donnees, setImportEtat) : [];
+                      const r2 = await envoyerScans(fs, don.scans, setImportEtat);
+                      setImportEtat("✅ " + [...r1, r2].join(" · ")); setRechargement(x => x + 1);
+                    } catch (err: any) { setImportEtat("❌ " + (err?.message || "import impossible")); }
+                  }} />
+                </label>
+                <span style={{ fontSize: 12, color: "#6b7280" }}>{nbScans} scan(s) PDF dans l'appli{don.meta?.importeLe ? ` · données importées le ${new Date(don.meta.importeLe).toLocaleString("fr-FR")}` : ""}</span>
+                {importEtat && <p style={{ fontSize: 12.5, fontWeight: 700, margin: "10px 0 0", color: importEtat.startsWith("❌") ? "#b91c1c" : "#305a55", overflowWrap: "anywhere" }}>{importEtat}</p>}
+              </div>
+            )}
           </div>
         )}
-        {vide && <p style={{ fontSize: 13, color: "#6b7280" }}>Aucune donnée importée pour l'instant : utilisez « Importer les fichiers » ci-dessus.</p>}
       </div>
     </div>
   );

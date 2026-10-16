@@ -2957,7 +2957,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   };
 
   // ─── ENVOYER EMAIL (via /api/send-email — nodemailer/Gmail) ───
-  const envoyerEmail = async (r: any) => {
+  // 16/10/2026 — Demande d'Elinathan : l'enveloppe demande d'abord À QUELLE ADRESSE envoyer le rapport
+  // (liste déroulante, dernière adresse choisie retenue sur l'appareil).
+  const [choixMailRapport, setChoixMailRapport] = useState<any>(null);
+  const [adresseMailRapport, setAdresseMailRapport] = useState<string>(() => { try { return localStorage.getItem("moorea-adresse-mail-rapport") || "qualite+commercial"; } catch { return "qualite+commercial"; } });
+  const [autreAdresseMail, setAutreAdresseMail] = useState("");
+  const envoyerEmail = (r: any) => setChoixMailRapport(r);
+  const envoyerEmailVers = async (r: any, destinataires: string[]) => {
     setSendingId(r.id || r.firebaseKey || "new");
     setDernierEnvoiReussiId(null);
     try {
@@ -2976,7 +2982,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         subject,
         html: htmlContent,
         cc: ccList,
-        to: ["qualite@moorea.fr", "commercial@moorea.fr"],
+        to: destinataires.length ? destinataires : ["qualite@moorea.fr", "commercial@moorea.fr"],
         attachments: pdfBase64 ? [{ filename: pdfFilename, content: pdfBase64 }] : [],
       };
 
@@ -4752,8 +4758,46 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   }
 
   // 14/10/2026 — Choix de la langue + aperçu du PDF du rapport : partagés par l'écran principal et la Recherche.
+  const ADRESSES_RAPPORT: [string, string][] = [
+    ["qualite+commercial", "Qualité + commercial (comme avant)"],
+    ["commercial@moorea.fr", "commercial@moorea.fr"],
+    ["qualite@moorea.fr", "qualite@moorea.fr"],
+    ["elinathan.sebag@moorea.fr", "elinathan.sebag@moorea.fr (moi)"],
+    ["agreage@moorea.fr", "agreage@moorea.fr"],
+    ["entrepot@moorea.fr", "entrepot@moorea.fr"],
+    ["autre", "Autre adresse…"],
+  ];
   const fenetresPdf = (
     <>
+      {choixMailRapport && (
+        <div onClick={() => setChoixMailRapport(null)} style={{ position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 18, padding: "20px", width: "min(420px, 100%)", boxSizing: "border-box", boxShadow: "0 20px 60px rgba(0,0,0,.3)" }}>
+            <div style={{ fontSize: 17, fontWeight: 900, color: "#1a2e1a", marginBottom: 4 }}>✉️ Envoyer le rapport par mail</div>
+            <div style={{ fontSize: 12.5, color: "#6b7280", marginBottom: 14 }}>{choixMailRapport.produit || ""}{choixMailRapport.numeroRapport ? ` · ${choixMailRapport.numeroRapport}` : ""}</div>
+            <label style={{ display: "block", fontSize: 12.5, fontWeight: 700, color: "#374151", marginBottom: 6 }}>À quelle adresse ?</label>
+            <select value={adresseMailRapport} onChange={e => setAdresseMailRapport(e.target.value)}
+              style={{ width: "100%", padding: "11px 12px", borderRadius: 10, border: "1.5px solid #305a55", fontSize: 14.5, fontWeight: 700, background: "#fff", boxSizing: "border-box" }}>
+              {ADRESSES_RAPPORT.map(([v, lib]) => <option key={v} value={v}>{lib}</option>)}
+            </select>
+            {adresseMailRapport === "autre" && (
+              <input value={autreAdresseMail} onChange={e => setAutreAdresseMail(e.target.value)} type="email" placeholder="adresse@exemple.fr (plusieurs : séparer par des virgules)"
+                style={{ width: "100%", marginTop: 8, padding: "10px 12px", borderRadius: 10, border: "1.5px solid #e5e7eb", fontSize: 14, boxSizing: "border-box" }} />
+            )}
+            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 16 }}>
+              <button type="button" onClick={() => setChoixMailRapport(null)} style={{ padding: "10px 16px", borderRadius: 10, border: "1.5px solid #e5e7eb", background: "#fff", color: "#6b7280", fontWeight: 700, cursor: "pointer" }}>Annuler</button>
+              <button type="button" onClick={() => {
+                const dest = adresseMailRapport === "qualite+commercial" ? ["qualite@moorea.fr", "commercial@moorea.fr"]
+                  : adresseMailRapport === "autre" ? autreAdresseMail.split(/[,;\s]+/).map(x => x.trim()).filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x))
+                  : [adresseMailRapport];
+                if (!dest.length) { showToast("Adresse mail invalide", "error"); return; }
+                try { localStorage.setItem("moorea-adresse-mail-rapport", adresseMailRapport); } catch { /* sans stockage local */ }
+                const r = choixMailRapport; setChoixMailRapport(null);
+                envoyerEmailVers(r, dest);
+              }} style={{ padding: "10px 18px", borderRadius: 10, border: "none", background: "#305a55", color: "#fff", fontWeight: 800, cursor: "pointer" }}>✉️ Envoyer</button>
+            </div>
+          </div>
+        </div>
+      )}
       {choixLangueRapport && (
         <div onClick={() => !pdfEnCours && setChoixLangueRapport(null)} style={{ position: "fixed", inset: 0, zIndex: 3100, background: "rgba(0,0,0,.45)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
           <div onClick={e => e.stopPropagation()} style={{ position: "relative", background: "#fff", borderRadius: 18, padding: "20px 20px 16px", width: "min(380px, 100%)", boxShadow: "0 20px 60px rgba(0,0,0,.3)", textAlign: "center" }}>
