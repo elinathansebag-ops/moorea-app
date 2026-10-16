@@ -163,7 +163,7 @@ async function envoyerScans(fichiers: File[], dejaLa: Record<string, string>, pr
 // 🗂️ famille, 📅 jour, 🧾 BL / commande — « hv » = haricot vert…) ouvre une FICHE claire : chiffres,
 // ce qui a manqué, jour par jour, commandes avec le scan, litiges, export Excel / PDF.
 // mode « besoin » : la même fiche, mais centrée sur ce qui a été commandé (ouverte depuis l'onglet Besoin).
-type Fiche = { type: string; valeur: string; filtre: (l: Ligne) => boolean; filtreR: (r: Rupture) => boolean; filtreL: (x: Litige) => boolean; mode?: "besoin"; jourChoisi?: string };
+type Fiche = { type: string; valeur: string; filtre: (l: Ligne) => boolean; filtreR: (r: Rupture) => boolean; filtreL: (x: Litige) => boolean; mode?: "besoin"; jourChoisi?: string; base?: Fiche };
 const C: Couleurs = { fond: "#f5f3ee", carte: "#fff", texte: "#1a2e1a", gris: "#6b7280", bord: "#e8e0d0", vert: "#305a55", sombre: false };
 const pct = (a: number, b: number) => (b ? `${(a / b * 100).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %` : "—");
 const TITRES: Record<string, string> = { client: "👤", article: "", famille: "🗂️", jour: "📅", bl: "🧾", fournisseur: "🏭" };
@@ -334,7 +334,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       ))}
     </div>
   );
-  const barresJours = (ls: Ligne[], surClic?: (iso: string) => void, joursAff: string[] = jours) => {
+  const barresJours = (ls: Ligne[], surClic?: (iso: string) => void, joursAff: string[] = jours, choisi?: string) => {
     const parJ = new Map<string, { q: number; m: number }>(); ls.filter(compte).forEach(l => { const x = parJ.get(l.d) || { q: 0, m: 0 }; x.q += l.q; x.m += l.m; parJ.set(l.d, x); });
     const max = Math.max(1, ...[...parJ.values()].map(x => x.m));
     return (
@@ -343,15 +343,15 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
           <button key={j} type="button" disabled={!surClic} onClick={() => surClic?.(j)} title={x ? `${jjmm(j)} : ${ent(x.q)} commandés, ${ent(x.m)} manquants` : jjmm(j)}
             style={{ border: "none", background: "none", padding: 0, cursor: surClic ? "pointer" : "default", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, minWidth: 30 }}>
             <span style={{ fontSize: 10, fontWeight: 800, color: "#dc2626", minHeight: 12 }}>{x?.m ? ent(x.m) : ""}</span>
-            <span style={{ width: 22, height: Math.max(3, Math.round(((x?.m || 0) / max) * 70)), borderRadius: 4, background: x?.m ? "#f87171" : "#e5e7eb" }} />
-            <span style={{ fontSize: 10, color: "#6b7280" }}>{jjmm(j)}</span>
+            <span style={{ width: 22, height: Math.max(3, Math.round(((x?.m || 0) / max) * 70)), borderRadius: 4, background: x?.m ? "#f87171" : "#e5e7eb", opacity: choisi && choisi !== j ? 0.45 : 1, outline: choisi === j ? "2.5px solid #1a2e1a" : undefined }} />
+            <span style={{ fontSize: 10, color: choisi === j ? "#fff" : "#6b7280", background: choisi === j ? "#305a55" : undefined, borderRadius: 5, padding: "0 3px", fontWeight: choisi === j ? 900 : 400 }}>{jjmm(j)}</span>
           </button>
         ); })}
       </div>
     );
   };
   // Colis commandés par jour (barre verte), la part qui a manqué en rouge au sommet.
-  const barresBesoin = (ls: Ligne[], surClic?: (iso: string) => void, joursAff: string[] = jours) => {
+  const barresBesoin = (ls: Ligne[], surClic?: (iso: string) => void, joursAff: string[] = jours, choisi?: string) => {
     const parJ = new Map<string, { q: number; m: number }>(); ls.filter(compte).forEach(l => { const x = parJ.get(l.d) || { q: 0, m: 0 }; x.q += l.q; x.m += l.m; parJ.set(l.d, x); });
     const max = Math.max(1, ...[...parJ.values()].map(x => x.q));
     return (
@@ -360,10 +360,10 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
           <button key={j} type="button" disabled={!surClic} onClick={() => surClic?.(j)} title={x ? `${jjmm(j)} : ${ent(x.q)} commandés, ${ent(x.m)} manquants` : jjmm(j)}
             style={{ border: "none", background: "none", padding: 0, cursor: surClic ? "pointer" : "default", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, minWidth: 34 }}>
             <span style={{ fontSize: 10, fontWeight: 800, color: "#305a55", minHeight: 12 }}>{x?.q ? ent(x.q) : ""}</span>
-            <span style={{ width: 24, height: h, borderRadius: 4, overflow: "hidden", display: "flex", flexDirection: "column", background: x?.q ? "#6f9c94" : "#e5e7eb" }}>
+            <span style={{ width: 24, height: h, borderRadius: 4, overflow: "hidden", display: "flex", flexDirection: "column", background: x?.q ? (choisi === j ? "#305a55" : "#6f9c94") : "#e5e7eb", opacity: choisi && choisi !== j ? 0.45 : 1, outline: choisi === j ? "2.5px solid #1a2e1a" : undefined }}>
               {hm > 0 && <span style={{ height: hm, background: "#f87171" }} />}
             </span>
-            <span style={{ fontSize: 10, color: "#6b7280" }}>{jjmm(j)}</span>
+            <span style={{ fontSize: 10, color: choisi === j ? "#fff" : "#6b7280", background: choisi === j ? "#305a55" : undefined, borderRadius: 5, padding: "0 3px", fontWeight: choisi === j ? 900 : 400 }}>{jjmm(j)}</span>
           </button>
         ); })}
       </div>
@@ -461,7 +461,16 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const nbClients = new Set(lc.map(l => l.c)).size;
     const tableBesoin = <div style={{ marginTop: 14 }}>{carteBesoin(construireTableau(lc.filter(l => (!periode.du || l.d >= periode.du) && (!periode.au || l.d <= periode.au))),
       <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 10 }}>📅 Besoin jour par jour <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— {f.valeur}</span></div>, f.valeur)}</div>;
-    const surJour = f.type === "jour" || f.jourChoisi ? undefined : (iso: string) => allerA({ ...f, jourChoisi: iso, valeur: `${f.valeur} · ${jjmm(iso)}`, filtre: l => f.filtre(l) && l.d === iso, filtreR: r => f.filtreR(r) && r.d === iso, filtreL: x => f.filtreL(x) && x.d === iso });
+    // Fiche d'un jour : le graphique garde tous les jours de la fiche d'origine (jour choisi en évidence) ;
+    // toucher un autre jour change de jour, retoucher le même revient à la fiche complète.
+    const origine = f.base || f;
+    const ficheJour = (iso: string): Fiche => ({ ...origine, mode: f.mode, base: origine, jourChoisi: iso, valeur: `${origine.valeur} · ${jjmm(iso)}`, filtre: l => origine.filtre(l) && l.d === iso, filtreR: r => origine.filtreR(r) && r.d === iso, filtreL: x => origine.filtreL(x) && x.d === iso });
+    const surJour = f.type === "jour" ? undefined : (iso: string) => {
+      if (!f.jourChoisi) allerA(ficheJour(iso));
+      else if (iso === f.jourChoisi) revenir();
+      else { setFiche(ficheJour(iso)); }
+    };
+    const lsGraph = f.base ? (don?.lignes || []).filter(f.base.filtre) : ls;
     return (
       <div>
         {historique.length > 0 && (
@@ -494,7 +503,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
           <>
             <div style={{ ...carte, marginTop: 14 }}>
               <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 8 }}>📦 Colis commandés par jour <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— en rouge la part qui a manqué{surJour ? " · touchez un jour pour le détail" : ""}</span></div>
-              {barresBesoin(ls, surJour)}
+              {barresBesoin(lsGraph, surJour, jours, f.jourChoisi)}
             </div>
             {f.type !== "bl" && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap: 14 }}>
@@ -509,7 +518,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             {tableBesoin}
             <div style={{ ...carte, marginTop: 14 }}>
               <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 8 }}>📅 Manquants jour par jour</div>
-              {barresJours(ls, surJour)}
+              {barresJours(lsGraph, surJour, jours, f.jourChoisi)}
             </div>
             {f.type !== "bl" && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap: 14 }}>
@@ -829,9 +838,10 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                       {boutonsExport(selection.length ? selection.map(o => o.valeur).join(" + ") : "toutes les commandes", lignesBesoin)}
                     </div>
                     {barresJours(lignesBesoin, iso => {
-                      allerA({ type: "jour", valeur: `${selection.length ? selection.map(o => o.valeur).join(" + ") + " · " : ""}${jjmm(iso)}`,
-                        filtre: l => l.d === iso && filtreBesoin(l), filtreR: r => r.d === iso && filtreBesoin(r),
-                        filtreL: x => x.d === iso && filtreBesoin({ d: x.d, c: tClients.find(c => norm(c) === norm(x.c)) || x.c, a: x.a, f: familleDe.get(x.a) }) });
+                      const fl = (x: Litige) => filtreBesoin({ d: x.d, c: tClients.find(c => norm(c) === norm(x.c)) || x.c, a: x.a, f: familleDe.get(x.a) });
+                      const origine: Fiche = { type: "selection", valeur: selection.length ? selection.map(o => o.valeur).join(" + ") : "Tout Noël", filtre: filtreBesoin, filtreR: filtreBesoin, filtreL: fl };
+                      allerA({ ...origine, base: origine, jourChoisi: iso, valeur: `${origine.valeur} · ${jjmm(iso)}`,
+                        filtre: l => l.d === iso && filtreBesoin(l), filtreR: r => r.d === iso && filtreBesoin(r), filtreL: x => x.d === iso && fl(x) });
                       setCmdOuverte(null); window.scrollTo(0, 0);
                     }, joursT)}
                   </div>
