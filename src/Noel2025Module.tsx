@@ -218,6 +218,16 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const [tFournisseurs, setTFournisseurs] = useState<string[]>([]);
   const [periode, setPeriode] = useState<{ du: string; au: string }>({ du: "", au: "" });
   const [lignesPar, setLignesPar] = useState<"article" | "articleClient" | "clientArticle" | "fournisseurArticle" | "client">("articleClient");
+  // 16/10/2026 — « dans la page fournisseur, Fournisseur × réf ne sert à rien » : seules les vues utiles
+  // pour le sujet ouvert sont proposées (un seul fournisseur / article / client → pas de regroupement par lui).
+  const VUES_UTILES: Record<string, ("article" | "articleClient" | "clientArticle" | "fournisseurArticle" | "client")[]> = {
+    fournisseur: ["articleClient", "clientArticle", "article", "client"],
+    article: ["articleClient", "client"],
+    client: ["articleClient", "article", "fournisseurArticle"],
+  };
+  const typeSujet = fiche?.type || (tClients.length + tArticles.length + tFamilles.length + tFournisseurs.length ? "selection" : "global");
+  const vuesUtiles = VUES_UTILES[typeSujet] || ["articleClient", "clientArticle", "fournisseurArticle", "article", "client"];
+  useEffect(() => { if (!vuesUtiles.includes(lignesPar)) setLignesPar(vuesUtiles[0]); }, [typeSujet]); // eslint-disable-line react-hooks/exhaustive-deps
   const [parSemaine, setParSemaine] = useState(false); // colonnes par jour ou par semaine
   // 16/10/2026 — « le besoin de Yukon sur une période » : les commandes scannées ne disent pas d'où
   // vient la marchandise. Chaque réf est rattachée au fournisseur qui en a fourni le plus en
@@ -839,6 +849,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       }
     });
     const out: LigneTab[] = [];
+    const unSeulClient = new Set(filtrees.map(l => l.c)).size === 1;
     [...parClient].map(([c, arts]) => {
       const tot: Cellules = {};
       arts.forEach(r => Object.entries(r).forEach(([d, x]) => { const t = tot[d] || { q: 0, lv: 0, m: 0 }; t.q += x.q; t.lv += x.lv; t.m += x.m; tot[d] = t; }));
@@ -847,7 +858,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       out.push({ cle: `#${g.c}`, art: g.c, client: g.c, titre: true, r: g.tot, tq: g.tq, tlv: g.tlv, tm: g.tm });
       if (!clientsFermes[g.c]) [...g.arts].map(([a, r]) => ({ a, r, ...totaliser(r) })).sort((x, y) => y.tq - x.tq)
         .forEach(x => {
-          out.push({ cle: `${g.c}|${x.a}`, art: x.a, client: g.c, r: x.r, tq: x.tq, tlv: x.tlv, tm: x.tm });
+          // Un seul client (fiche client, vue Réf × base) : pas de ligne client répétée sous chaque réf.
+          if (!(lignesPar === "articleClient" && unSeulClient)) out.push({ cle: `${g.c}|${x.a}`, art: x.a, client: g.c, r: x.r, tq: x.tq, tlv: x.tlv, tm: x.tm });
           const bs = parBase.get(`${g.c}\u0001${x.a}`);
           if (bs) [...bs].map(([b, r]) => ({ b, r, ...totaliser(r) })).sort((y, z) => z.tq - y.tq || y.b.localeCompare(z.b, "fr", { numeric: true }))
             .forEach(y => out.push({ cle: `${g.c}|${x.a}|${y.b}`, art: y.b, client: g.c, base: x.a, r: y.r, tq: y.tq, tlv: y.tlv, tm: y.tm }));
@@ -914,7 +926,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                     {entete}
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
                       <span style={{ display: "inline-flex", border: "1.5px solid #305a55", borderRadius: 9, overflow: "hidden" }}>
-                        {([["articleClient", "🥬 Réf × client"], ["clientArticle", "👤 Client × réf"], ["fournisseurArticle", "🏭 Fournisseur × réf"], ["article", "🥬 Par réf"], ["client", "👤 Par client"]] as const).map(([v, lib]) => (
+                        {([["articleClient", typeSujet === "article" ? "👤 Clients × bases" : typeSujet === "client" ? "🥬 Réf × base" : "🥬 Réf × client"], ["clientArticle", "👤 Client × réf"], ["fournisseurArticle", "🏭 Fournisseur × réf"], ["article", "🥬 Par réf"], ["client", "👤 Par client"]] as const).filter(([v]) => vuesUtiles.includes(v)).map(([v, lib]) => (
                           <button key={v} type="button" onClick={() => setLignesPar(v)} style={{ padding: "7px 11px", border: "none", background: lignesPar === v ? "#305a55" : "#fff", color: lignesPar === v ? "#fff" : "#305a55", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>{lib}</button>
                         ))}
                       </span>

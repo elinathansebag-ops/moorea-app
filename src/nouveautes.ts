@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 125, date: "16/10", pages: ["extractions"], texte: "🎄 Noël 2025 › tableau du besoin : seules les vues utiles sont proposées selon la fiche (fournisseur : plus de « Fournisseur × réf » ; article : clients × bases ; client : réf × base…)." },
   { id: 124, date: "16/10", pages: ["extractions"], texte: "🎄 Noël 2025 : l'onglet ⚠️ Litiges et son bandeau passent en jaune, pour ne plus se confondre avec le rouge des Manquants." },
   { id: 123, date: "16/10", pages: ["extractions"], texte: "📄 Exports PDF : les chiffres et les dates ne sont plus coupés sur deux lignes (la taille s'adapte). Noël › tableau du besoin : plus de colonne Fournisseur / Client répétée quand c'est le même partout, et colonnes « Total commandé · Total livré · Manquant · Taux de service » en fin de ligne." },
   { id: 122, date: "16/10", pages: ["extractions"], texte: "🎄 Noël 2025 › Scans + Geslot sans doublon : une commande scannée à une date et facturée 1 ou 2 jours plus tôt / plus tard dans Geslot (ex. scan du dimanche 28/12, Geslot le 29/12) n'est plus comptée deux fois." },
