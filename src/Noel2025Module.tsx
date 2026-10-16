@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { db, ref, get, update, set, stockage } from "./firebase";
 import { PageHeader } from "./shared";
-import { RechercheIntelligente, emojiProduit, type Option, type Couleurs } from "./Extractions";
+import { RechercheIntelligente, emojiProduit, iconeOption, type Option, type Couleurs } from "./Extractions";
 import { cleBase, fusionnerCles, nomBase } from "./noelBases";
 
 // ─── 🎄 Commandes Noël 2025 (📊 Stats) ───
@@ -159,7 +159,7 @@ async function envoyerScans(fichiers: File[], dejaLa: Record<string, string>, pr
 type Fiche = { type: string; valeur: string; filtre: (l: Ligne) => boolean; filtreR: (r: Rupture) => boolean; filtreL: (x: Litige) => boolean };
 const C: Couleurs = { fond: "#f5f3ee", carte: "#fff", texte: "#1a2e1a", gris: "#6b7280", bord: "#e8e0d0", vert: "#305a55", sombre: false };
 const pct = (a: number, b: number) => (b ? `${(a / b * 100).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %` : "—");
-const TITRES: Record<string, string> = { client: "👤", article: "", famille: "🗂️", jour: "📅", bl: "🧾" };
+const TITRES: Record<string, string> = { client: "👤", article: "", famille: "🗂️", jour: "📅", bl: "🧾", selection: "☑️" };
 
 export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; estAdmin?: boolean }) {
   const [don, setDon] = useState<Donnees | null>(null);
@@ -223,6 +223,26 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     setFiche(f); setCmdOuverte(null); setVue("accueil"); window.scrollTo(0, 0);
   };
   const ouvrirType = (type: string, valeur: string, cle?: string) => ouvrir({ type, valeur, cle } as any);
+  // 16/10/2026 — Cases à cocher comme dans Stats : on coche plusieurs clients / articles / familles,
+  // puis une seule fiche les regroupe. Produits (articles + familles) : l'un OU l'autre ;
+  // s'il y a aussi des clients : seulement les produits cochés chez les clients cochés.
+  const [selection, setSelection] = useState<Option[]>([]);
+  const cleOpt = (o: Option) => o.type + "\u0001" + o.valeur;
+  const cocher = (o: Option) => setSelection(s => s.some(x => cleOpt(x) === cleOpt(o)) ? s.filter(x => cleOpt(x) !== cleOpt(o)) : [...s, o]);
+  const ouvrirSelection = () => {
+    const de = (t: string) => new Set(selection.filter(o => o.type === t).map(o => o.valeur));
+    const cl = de("client"), ar = de("article"), fa = de("famille");
+    const famDe = new Map<string, string>(); lignes.forEach(l => { if (l.a && l.f) famDe.set(l.a, l.f); });
+    const okProduit = (a: string, f: string) => (!ar.size && !fa.size) || ar.has(a) || fa.has(f);
+    const okClient = (c: string) => !cl.size || cl.has(c);
+    setFiche({
+      type: "selection", valeur: selection.map(o => o.valeur).join(" + "),
+      filtre: l => okClient(l.c) && okProduit(l.a, l.f),
+      filtreR: r => okClient(r.c) && okProduit(r.a, r.f),
+      filtreL: x => (!cl.size || [...cl].some(v => norm(x.c) === norm(v) || norm(x.cf).includes(norm(v)))) && okProduit(x.a, famDe.get(x.a) || ""),
+    });
+    setSelection([]); setCmdOuverte(null); setVue("accueil"); window.scrollTo(0, 0);
+  };
 
   const urlScan = (chemin: string, page?: string) => { const u = don?.scans[chemin]; return u ? `${u}${page ? `#page=${page}` : ""}` : ""; };
   const boutonScan = (l: Ligne) => {
@@ -478,7 +498,15 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             <div style={{ ...carte, background: "linear-gradient(135deg, #305a55, #1f4440)", border: "none", color: "#fff" }}>
               <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 4 }}>🔎 Qu'est-ce qui a manqué à Noël ?</div>
               <div style={{ fontSize: 13, color: "#d9e7e1", marginBottom: 10 }}>Tapez un client, un produit (« hv », « passion »…), une famille, un jour (« 19/12 »), un BL ou un n° de commande.</div>
-              <RechercheIntelligente options={options} placeholder="👤 Carrefour · 🫛 haricot vert · 📅 19/12 · 🧾 BL2025125313…" onChoisir={ouvrir} c={C} grand extra={extra} />
+              <RechercheIntelligente options={options} placeholder="👤 Carrefour · 🫛 haricot vert · 📅 19/12 · 🧾 BL2025125313…" onChoisir={ouvrir} c={C} grand extra={extra}
+                onCocher={cocher} estChoisi={o => selection.some(x => cleOpt(x) === cleOpt(o))}
+                actionSelection={selection.length ? { libelle: `☑️ Voir la sélection (${selection.length})`, onClick: ouvrirSelection } : null} />
+              {selection.length > 0 && (
+                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+                  {selection.map(o => <span key={cleOpt(o)} style={{ display: "inline-flex", alignItems: "center", gap: 4, padding: "4px 4px 4px 10px", borderRadius: 999, background: "rgba(255,255,255,.18)", fontSize: 12.5, fontWeight: 800, maxWidth: "100%", boxSizing: "border-box", overflowWrap: "anywhere" }}>{iconeOption(o)} {o.valeur}<button type="button" onClick={() => cocher(o)} style={{ border: "none", background: "rgba(255,255,255,.25)", color: "#fff", borderRadius: 999, width: 20, height: 20, cursor: "pointer", fontWeight: 900 }}>×</button></span>)}
+                  <button type="button" onClick={ouvrirSelection} style={{ padding: "6px 14px", borderRadius: 999, border: "none", background: "#fff", color: "#1f4440", fontWeight: 900, cursor: "pointer" }}>☑️ Voir la sélection ({selection.length})</button>
+                </div>
+              )}
             </div>
 
             {fiche ? rendreFiche(fiche) : (

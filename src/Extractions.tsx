@@ -121,7 +121,7 @@ export function emojiProduit(nom: string, famille = ""): string {
   for (const [re, e] of EMOJIS_PRODUITS) if (re.test(t)) return e;
   return "🥬";
 }
-const iconeOption = (o: Option) => o.type === "article" || o.type === "famille" ? emojiProduit(o.valeur) : (ICONES[o.type] || "•");
+export const iconeOption = (o: Option) => o.type === "article" || o.type === "famille" ? emojiProduit(o.valeur) : (ICONES[o.type] || "•");
 
 // 14/10/2026 — La recherche comprend aussi : une date (« 15/09 », « 15/09/2026 », « 2026-09-15 »),
 // une semaine (« S42 », « semaine 42 2026 ») et les mots litige / refus / réserve / manquant / avoir.
