@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 109, date: "16/10", pages: ["extractions"], texte: "🎄 Noël 2025 : dans une fiche, deux grands onglets 📦 BESOIN (vert, ce qui a été commandé) et ❌ MANQUANTS (rouge, ce qui n'a pas été livré) ; le bandeau de la fiche prend la couleur de l'onglet choisi." },
   { id: 108, date: "16/10", pages: ["extractions"], texte: "🎄 Noël 2025 : dans la fiche d'un jour, le diagramme garde tous les jours (le jour choisi en évidence) — touchez un autre jour pour passer directement à ce jour, retouchez le même pour revenir à la fiche complète." },
   { id: 107, date: "16/10", pages: ["extractions"], texte: "🎄 Noël 2025 : un jour ouvert depuis le diagramme (ou un client / produit ouvert depuis une fiche) a maintenant un bouton « ← Revenir à … » ; le « Retour » du haut revient aussi à la fiche précédente." },
   { id: 106, date: "16/10", pages: ["stock"], texte: "📈 Stock › Écarts par semaine : « 📋 Tous les comptages » (par défaut) affiche chaque stock de la semaine (lun → jeu), séparés par un trait vert entre les semaines ; « 🗓️ 1 par semaine » garde le dernier stock de chaque semaine." },

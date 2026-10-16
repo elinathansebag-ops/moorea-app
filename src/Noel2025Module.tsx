@@ -478,7 +478,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             ← Revenir à <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{historique[historique.length - 1].valeur}</span>
           </button>
         )}
-        <div style={{ ...carte, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: "#305a55", border: "none", color: "#fff" }}>
+        <div style={{ ...carte, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: besoin ? "#305a55" : "#8f1d1d", border: "none", color: "#fff", marginBottom: 10 }}>
           <span style={{ fontSize: 38 }}>{icone}</span>
           <div style={{ flex: 1, minWidth: 200 }}>
             <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1.15 }}>{f.valeur}</div>
@@ -487,14 +487,29 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                 : tot.m ? <>Il a manqué <b style={{ color: "#fecaca", fontSize: 17 }}>{ent(tot.m)} colis</b> sur {ent(tot.q)} commandés</> : <>✅ Tout a été livré ({ent(tot.q)} colis)</>}
             </div>
           </div>
-          <span style={{ display: "inline-flex", border: "1.5px solid rgba(255,255,255,.5)", borderRadius: 9, overflow: "hidden" }}>
-            {([["besoin", "📦 Besoin"], ["manque", "❌ Manquants"]] as const).map(([v, lib]) => {
-              const on = (v === "besoin") === besoin;
-              return <button key={v} type="button" onClick={() => setFiche({ ...f, mode: v === "besoin" ? "besoin" : undefined })} style={{ padding: "7px 11px", border: "none", background: on ? "#fff" : "transparent", color: on ? "#305a55" : "#fff", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>{lib}</button>;
-            })}
-          </span>
           {boutonsExport(f.valeur, ls)}
           <button type="button" onClick={fermerFiche} style={{ padding: "8px 12px", borderRadius: 9, border: "1.5px solid rgba(255,255,255,.4)", background: "transparent", color: "#fff", fontWeight: 800, cursor: "pointer" }}>✕ Fermer</button>
+        </div>
+        {/* 16/10/2026 — « j'ai du mal à différencier besoin et manquant » : deux grands onglets de couleur
+            (vert = ce qui a été commandé, rouge = ce qui n'a pas été livré) ; le bandeau prend la couleur. */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 14 }}>
+          {([
+            [true, "📦", "BESOIN", "Ce que les clients ont commandé", "#305a55", "#eef4f2"],
+            [false, "❌", "MANQUANTS", "Ce qui n'a pas pu être livré", "#b91c1c", "#fef2f2"],
+          ] as const).map(([estBesoin, ic, titre, detail, coul, doux]) => {
+            const on = estBesoin === besoin;
+            return (
+              <button key={titre} type="button" onClick={() => setFiche({ ...f, mode: estBesoin ? "besoin" : undefined })}
+                style={{ display: "flex", alignItems: "center", gap: 12, textAlign: "left", padding: "12px 16px", borderRadius: 14, cursor: on ? "default" : "pointer",
+                  border: `2.5px solid ${coul}`, background: on ? coul : doux, color: on ? "#fff" : coul, opacity: on ? 1 : 0.85 }}>
+                <span style={{ fontSize: 26 }}>{ic}</span>
+                <span style={{ minWidth: 0 }}>
+                  <span style={{ display: "block", fontSize: 16, fontWeight: 900, letterSpacing: 0.5 }}>{titre}{on ? " ✓" : ""}</span>
+                  <span style={{ display: "block", fontSize: 12, marginTop: 1, opacity: 0.9 }}>{detail}</span>
+                </span>
+              </button>
+            );
+          })}
         </div>
         {chiffres(tot, lits.length)}
         {/* 16/10/2026 — « j'ai pas les besoins là » : le tableau du besoin aussi dans chaque fiche.
