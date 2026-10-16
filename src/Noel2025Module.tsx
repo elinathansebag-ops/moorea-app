@@ -139,7 +139,8 @@ async function envoyerScans(fichiers: File[], dejaLa: Record<string, string>, pr
     const chemin = cheminScan(rel.includes("SCANS_COMMANDES/") ? rel : `SCANS_COMMANDES/${rel.split("/").slice(1).join("/") || rel}`);
     if (dejaLa[chemin]) continue;
     progres(`Scans : ${n}/${pdfs.length} — ${chemin}`);
-    const r = refStockage(stockage, `rapports/noel2025/scans/${chemin}`);
+    // 16/10/2026 — Dossier à part « noel2025/ » : la règle du stockage « rapports/ » n'accepte que des images.
+    const r = refStockage(stockage, `noel2025/scans/${chemin}`);
     await uploadBytes(r, f, { contentType: "application/pdf" });
     const url = await getDownloadURL(r);
     await update(ref(db, `${RACINE}/scans`), { [cleChemin(chemin)]: { chemin, url } });
