@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 92, date: "16/10", pages: ["admin.donnees"], texte: "🎄 Admin › Données : raccourci « Ouvrir l'import Noël 2025 » qui ouvre directement le panneau d'import (fichiers + scans PDF)." },
   { id: 91, date: "16/10", pages: ["rapports"], texte: "✉️ Rapports qualité : l'enveloppe demande d'abord à quelle adresse envoyer (qualité + commercial, commercial, qualité, moi, agréage, entrepôt ou autre) — la dernière adresse choisie est retenue." },
   { id: 90, date: "16/10", pages: ["extractions"], texte: "🎄 📊 Stats : gros bouton « Commandes Noël 2025 » en haut, juste au-dessus de « Mes rapports »." },
   { id: 89, date: "16/10", pages: ["extractions"], texte: "🎄 Commandes Noël 2025 refaites : grande recherche intelligente avec emojis (« hv » = haricot vert, client, famille, jour, BL, commande) qui ouvre une fiche claire (chiffres, manquants jour par jour, produits et clients touchés, litiges, commandes avec le scan), résumé avec les plus gros manques, tableau produit × jour, export Excel / PDF partout. Abréviations aussi dans la recherche des Stats." },

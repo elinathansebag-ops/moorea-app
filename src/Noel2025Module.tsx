@@ -166,7 +166,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const [fiche, setFiche] = useState<Fiche | null>(null);
   const [importEtat, setImportEtat] = useState("");
   const [rechargement, setRechargement] = useState(0);
-  const [voirDonnees, setVoirDonnees] = useState(false);
+  // Ouvert depuis Admin › Données : le panneau d'import est affiché directement.
+  const [voirDonnees, setVoirDonnees] = useState(() => { try { const v = sessionStorage.getItem("noel-ouvrir-donnees") === "1"; sessionStorage.removeItem("noel-ouvrir-donnees"); return v; } catch { return false; } });
   const [filtreClient, setFiltreClient] = useState("");
   const [filtreFamille, setFiltreFamille] = useState("");
   const [mesure, setMesure] = useState<"q" | "lv" | "m" | "taux">("q");
