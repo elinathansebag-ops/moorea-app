@@ -173,6 +173,15 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const [erreur, setErreur] = useState("");
   const [vue, setVue] = useState<"accueil" | "tableau" | "litiges">("accueil");
   const [fiche, setFiche] = useState<Fiche | null>(null);
+  // 16/10/2026 — « je clique sur un jour du diagramme, je ne peux pas revenir en arrière » : les fiches
+  // ouvertes depuis une fiche s'empilent ; « ← Retour » revient à la précédente.
+  const [historique, setHistorique] = useState<Fiche[]>([]);
+  const allerA = (nf: Fiche) => { if (fiche) setHistorique(h => [...h, fiche]); setFiche(nf); window.scrollTo(0, 0); };
+  const fermerFiche = () => { setHistorique([]); setFiche(null); };
+  const revenir = () => {
+    if (!historique.length) { fermerFiche(); return; }
+    setFiche(historique[historique.length - 1]); setHistorique(h => h.slice(0, -1)); window.scrollTo(0, 0);
+  };
   const [importEtat, setImportEtat] = useState("");
   const [rechargement, setRechargement] = useState(0);
   // Ouvert depuis Admin › Données : le panneau d'import est affiché directement.
@@ -262,7 +271,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       o.type === "jour" ? { type: "jour", valeur: `Livraisons du ${jjmm(cle)}`, filtre: l => l.d === cle, filtreR: r => r.d === cle, filtreL: x => x.d === cle } :
       o.type === "commande" ? { type: "bl", valeur: v, filtre: l => l.n === cle, filtreR: r => r.n === cle, filtreL: () => false } :
       { type: "bl", valeur: v, filtre: l => l.bl.replace(/\s/g, "").split(",").includes(v), filtreR: r => r.bl.includes(v), filtreL: x => x.bl === v };
-    setFiche({ ...f, mode }); setCmdOuverte(null); if (!mode) setVue("accueil"); window.scrollTo(0, 0);
+    allerA({ ...f, mode }); setCmdOuverte(null); if (!mode) setVue("accueil");
   };
   const ouvrirType = (type: string, valeur: string, cle?: string, mode?: "besoin") => ouvrir({ type, valeur, cle } as any, mode);
 
@@ -275,7 +284,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const ouvrirSelection = () => {
     const cs = deType("client"), as = deType("article"), fs = deType("famille"), fo = deType("fournisseur");
     const prod = (a: string, f: string) => (!as.length && !fs.length && !fo.length) || as.includes(a) || fs.includes(f) || fo.includes(fournisseurDe[a]);
-    setFiche({
+    allerA({
       type: "selection", valeur: selection.map(o => o.valeur).join(" + "),
       filtre: l => (!cs.length || cs.includes(l.c)) && prod(l.a, l.f),
       filtreR: r => (!cs.length || cs.includes(r.c)) && prod(r.a, r.f),
@@ -284,7 +293,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     setCmdOuverte(null); window.scrollTo(0, 0);
   };
   const tableauSelection = () => {
-    setFiche(null); setVue("tableau");
+    fermerFiche(); setVue("tableau");
   };
 
   const urlScan = (chemin: string, page?: string) => { const u = don?.scans[chemin]; return u ? `${u}${page ? `#page=${page}` : ""}` : ""; };
@@ -452,9 +461,14 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const nbClients = new Set(lc.map(l => l.c)).size;
     const tableBesoin = <div style={{ marginTop: 14 }}>{carteBesoin(construireTableau(lc.filter(l => (!periode.du || l.d >= periode.du) && (!periode.au || l.d <= periode.au))),
       <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 10 }}>📅 Besoin jour par jour <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— {f.valeur}</span></div>, f.valeur)}</div>;
-    const surJour = f.type === "jour" ? undefined : (iso: string) => setFiche({ ...f, valeur: `${f.valeur} · ${jjmm(iso)}`, filtre: l => f.filtre(l) && l.d === iso, filtreR: r => f.filtreR(r) && r.d === iso, filtreL: x => f.filtreL(x) && x.d === iso });
+    const surJour = f.type === "jour" ? undefined : (iso: string) => allerA({ ...f, valeur: `${f.valeur} · ${jjmm(iso)}`, filtre: l => f.filtre(l) && l.d === iso, filtreR: r => f.filtreR(r) && r.d === iso, filtreL: x => f.filtreL(x) && x.d === iso });
     return (
       <div>
+        {historique.length > 0 && (
+          <button type="button" onClick={revenir} style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 10, padding: "9px 14px", borderRadius: 10, border: "2px solid #305a55", background: "#fff", color: "#305a55", fontWeight: 900, fontSize: 13.5, cursor: "pointer", maxWidth: "100%" }}>
+            ← Revenir à <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{historique[historique.length - 1].valeur}</span>
+          </button>
+        )}
         <div style={{ ...carte, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: "#305a55", border: "none", color: "#fff" }}>
           <span style={{ fontSize: 38 }}>{icone}</span>
           <div style={{ flex: 1, minWidth: 200 }}>
@@ -471,7 +485,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             })}
           </span>
           {boutonsExport(f.valeur, ls)}
-          <button type="button" onClick={() => setFiche(null)} style={{ padding: "8px 12px", borderRadius: 9, border: "1.5px solid rgba(255,255,255,.4)", background: "transparent", color: "#fff", fontWeight: 800, cursor: "pointer" }}>✕ Fermer</button>
+          <button type="button" onClick={fermerFiche} style={{ padding: "8px 12px", borderRadius: 9, border: "1.5px solid rgba(255,255,255,.4)", background: "transparent", color: "#fff", fontWeight: 800, cursor: "pointer" }}>✕ Fermer</button>
         </div>
         {chiffres(tot, lits.length)}
         {/* 16/10/2026 — « j'ai pas les besoins là » : le tableau du besoin aussi dans chaque fiche.
@@ -732,7 +746,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
 
   return (
     <div style={{ minHeight: "100vh", background: "#f5f3ee" }}>
-      <PageHeader titre="🎄 Commandes Noël 2025" couleur="#305a55" onBack={fiche ? () => setFiche(null) : onClose} onHome={onClose} />
+      <PageHeader titre="🎄 Commandes Noël 2025" couleur="#305a55" onBack={fiche ? revenir : onClose} onHome={onClose} />
       <div style={{ maxWidth: 1250, margin: "0 auto", padding: "16px 16px 60px", boxSizing: "border-box" }}>
         {erreur && <div style={{ ...carte, color: "#b91c1c", fontWeight: 700 }}>Lecture impossible : {erreur}</div>}
         {!don && !erreur && <p style={{ textAlign: "center", color: "#9ca3af", padding: 30 }}>🎄 Chargement des commandes de Noël…</p>}
@@ -815,7 +829,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                       {boutonsExport(selection.length ? selection.map(o => o.valeur).join(" + ") : "toutes les commandes", lignesBesoin)}
                     </div>
                     {barresJours(lignesBesoin, iso => {
-                      setFiche({ type: "jour", valeur: `${selection.length ? selection.map(o => o.valeur).join(" + ") + " · " : ""}${jjmm(iso)}`,
+                      allerA({ type: "jour", valeur: `${selection.length ? selection.map(o => o.valeur).join(" + ") + " · " : ""}${jjmm(iso)}`,
                         filtre: l => l.d === iso && filtreBesoin(l), filtreR: r => r.d === iso && filtreBesoin(r),
                         filtreL: x => x.d === iso && filtreBesoin({ d: x.d, c: tClients.find(c => norm(c) === norm(x.c)) || x.c, a: x.a, f: familleDe.get(x.a) }) });
                       setCmdOuverte(null); window.scrollTo(0, 0);
