@@ -794,6 +794,8 @@ export default function App() {
     ? { ...monAccesCompte, hasModule: (k: string) => !refusMonProfil[k] && monAccesCompte.hasModule(k), hasTab: (k: string) => !refusMonProfil[String(k).split(".")[0]] && monAccesCompte.hasTab(k) }
     : monAccesCompte;
   const monAcces = (apercuEmail && monAccesReel.isAdmin) ? calculerAcces(apercuEmail, permRoles, permUsers) : monAccesReel;
+  // « 🔄 Refus à faire signer » : module à part (compte entrepôt), ou l'ancienne case sous Rapports d'agréage.
+  const peutRefusSigner = monAcces.hasModule("refus_signer") || (monAcces.hasModule("rapports") && monAcces.hasTab("rapports.refus_signer"));
   // 29/09/2026 — Demande d'Elinathan (vitesse) : les grosses collections ne sont plus
   // téléchargées pour un compte qui n'a accès à AUCUN des modules qui s'en servent. Toujours
   // calculé sur les vrais droits (monAccesReel, jamais l'aperçu admin). Tant que le compte ou
@@ -804,7 +806,7 @@ export default function App() {
       : (user === undefined || !permsChargees) ? false
       : (monAccesReel.isAdmin || modules.some(k => monAccesReel.hasModule(k)));
   const chargerRecond = chargementAutorise(["reconditionnement", "preparation", "prestataires"]);
-  const chargerRapports = chargementAutorise(["arrivages", "rapports", "litiges", "qualite", "dashboard_tv"]);
+  const chargerRapports = chargementAutorise(["arrivages", "rapports", "refus_signer", "litiges", "qualite", "dashboard_tv"]);
   const chargerGencodes = chargementAutorise(["gencodes", "stock"]);
   const chargerRetours = chargementAutorise(["retours"]);
   const chargerJournal = chargementAutorise([]);
@@ -4424,7 +4426,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     // (suivi administratif/commercial) — on les sépare visuellement avec un sous-titre dédié.
     const nbASigner = rapports.filter(refusASigner).length;
     const row2Entrepot = [
-      ...(monAcces.hasModule("rapports") && monAcces.hasTab("rapports.refus_signer") ? [{ key: "refus_signer", icon: "🔄", label: "Refus à faire signer", color: "#ea580c", badge: nbASigner || null, stat: nbASigner ? `${nbASigner} bon${nbASigner > 1 ? "s" : ""} de reprise en attente` : "Aucun en attente", action: () => { setShowAccueil(false); setSearchText(""); setFilterDecision(""); setFilterFournisseur(""); setFilterProduit(""); setFilterDateDebut(""); setFilterDateFin(""); setASignerSeul(true); setVue("historique"); setPageMode("arrivages"); } }] : []),
+      ...(peutRefusSigner ? [{ key: "refus_signer", icon: "🔄", label: "Refus à faire signer", color: "#ea580c", badge: nbASigner || null, stat: nbASigner ? `${nbASigner} bon${nbASigner > 1 ? "s" : ""} de reprise en attente` : "Aucun en attente", action: () => { setShowAccueil(false); setSearchText(""); setFilterDecision(""); setFilterFournisseur(""); setFilterProduit(""); setFilterDateDebut(""); setFilterDateFin(""); setASignerSeul(true); setVue("historique"); setPageMode("arrivages"); } }] : []),
       { key: "lidl", icon: "🛒", label: "Commandes Lidl", color: "#0050aa", badge: null, stat: "Tableau de répartition du jour", action: () => { setShowAccueil(false); setShowLidl(true); } },
       { key: "retours", icon: "🚚", label: "Retours clients", color: "#dc2626", badge: null, stat: "Gestion des retours", action: () => { setShowAccueil(false); setShowRetours(true); } },
       { key: "preparation", icon: "🏭", label: "Préparation", color: "#3b82f6", badge: null, stat: "Prêt à préparer / expédier", action: () => { setShowAccueil(false); setShowPreparation(true); } },
@@ -5127,7 +5129,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   // ─── 09/09/2026 — Dernier filet de sécurité des droits d'accès : cet écran par défaut sert
   // à la fois "Rapports" (vue === "historique") et "Pointer arrivage" (le reste : pageMode
   // arrivages / historique_arr / stats_arr / saisie_arr, tous atteints depuis Pointer arrivage).
-  if (vue === "historique" && !monAcces.hasModule("rapports")) return <AccesRefuse onRetour={() => setShowAccueil(true)} />;
+  if (vue === "historique" && !monAcces.hasModule("rapports") && !(aSignerSeul && peutRefusSigner)) return <AccesRefuse onRetour={() => setShowAccueil(true)} />;
   if (vue !== "historique" && !monAcces.hasModule("arrivages")) return <AccesRefuse onRetour={() => setShowAccueil(true)} />;
 
   // 22/09/2026 -- Bandeau d'alerte si un compte mail est casse (voir la note plus haut sur
