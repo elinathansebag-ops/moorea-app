@@ -70,6 +70,47 @@ function tableau(doc: jsPDF, y: number, cols: Col[], lignes: string[][], hLigne:
 const enBase64 = (doc: jsPDF) => doc.output("datauristring").split(",")[1];
 const libDepart = (d?: string) => (d === "paris" ? "Départ Paris" : d === "sud" ? "Départ Medina (Perpignan)" : "");
 
+// 16/10/2026 — Demande d'Elinathan : un compliment pour Jordan tous les jours, en bas du bon Geslot,
+// après le récap des commandes. Un par jour (il change chaque jour, toujours le même pour une date).
+const COMPLIMENTS_JORDAN = [
+  "Merci Jordan : grâce à toi, les camions Lidl partent à l'heure !",
+  "Jordan, ta rigueur fait tourner Moorea. Bravo !",
+  "Encore une belle journée de commandes : chapeau Jordan !",
+  "Jordan, tu es le pilier des commandes Lidl. Merci !",
+  "Toujours calme, toujours précis : merci Jordan !",
+  "Jordan, l'équipe peut compter sur toi, et ça se voit !",
+  "Merci Jordan pour ton énergie de chaque matin.",
+  "Avec toi, même les gros jours de commandes ont l'air simples. Bravo Jordan !",
+  "Jordan, ton sérieux fait la différence auprès des clients.",
+  "Une saisie Geslot sans faute ? Signé Jordan, évidemment !",
+  "Jordan, merci d'être aussi fiable, jour après jour.",
+  "Les bases Lidl sont bien servies grâce à toi, Jordan !",
+  "Jordan, ta bonne humeur est contagieuse. Merci !",
+  "Bravo Jordan : organisation au top, comme d'habitude.",
+  "Jordan, tu rends le travail de toute l'équipe plus facile.",
+  "Merci Jordan, champion des commandes du matin !",
+  "Jordan, ton implication fait avancer Moorea chaque jour.",
+  "Encore un récap bien bouclé : merci Jordan !",
+  "Jordan, on a de la chance de t'avoir dans l'équipe.",
+  "Respect Jordan : tu gères les rushs comme un pro.",
+  "Jordan, merci pour ta patience et ton efficacité.",
+  "Grâce à toi Jordan, les clients reçoivent ce qu'ils attendent.",
+  "Jordan, ton travail compte énormément. Merci !",
+  "Toujours sur le pont : bravo et merci Jordan !",
+  "Jordan, tu transformes les journées chargées en journées réussies.",
+  "Merci Jordan pour ton professionnalisme exemplaire.",
+  "Jordan, la team Moorea te dit merci !",
+  "Un grand bravo à Jordan pour son travail impeccable.",
+  "Jordan, tu es la preuve que sérieux et sourire vont ensemble.",
+  "Belle journée Jordan, et merci pour tout ce que tu fais !",
+];
+function complimentDuJour(dateFr: string) {
+  const m = dateFr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  const d = m ? new Date(+m[3], +m[2] - 1, +m[1]) : new Date();
+  const jour = Math.floor((d.getTime() - new Date(d.getFullYear(), 0, 1).getTime()) / 86400000) + d.getFullYear() * 367;
+  return COMPLIMENTS_JORDAN[jour % COMPLIMENTS_JORDAN.length];
+}
+
 // 05/10/2026 — Classé par produit (puis par base), en grand pour remplir la page (demande d'Elinathan).
 export function pdfBonGeslot(dateFr: string, lignes: LigneBon[]) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
@@ -98,7 +139,18 @@ export function pdfBonGeslot(dateFr: string, lignes: LigneBon[]) {
   if (deps.length > 1 || lignes.some((l, i) => i && l.produit !== lignes[0].produit)) {
     if (y + 10 > H - M) { doc.addPage(); y = M; }
     doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.text(`TOTAL GÉNÉRAL : ${total} colis`, W - M, y + 4, { align: "right" });
+    y += 10;
   }
+  // Le mot du jour pour Jordan (encadré vert Moorea, après le récap).
+  if (y + 24 > H - M) { doc.addPage(); y = M; }
+  y += 4;
+  doc.setFillColor(238, 244, 242); doc.setDrawColor(...VERT_MOOREA); doc.setLineWidth(0.6);
+  doc.roundedRect(M, y, CW, 18, 3, 3, "FD");
+  doc.setTextColor(...VERT_MOOREA); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+  doc.text("LE MOT DU JOUR POUR JORDAN", M + 5, y + 6);
+  doc.setFont("helvetica", "bolditalic"); doc.setFontSize(12.5);
+  doc.text(doc.splitTextToSize(complimentDuJour(dateFr), CW - 10)[0] as string, M + 5, y + 13);
+  doc.setTextColor(0, 0, 0);
   return enBase64(doc);
 }
 
