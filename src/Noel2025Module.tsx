@@ -621,12 +621,31 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                       <button type="button" onClick={() => cocher(o)} aria-label="Retirer" style={{ width: 20, height: 20, borderRadius: "50%", border: "none", background: "rgba(0,0,0,.25)", color: "#fff", fontSize: 11, cursor: "pointer" }}>✕</button>
                     </span>
                   ))}
-                  <button type="button" onClick={ouvrirSelection} style={{ padding: "6px 12px", borderRadius: 9, border: "none", background: "#fff", color: "#305a55", fontWeight: 900, fontSize: 12.5, cursor: "pointer" }}>🔎 Voir la sélection</button>
-                  {(fiche || vue !== "tableau") && <button type="button" onClick={tableauSelection} style={{ padding: "6px 12px", borderRadius: 9, border: "1.5px solid #fff", background: "transparent", color: "#fff", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>📅 Besoin jour par jour</button>}
                   <button type="button" onClick={toutDecocher} style={{ border: "none", background: "none", color: "#d9e7e1", fontSize: 12, textDecoration: "underline", cursor: "pointer" }}>Tout effacer</button>
                 </div>
               )}
             </div>
+
+            {/* 16/10/2026 — Demande d'Elinathan : les deux actions de la sélection dans deux cases bien visibles, hors de la recherche. */}
+            {selection.length > 0 && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(300px, 100%), 1fr))", gap: 12, marginBottom: 14 }}>
+                {([
+                  ["fiche", "🔎", "Voir la sélection", "Résumé, manquants jour par jour, produits, clients, commandes par base, litiges", fiche?.type === "selection", ouvrirSelection],
+                  ["besoin", "📅", "Besoin jour par jour", "Tableau du besoin par réf, client et base — par jour ou par semaine, Excel / PDF", !fiche && vue === "tableau", tableauSelection],
+                ] as const).map(([k, ic, titre, detail, actif, clic]) => (
+                  <button key={k} type="button" onClick={clic}
+                    style={{ display: "flex", alignItems: "center", gap: 14, textAlign: "left", padding: "14px 18px", borderRadius: 16, cursor: "pointer",
+                      border: `2px solid ${actif ? "#305a55" : "#cfdcd7"}`, background: actif ? "#305a55" : "#fff", color: actif ? "#fff" : "#1a2e1a", boxShadow: actif ? "0 4px 14px rgba(48,90,85,.25)" : "none" }}>
+                    <span style={{ fontSize: 30 }}>{ic}</span>
+                    <span style={{ flex: 1, minWidth: 0 }}>
+                      <span style={{ display: "block", fontSize: 16.5, fontWeight: 900 }}>{titre}</span>
+                      <span style={{ display: "block", fontSize: 12, marginTop: 2, color: actif ? "#d9e7e1" : "#6b7280" }}>{detail}</span>
+                    </span>
+                    <span style={{ fontSize: 20, opacity: actif ? 1 : 0.5 }}>{actif ? "✓" : "›"}</span>
+                  </button>
+                ))}
+              </div>
+            )}
 
             {fiche ? rendreFiche(fiche) : (
               <>
