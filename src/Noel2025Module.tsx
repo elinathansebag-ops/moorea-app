@@ -883,14 +883,30 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const { exporterExcelMoorea, exporterPdfMoorea } = await import("./exportsMoorea");
     const lib = { q: "commandés (besoin)", lv: "livrés", m: "manquants", taux: "taux de service" }[mesure];
     const par = { article: "par produit", articleClient: "par produit et par client", clientArticle: "par client et par produit", fournisseurArticle: "par fournisseur et par produit", client: "par client" }[lignesPar] + (parSemaine ? " et par semaine" : " et par jour");
-    const deux = groupe, nomG = lignesPar === "fournisseurArticle" ? "Fournisseur" : lignesPar === "articleClient" ? "Article" : "Client";
-    const e = { nomFichier: `Noel 2025 - ${lib} ${par}`, titre: `Noël 2025 — colis ${lib} ${par}`,
+    const nomG = lignesPar === "fournisseurArticle" ? "Fournisseur" : lignesPar === "articleClient" ? "Article" : "Client";
+    // 16/10/2026 — Une seule valeur de regroupement (ex. un seul fournisseur) : pas de colonne inutile,
+    // le nom passe dans les filtres.
+    const groupes = [...new Set(tableau.map(t => t.client || ""))];
+    const deux = groupe && groupes.length > 1;
+    const seul = groupe && groupes.length === 1 ? groupes[0] : "";
+    // Valeurs des jours / semaines : des nombres (Excel), le taux en texte.
+    const vx = (x?: { q: number; lv: number; m: number }) => !x ? "" : mesure === "taux" ? (x.q ? `${Math.round((x.lv / x.q) * 100)} %` : "") : (x[mesure] || "");
+    const filtres = [...(sujet ? [sujet] : [tFournisseurs.length && `Fournisseurs : ${tFournisseurs.join(", ")}`, tClients.length && `Clients : ${tClients.join(", ")}`, tArticles.length && `Articles : ${tArticles.join(", ")}`, tFamilles.length && `Familles : ${tFamilles.join(", ")}`].filter(Boolean) as string[]),
+      ...(seul && seul !== sujet ? [`${nomG} : ${seul}`] : []), `Jours : colis ${lib}`];
+    const e = { nomFichier: `Noel 2025 - ${lib} ${par}${seul ? ` - ${seul}` : ""}`, titre: `Noël 2025 — colis ${lib} ${par}`,
       sousTitre: `Livraisons du ${jjmm(joursT[0] || "")} au ${jjmm(joursT[joursT.length - 1] || "")}/2025`,
-      filtres: sujet ? [sujet] : [tFournisseurs.length && `Fournisseurs : ${tFournisseurs.join(", ")}`, tClients.length && `Clients : ${tClients.join(", ")}`, tArticles.length && `Articles : ${tArticles.join(", ")}`, tFamilles.length && `Familles : ${tFamilles.join(", ")}`].filter(Boolean) as string[],
-      entetes: [...(deux ? [nomG] : []), lignesPar === "client" || lignesPar === "articleClient" ? "Client" : "Article", ...(lignesPar === "articleClient" ? ["Base"] : []), ...colonnes.map(c => (c.sous ? `${c.lib} (${c.sous})` : c.lib)), "Total"],
-      lignes: tableau.map(({ art, client, titre, base, r, tq, tlv, tm }) => [...(deux ? [client || ""] : []), deux && titre ? `TOTAL ${nomG.toUpperCase()}` : base ? base : art, ...(lignesPar === "articleClient" ? [base ? art : titre ? "" : "TOUTES BASES"] : []), ...colonnes.map(c => valeur(cellule(r, c))), valeur({ q: tq, lv: tlv, m: tm })]) };
+      filtres,
+      entetes: [...(deux ? [nomG] : []), lignesPar === "client" || lignesPar === "articleClient" ? "Client" : "Article", ...(lignesPar === "articleClient" ? ["Base"] : []),
+        ...colonnes.map(c => (c.sous ? `${c.lib} (${c.sous})` : c.lib)), "Total commandé", "Total livré", "Manquant", "Taux de service"],
+      lignes: tableau.map(({ art, client, titre, base, r, tq, tlv, tm }) => [
+        ...(deux ? [client || ""] : []),
+        titre && groupe ? (deux ? `TOTAL ${nomG.toUpperCase()}` : `TOTAL ${art}`) : base ? base : art,
+        ...(lignesPar === "articleClient" ? [base ? art : titre ? "" : "TOUTES BASES"] : []),
+        ...colonnes.map(c => vx(cellule(r, c))),
+        Math.round(tq), Math.round(tlv), tm ? Math.round(tm) : "", tq ? Math.round((tlv / tq) * 1000) / 10 : ""]) };
     if (format === "excel") await exporterExcelMoorea(e); else await exporterPdfMoorea(e);
   };
+
 
   // Carte « besoin » (réglages + tableau) — onglet Besoin et fiches.
   const carteBesoin = (tableau: LigneTab[], entete?: any, sujet?: string) => (
