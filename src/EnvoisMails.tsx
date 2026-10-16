@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { db, ref, onValue, set } from "./firebase";
+import { db, ref, onValue, set, auth } from "./firebase";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // 13/10/2026 — Demande d'Elinathan : « dans les paramètres globaux tu peux mettre une section
@@ -33,6 +33,16 @@ export function EnvoisMails({ sante, darkMode }: { sante: Record<string, { email
   const [reglages, setReglages] = useState<Record<string, Reglage>>({});
   const [edition, setEdition] = useState<{ cle: string; de: string; a: string; cc: string } | null>(null);
   const [erreur, setErreur] = useState("");
+  const [test, setTest] = useState("");
+  // 16/10/2026 — Rapport destructions : aperçu envoyé à la personne connectée, sans attendre jeudi.
+  async function testerDestruction() {
+    const moi = auth.currentUser?.email || "";
+    setTest("⏳ Envoi…");
+    try {
+      const r = await fetch("/api/rapport-destruction", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ test: moi }) }).then(x => x.json());
+      setTest(r?.ok ? `✓ Envoyé à ${moi} (S${r.semaine} : ${r.colis} colis, ${r.valeur} €)` : `Erreur : ${r?.error || "?"}`);
+    } catch (e: any) { setTest(`Erreur : ${e?.message || e}`); }
+  }
   useEffect(() => { const u = onValue(ref(db, "lidl_config"), s => setLidl(s.val() || {})); return () => u(); }, []);
   useEffect(() => { const u = onValue(ref(db, "config/mails"), s => setReglages(s.val() || {}), () => setReglages({})); return () => u(); }, []);
   const modeTest = lidl.modeTest !== false;
@@ -58,6 +68,7 @@ export function EnvoisMails({ sante, darkMode }: { sante: Record<string, { email
     ] },
     { titre: "📦 Stock", envois: [
       { quoi: "Inventaire (PDF)", de: "entrepot", a: "jordan.jouanest@moorea.fr", cc: "commercial@moorea.fr", quand: "Fin de comptage / « Envoyer à Jordan »", cle: "inventaire_stock", mod: TOUT },
+      { quoi: "🗑️ Rapport destructions par semaine (8 semaines + détail)", de: "entrepot", a: "jennifer.martin@moorea.fr", quand: "Le jeudi, juste après l'envoi du stock (une fois par semaine)", cle: "rapport_destruction", mod: TOUT },
       { quoi: "Écart caisses IFCO vides", de: "entrepot", a: "elinathan.sebag@moorea.fr", quand: "Fin d'un stock avec écart IFCO", cle: "ecart_ifco_vides", mod: TOUT },
     ] },
     { titre: "🏭 Prestataires & Appro", envois: [
@@ -113,6 +124,10 @@ export function EnvoisMails({ sante, darkMode }: { sante: Record<string, { email
                     <span style={{ fontSize: 12.5, fontWeight: 700, color: texte }}>{e.quoi}</span>
                     {e.regle && <span style={{ fontSize: 10.5, fontWeight: 800, padding: "1px 7px", borderRadius: 10, background: "#dbeafe", color: "#1e40af" }}>modifié</span>}
                     <span style={{ flex: 1 }} />
+                    {e.cle === "rapport_destruction" && !enEdition && (
+                      <button type="button" onClick={testerDestruction} title="Reçois le rapport de cette semaine sur ton adresse"
+                        style={{ padding: "3px 10px", borderRadius: 8, border: "1.5px solid #305a55", background: "#fff", color: "#305a55", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>🧪 M'envoyer un test</button>
+                    )}
                     {e.cle && !enEdition && (
                       <button type="button" onClick={() => { setErreur(""); setEdition({ cle: e.cle!, de: e.de, a: e.mod?.a ? e.a : "", cc: e.mod?.cc ? (e.cc === "aucune" ? "" : (e.cc && e.cc.includes("@") ? e.cc : "")) : "" }); }}
                         style={{ padding: "3px 10px", borderRadius: 8, border: "1.5px solid #d1d5db", background: "#fff", color: "#1a2e1a", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>✏️ Modifier</button>
@@ -158,7 +173,7 @@ export function EnvoisMails({ sante, darkMode }: { sante: Record<string, { email
                     </span>
                     <span style={{ fontWeight: 700 }}>À</span><span style={{ wordBreak: "break-word", overflowWrap: "anywhere" }}>{e.a}</span>
                     {e.cc && <><span style={{ fontWeight: 700 }}>Copie</span><span style={{ overflowWrap: "anywhere" }}>{e.cc}</span></>}
-                    <span style={{ fontWeight: 700 }}>Quand</span><span>{e.quand}</span>
+                    <span style={{ fontWeight: 700 }}>Quand</span><span>{e.quand}{e.cle === "rapport_destruction" && test ? <b style={{ display: "block", color: test.startsWith("Erreur") ? "#b91c1c" : "#15803d" }}>{test}</b> : null}</span>
                   </div>
                 </div>
               );

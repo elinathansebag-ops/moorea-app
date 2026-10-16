@@ -54,6 +54,7 @@ const ROUTES = {
   "portail-medina": () => import("../serveur/routes/portail-medina.js"),
   "portail-reconditionneur": () => import("../serveur/routes/portail-reconditionneur.js"),
   "push-envoyer": () => import("../serveur/routes/push-envoyer.js"),
+  "rapport-destruction": () => import("../serveur/routes/rapport-destruction.js"),
   "recap-reconditionnement": () => import("../serveur/routes/recap-reconditionnement.js"),
   "scan-etiquette": () => import("../serveur/routes/scan-etiquette.js"),
   "traduire": () => import("../serveur/routes/traduire.js"),

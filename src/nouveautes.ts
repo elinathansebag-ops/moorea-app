@@ -8,6 +8,8 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 96, date: "16/10", pages: ["stock"], texte: "🗑️ Chaque jeudi, juste après l'envoi du stock, Jennifer reçoit (depuis entrepot@) le rapport des destructions semaine par semaine : 8 dernières semaines (colis, kg, valeur d'achat) + détail par article. Réglable et testable dans Admin › Accès › « Qui envoie quel mail à qui » (🧪 M'envoyer un test)." },
+  { id: 95, date: "16/10", pages: ["stock"], texte: "📈 Stock : nouveau bouton « Écarts par semaine » — une ligne par article, une colonne par semaine (écart compté − Geslot), bilan de chaque semaine (lignes en écart, colis en moins / en plus), GMS ou Prestige, 4 à 26 semaines, export Excel." },
   { id: 94, date: "16/10", pages: ["extractions"], texte: "🎄 Noël 2025 : dans une fiche, les commandes sont rangées par client puis par base (729 Dammartin, Savigny, Base 10 Coudray…) avec le total livré / manquant de chaque base. Bouton « 📅 Par date » pour revenir à l'ancienne liste." },
   { id: 93, date: "16/10", pages: ["reconditionnement"], texte: "📦 Case « Carton Andès » : prochaines livraisons de cartons commandées pour Andès (palettes, cartons, date) et production du jour (demandes, colis à produire, cartons BABY BLANC utilisés)." },
   { id: 92, date: "16/10", pages: ["admin.donnees"], texte: "🎄 Admin › Données : raccourci « Ouvrir l'import Noël 2025 » qui ouvre directement le panneau d'import (fichiers + scans PDF)." },

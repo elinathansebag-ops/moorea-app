@@ -13,6 +13,10 @@
       "destination": "/api/routeur?__route=reference-ventes"
     },
     {
+      "source": "/api/rapport-destruction",
+      "destination": "/api/routeur?__route=rapport-destruction"
+    },
+    {
       "source": "/api/bl-nlt",
       "destination": "/api/routeur?__route=bl-nlt"
     },

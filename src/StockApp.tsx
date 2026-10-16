@@ -31,12 +31,14 @@ function cellulesDe(a: any): Record<string, any> {
 // ── Liste de tous les articles GMS + Prestige ──────────────────────────────
 // 13/10/2026 — Liste déplacée dans stockEquipes.ts (partagée avec 📊 Stats : choix des articles par compte GMS / Prestige).
 import { STOCK_CONFIG_ARTICLES } from "./stockEquipes";
+import { HistoriqueEcartsStock } from "./HistoriqueEcartsStock";
 
 export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompter = true, isAdmin = false }: { onExit: () => void; catalogueArticles?: {code:string,libelle:string,equipe:string}[]; canConfig?: boolean; canCompter?: boolean; isAdmin?: boolean }) {
   const containerRef = useRef<HTMLDivElement>(null);
   // 30/09/2026 — Demande d'Elinathan : même caméra que celle de l'accueil (ScannerQR), qui
   // marche bien, au lieu du scanner maison du stock.
   const [scanOuvert, setScanOuvert] = useState(false);
+  const [histoEcarts, setHistoEcarts] = useState(false); // 16/10/2026 — 📈 Écarts par semaine
   useEffect(() => {
     (window as any).__ouvrirScannerStock = () => setScanOuvert(true);
     return () => { delete (window as any).__ouvrirScannerStock; };
@@ -282,7 +284,10 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
     <div id="s-page-home">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem;flex-wrap:wrap;gap:10px">
         <div class="section-title" style="margin:0">📦 Stocks importés</div>
-        <button class="btn btn-gold" onclick="document.getElementById('s-file-input').click()">⬆ Déposer un stock</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn" style="border-color:#305a55;color:#305a55;font-weight:800" onclick="sHistoEcarts()">📈 Écarts par semaine</button>
+          <button class="btn btn-gold" onclick="document.getElementById('s-file-input').click()">⬆ Déposer un stock</button>
+        </div>
       </div>
       <input type="file" id="s-file-input" accept=".xlsx,.xls" style="display:none"/>
       <input type="file" id="s-file-reimport" accept=".xlsx,.xls" style="display:none"/>
@@ -1477,6 +1482,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
         } catch (err: any) { list.innerHTML = `<div class="empty-state">Erreur: ${err.message}</div>`; }
       };
 
+      (window as any).sHistoEcarts = () => setHistoEcarts(true);
       (window as any).sToggleWeekAcc = (key: string) => {
         const body = document.getElementById(`s-week-body-${key}`);
         const chev = document.getElementById(`s-week-chev-${key}`);
@@ -1669,6 +1675,14 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
           // saura quoi signaler à Jordan.
           await setDoc(doc(db, "stocks", sid), { envois: { [team]: { le: new Date().toLocaleString("fr-FR").slice(0, 16), par: nomSignataire() || "", ts: Date.now(), comptes: comptesDe(comptData), corrige: !!opts.corrections } } }, { merge: true }).catch(() => {});
           toast(opts.corrections ? "✉️ Stock corrigé envoyé à Jordan" : "✉️ PDF envoyé à Jordan");
+          // 16/10/2026 — Demande d'Elinathan : le jeudi, après l'envoi du stock, rapport des destructions
+          // semaine par semaine à Jennifer (depuis entrepot@). Une seule fois par semaine (le serveur
+          // ignore le 2ᵉ stock GMS / Prestige) — voir serveur/routes/rapport-destruction.js.
+          if (!opts.corrections && new Date().getDay() === 4) {
+            fetch("/api/rapport-destruction", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" })
+              .then(r => r.json()).then(r => { if (r?.ok && !r.deja) toast(`🗑️ Rapport destructions S${r.semaine} envoyé à Jennifer`); else if (r?.error) toast("Rapport destructions : " + r.error); })
+              .catch(() => {});
+          }
         } catch (err: any) {
           toast("Erreur envoi : " + (err?.message || String(err)));
         } finally {
@@ -3199,7 +3213,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
     return () => {
       try { (window as any).__stopComptageDirect?.(); } catch { /* ignore */ }
       // Cleanup global functions
-      ["sShowPage","sStartSession","sRecompterDepuis","sConsulter","sConsulterRender","sConsulterFermer","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sToggleIfco","sSetIfcoF","sSetComptageIfcoF","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sScannerPaletteComplete","sCompterPaletteComplete","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner","sToggleWeekAcc"].forEach(fn => { delete (window as any)[fn]; });
+      ["sShowPage","sStartSession","sRecompterDepuis","sConsulter","sConsulterRender","sConsulterFermer","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sToggleIfco","sSetIfcoF","sSetComptageIfcoF","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sScannerPaletteComplete","sCompterPaletteComplete","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner","sToggleWeekAcc","sHistoEcarts"].forEach(fn => { delete (window as any)[fn]; });
       document.getElementById("s-consult-overlay")?.remove();
       const styleEl = document.getElementById("stock-app-styles");
       if (styleEl) styleEl.remove();
@@ -3211,6 +3225,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       <style>{styles}</style>
       <PageHeader titre="📦 Stock Moorea" onBack={onExit} onHome={onExit} />
       <div ref={containerRef} />
+      {histoEcarts && <HistoriqueEcartsStock onFermer={() => setHistoEcarts(false)} />}
       {scanOuvert && (
         <div style={{ position: "fixed", inset: 0, zIndex: 900 }}>
           <ScannerQR brut

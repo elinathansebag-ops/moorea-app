@@ -8,7 +8,7 @@ import { signatureHtml, nomSignataire } from "./ProfilGenerique";
 // Firebase (« Authorization: Bearer … ») à toutes les requêtes vers les endpoints protégés.
 // 11/10/2026 — + photos (ImgBB) et lecture d'étiquette (Claude), réservées aux comptes connectés.
 // 14/10/2026 — + ventes 2025 du Programme d'achat et envoi de la traçabilité Lidl.
-const ENDPOINTS_PROTEGES = ["/api/send-email", "/api/upload-photo", "/api/scan-etiquette", "/api/bl-nlt", "/api/reference-ventes", "/api/envoyer-tracabilite-lidl", "/api/traduire"];
+const ENDPOINTS_PROTEGES = ["/api/send-email", "/api/upload-photo", "/api/scan-etiquette", "/api/bl-nlt", "/api/reference-ventes", "/api/envoyer-tracabilite-lidl", "/api/traduire", "/api/rapport-destruction"];
 // Mails dont le texte est écrit côté serveur : on leur passe le nom du signataire (voir plus bas).
 const ENDPOINTS_SIGNES = ["/api/recap-reconditionnement", "/api/envoyer-tracabilite-lidl", "/api/envoyer-commande-appro"];
 
