@@ -8,6 +8,8 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 87, date: "16/10", pages: ["reconditionnement", "prestataires"], texte: "🚚 Case « IFCO — Moorea » (Reconditionnement et Prestataires) : les prochaines livraisons de palettes IFCO commandées, avec la date (ex. « 4 palettes (2 560 caisses) · le 21/10 »)." },
+  { id: 86, date: "16/10", pages: ["prestataires"], texte: "📦 Commande de cartons : choisir « Déjà commandé par téléphone » (mail de confirmation à Go-Embal) ou « Commander par mail » (mail de demande de commande, avec la date de livraison souhaitée)." },
   { id: 85, date: "16/10", pages: ["reconditionnement"], texte: "📦 Reconditionnement : sous les compteurs IFCO, le nombre de caisses IFCO utilisées par semaine (moyenne 4 semaines + graphique), les caisses vides disponibles, combien de semaines ça couvre et combien commander pour tenir 3 semaines." },
   { id: 84, date: "16/10", pages: ["arrivages", "rapports"], texte: "🏭 Logos des fournisseurs aussi dans l'agréage : sur les cartes de Pointer arrivage (à la place de l'usine), sur les cartes des rapports qualité et dans le bandeau du PDF du rapport." },
   { id: 83, date: "16/10", pages: ["reconditionnement"], texte: "🔄 Reconditionnement Andès : un GINGEMBRE 2 KG revient par défaut en carton BABY BLANC (« Oui » pré-coché, modifiable), en demande simple comme en demande groupée." },

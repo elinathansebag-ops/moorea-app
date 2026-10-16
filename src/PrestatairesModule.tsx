@@ -322,6 +322,9 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
   // besoin de prévenir Go-Embal ni le prestataire par mail), sans fausser l'historique en
   // laissant la commande "en attente" alors qu'elle est déjà arrivée.
   const [saisieRetroactive, setSaisieRetroactive] = useState(false);
+  // 16/10/2026 — Demande d'Elinathan : commande déjà passée par téléphone (mail de CONFIRMATION) ou
+  // commande à passer par mail (mail de DEMANDE de commande à Go-Embal).
+  const [modeCommandeCarton, setModeCommandeCarton] = useState<"telephone" | "mail">("telephone");
 
   // Palettes IFCO form (commande fournisseur)
   const [lignesIfco, setLignesIfco] = useState<LignePaletteIFCO[]>([{ type: Object.keys(PALETTES_IFCO)[0], quantite: 1 }]);
@@ -1746,6 +1749,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
       ...(livraisonHorsSite ? { horsSite: true, emailPresta: emailPresta.trim() } : {}),
       creePar: qui(), // 14/10/2026
       ...(saisieRetroactive ? { recuPar: qui() } : {}),
+      ...(!saisieRetroactive ? { modeCommande: modeCommandeCarton } : {}),
     };
 
     try {
@@ -1792,7 +1796,18 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
           const lignesHtml = lignes
             .map((l) => `<li><strong>${l.type}</strong>: ${l.nbPalettes} palette${l.nbPalettes > 1 ? "s" : ""}</li>`)
             .join("");
-          const emailHtml = `
+          const dateFr = (iso: string) => { const [a, m, j] = String(iso || "").split("-"); return a && m && j ? `${j}/${m}/${a}` : iso; };
+          const parMail = modeCommandeCarton === "mail";
+          const emailHtml = parMail ? `
+            <p>Bonjour,</p>
+            <p>Nous souhaitons vous commander les cartons suivants :</p>
+            <ul>${lignesHtml}</ul>
+            <p><strong>Livraison souhaitée :</strong> ${dateFr(dateLivraison)} — ${creneau}</p>
+            <p><strong>Lieu de livraison :</strong> ${lieuLivraison}</p>
+            <p>Merci de bien vouloir nous <strong>confirmer cette commande</strong> et la date de livraison par retour de mail.</p>
+            <p>Référence Moorea : ${commandeId}</p>
+            <p>Bien cordialement,<br>Moorea Commerce Fruits</p>
+          ` : `
             <p>Bonjour,</p>
             <p>Suite à notre appel téléphonique, voici la confirmation de votre commande de cartons:</p>
             <h2>Confirmation de Commande de Cartons</h2>
@@ -1810,7 +1825,7 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               envoi: "commande_cartons",
-              subject: `Confirmation de commande cartons #${commandeId}`,
+              subject: parMail ? `Demande de commande cartons — livraison souhaitée le ${dateFr(dateLivraison)}` : `Confirmation de commande cartons #${commandeId}`,
               html: emailHtml,
               to: ["contact@go-embal.fr"],
               sender: "elinathan",
@@ -1872,10 +1887,13 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
       setLivraisonHorsSite(false);
       setEmailPresta("");
       setSaisieRetroactive(false);
+      setModeCommandeCarton("telephone");
       if (raccourci) finRaccourci(); else setActiveTab("cartons");
       setNotification({ type: "success", message: saisieRetroactive
         ? "✓ Palette entrée dans l'historique, aucun mail envoyé"
-        : livraisonHorsSite ? "✓ Commande de cartons créée, email de confirmation envoyé au prestataire" : "✓ Commande de cartons créée, arrivage ajouté et email envoyé" });
+        : livraisonHorsSite ? "✓ Commande de cartons créée, email de confirmation envoyé au prestataire"
+        : modeCommandeCarton === "mail" ? "✓ Demande de commande envoyée à Go-Embal par mail, arrivage ajouté"
+        : "✓ Commande de cartons créée, arrivage ajouté et confirmation envoyée à Go-Embal" });
     } catch (error) {
       setNotification({ type: "error", message: "✗ Erreur" });
     }
@@ -2350,11 +2368,24 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                             ? `⚠️ stock négatif — il manque ${totalAbs} caisse${totalAbs > 1 ? "s" : ""}`
                             : `= ${palettes > 0 ? `${palettes} palette${palettes > 1 ? "s" : ""}${reste > 0 ? ` + ${reste} caisse${reste > 1 ? "s" : ""}` : ""}` : `${total} caisse${total > 1 ? "s" : ""} (moins d'une palette)`}`}
                         </div>
-                        {enCommande > 0 && (
-                          <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #d1d5db", fontSize: 10.5, color: "#8a6f2e" }}>
-                            🚚 + {enCommande} caisse{enCommande > 1 ? "s" : ""} en commande (arrivée à venir)
-                          </div>
-                        )}
+                        {enCommande > 0 && (() => {
+                          // 16/10/2026 — Détail des prochaines livraisons (« 4 palettes · le 21/10 »).
+                          const parDate = new Map<string, { palettes: number; caisses: number }>();
+                          palettesCommandes.filter(c => c.statut === "commandé").forEach(c => {
+                            const x = parDate.get(c.dateLivraisonPrevue || "") || { palettes: 0, caisses: 0 };
+                            c.lignes.forEach(l => { x.palettes += l.quantite; x.caisses += (PALETTES_IFCO[l.type as keyof typeof PALETTES_IFCO]?.caisses || 0) * l.quantite; });
+                            parDate.set(c.dateLivraisonPrevue || "", x);
+                          });
+                          return (
+                            <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #d1d5db", textAlign: "left" }}>
+                              <div style={{ fontSize: 10.5, fontWeight: 700, color: "#6b7280", marginBottom: 3 }}>🚚 Prochaines livraisons</div>
+                              {[...parDate].sort((a, b) => a[0].localeCompare(b[0])).slice(0, 4).map(([d, x]) => {
+                                const [a, m, j] = d.split("-");
+                                return <div key={d} style={{ fontSize: 12, color: "#166534", fontWeight: 700 }}>{x.palettes} palette{x.palettes > 1 ? "s" : ""} <span style={{ fontWeight: 500, color: "#6b7280" }}>({x.caisses.toLocaleString("fr-FR")} caisses)</span>{d ? ` · le ${j}/${m}${a !== String(new Date().getFullYear()) ? `/${a}` : ""}` : ""}</div>;
+                              })}
+                            </div>
+                          );
+                        })()}
                       </div>
                     );
                   })}
@@ -2783,6 +2814,24 @@ export function PrestatairesModule({ onClose, userName, initialTab, canConfig = 
                 }}
               />
             </div>
+
+            {!saisieRetroactive && (
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: COLORS.gray700, marginBottom: 6 }}>📨 Comment est passée la commande ?</div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {([["telephone", "📞 Déjà commandé par téléphone", "Envoie un mail de confirmation à Go-Embal"], ["mail", "✉️ Commander par mail", "Envoie une demande de commande à Go-Embal"]] as const).map(([v, titre, sous]) => {
+                    const actif = modeCommandeCarton === v;
+                    return (
+                      <button key={v} type="button" onClick={() => setModeCommandeCarton(v)}
+                        style={{ flex: "1 1 220px", textAlign: "left", padding: "10px 14px", borderRadius: 10, cursor: "pointer", border: `2px solid ${actif ? COLORS.primary : COLORS.gray200}`, background: actif ? `${COLORS.primary}12` : "#fff" }}>
+                        <span style={{ display: "block", fontSize: 13.5, fontWeight: 800, color: actif ? COLORS.primary : COLORS.gray700 }}>{titre}</span>
+                        <span style={{ display: "block", fontSize: 11.5, color: COLORS.gray600 }}>{sous}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
 
             {!raccourci && (<>
             {/* 23/09/2026 -- Demande d'Elinathan : rattraper une palette de cartons déjà reçue

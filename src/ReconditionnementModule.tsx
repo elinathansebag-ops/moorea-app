@@ -1,3 +1,4 @@
+import { PALETTES_IFCO } from "./prestatairesCatalogue";
 import { chargerLogoMoorea, VERT_MOOREA } from "./logoMoorea";
 import { useState, useEffect, useRef, useMemo, ChangeEvent, Fragment } from "react";
 import { BarreMailsRecond } from "./BarreMailsRecond";
@@ -65,7 +66,10 @@ function formatCaisses(caisses: number): string {
 // mauvais modèle (celui du calendrier IFCO, avec le nombre de palettes en gros). Ici : le gros
 // chiffre est le total en CAISSES (donnée réellement stockée, sans ambiguïté), et le détail
 // "= X palette(s) + Y caisses" est en dessous, sur un fond teinté, comme dans Prestataires.
-function StockCardsIfco({ moorea, nlt, cartonAndes, nltEngage, nltAujourdhui }: { moorea: number; nlt: number; cartonAndes: number; nltEngage?: number; nltAujourdhui?: { caisses: number; nb: number } }) {
+// 16/10/2026 — Prochaines livraisons de palettes IFCO commandées (module Prestataires) : affichées dans
+// la case « IFCO — Moorea » (ex. « 4 palettes · arrivent le 21/10 »).
+type LivraisonIfco = { date: string; palettes: number; caisses: number };
+function StockCardsIfco({ moorea, nlt, cartonAndes, nltEngage, nltAujourdhui, livraisonsMoorea = [] }: { moorea: number; nlt: number; cartonAndes: number; nltEngage?: number; nltAujourdhui?: { caisses: number; nb: number }; livraisonsMoorea?: LivraisonIfco[] }) {
   const carte = (label: string, total: number, couleur: string, bg: string, extra?: any) => {
     // 11/09/2026 — Demande d'Elinathan : signaler clairement quand le stock de caisses est
     // NÉGATIF (plus de caisses sorties que ce qui était réellement disponible), au lieu d'afficher
@@ -122,7 +126,15 @@ function StockCardsIfco({ moorea, nlt, cartonAndes, nltEngage, nltAujourdhui }: 
   ) : undefined;
   return (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, marginBottom: 8 }}>
-      {carte("🏭 IFCO — Moorea", moorea, "#27ae60", "#eafaf1")}
+      {carte("🏭 IFCO — Moorea", moorea, "#27ae60", "#eafaf1", livraisonsMoorea.length ? (
+        <div style={{ marginTop: 8, paddingTop: 8, borderTop: "1px dashed #d1d5db", textAlign: "left" }}>
+          <div style={{ fontSize: 10.5, fontWeight: 700, color: "#6b7280", marginBottom: 3 }}>🚚 Prochaines livraisons</div>
+          {livraisonsMoorea.slice(0, 4).map((l, i) => {
+            const [a, m, j] = l.date.split("-");
+            return <div key={i} style={{ fontSize: 12, color: "#166534", fontWeight: 700 }}>{l.palettes} palette{l.palettes > 1 ? "s" : ""} <span style={{ fontWeight: 500, color: "#6b7280" }}>({l.caisses.toLocaleString("fr-FR")} caisses)</span> · le {j}/{m}{a && a !== String(new Date().getFullYear()) ? `/${a}` : ""}</div>;
+          })}
+        </div>
+      ) : undefined)}
       {carte("🔄 IFCO — NLT", nlt, "#3b82f6", "#eff6ff", nltExtra)}
       <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "14px 16px", textAlign: "center" }}>
         <div style={{ fontSize: 11, fontWeight: 700, color: "#666", marginBottom: 6 }}>📦 Carton Andès</div>
@@ -1230,6 +1242,18 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
   // emplacement, pas un compteur séparé. Envoyer des caisses pour un reconditionnement est un
   // transfert moorea → nlt ; le retour de caisses pleines est un transfert nlt → moorea.
   const [stockIfco, setStockIfco] = useState<{ moorea: number; transit: number; nlt: number }>({ moorea: 0, transit: 0, nlt: 0 });
+  const [livraisonsIfco, setLivraisonsIfco] = useState<LivraisonIfco[]>([]);
+  useEffect(() => onValue(ref(db, "ifco_palettes_commandes"), snap => {
+    const auj = new Date().toISOString().slice(0, 10);
+    const parDate = new Map<string, LivraisonIfco>();
+    Object.values(snap.val() || {}).forEach((c: any) => {
+      if (!c || c.statut !== "commandé" || !c.dateLivraisonPrevue || c.dateLivraisonPrevue < auj) return;
+      const x = parDate.get(c.dateLivraisonPrevue) || { date: c.dateLivraisonPrevue, palettes: 0, caisses: 0 };
+      (c.lignes || []).forEach((l: any) => { const q = Number(l?.quantite) || 0; x.palettes += q; x.caisses += q * (PALETTES_IFCO[l?.type as keyof typeof PALETTES_IFCO]?.caisses || 640); });
+      parDate.set(c.dateLivraisonPrevue, x);
+    });
+    setLivraisonsIfco([...parDate.values()].sort((a, b) => a.date.localeCompare(b.date)));
+  }), []);
   // Stock cartons BABY BLANC @ Andès — partagé avec le tracker du module Prestataires.
   const [stockBabyBlancAndes, setStockBabyBlancAndes] = useState(0);
 
@@ -4177,7 +4201,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
 
             {/* Stock — même bloc que sur "Nouvelle demande", pour l'avoir sous les yeux sans
                 changer d'onglet en consultant les demandes en cours (demande du 27/08/2026). */}
-            <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt} nltAujourdhui={nltAujourdhui} />
+            <StockCardsIfco livraisonsMoorea={livraisonsIfco} moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt} nltAujourdhui={nltAujourdhui} />
             <BesoinIfcoHebdo demandes={demandes} stockMoorea={stockIfco.moorea} stockNlt={stockIfco.nlt} />
 
             {/* 04/09/2026 — La correction manuelle du stock (IFCO NLT / carton Andès) vit
@@ -4548,7 +4572,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             <button type="button" onClick={() => setActiveTab("en_cours")} style={{ fontSize: 12, fontWeight: 700, color: COLORS.gray600, background: "transparent", border: "none", cursor: "pointer", padding: 0, marginBottom: 12 }}>← Retour (les bons restent en attente)</button>
             {/* 29/09/2026 — « combien de caisses IFCO vont être utilisées aujourd'hui » : le
                 compteur « Aujourd'hui » inclut les bons de cet écran (NLT, retour IFCO Oui). */}
-            <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt}
+            <StockCardsIfco livraisonsMoorea={livraisonsIfco} moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt}
               nltAujourdhui={{ caisses: nltAujourdhui.caisses + caissesIfcoBonsGroupe.caisses, nb: nltAujourdhui.nb + caissesIfcoBonsGroupe.nb }} />
             {caissesIfcoBonsGroupe.nb > 0 && (
               <div style={{ background: "#eff6ff", border: "1.5px solid #bfdbfe", borderRadius: 12, padding: "10px 14px", margin: "4px 0 12px", fontSize: 13, color: "#1e3a8a", fontWeight: 700 }}>
@@ -4747,7 +4771,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             )}
 
             {/* Stock, en couleur pâle pour repérer chaque compteur d'un coup d'œil */}
-            <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt} nltAujourdhui={nltAujourdhui} />
+            <StockCardsIfco livraisonsMoorea={livraisonsIfco} moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt} nltAujourdhui={nltAujourdhui} />
             <BesoinIfcoHebdo demandes={demandes} stockMoorea={stockIfco.moorea} stockNlt={stockIfco.nlt} />
 
             {/* 11/09/2026 — Demande d'Elinathan : un seul bouton d'import (voir importerPdf) au
