@@ -653,18 +653,18 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
           </button>
         )}
         {!global && (
-          <div style={{ ...carte, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: besoin ? "#305a55" : vueLitiges ? "#92400e" : vueGeslot ? "#1e40af" : "#8f1d1d", border: "none", color: "#fff", marginBottom: 12 }}>
+          <div style={{ ...carte, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: besoin ? "#305a55" : vueLitiges ? "#facc15" : vueGeslot ? "#1e40af" : "#8f1d1d", border: "none", color: vueLitiges ? "#422006" : "#fff", marginBottom: 12 }}>
             <span style={{ fontSize: 38 }}>{icone}</span>
             <div style={{ flex: 1, minWidth: 200 }}>
               <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1.15 }}>{f.valeur}</div>
-              <div style={{ fontSize: 14, marginTop: 4, color: "#f3f4f6" }}>
+              <div style={{ fontSize: 14, marginTop: 4, color: vueLitiges ? "#713f12" : "#f3f4f6" }}>
                 {vueGeslot ? <>🧾 <b style={{ fontSize: 17 }}>Geslot / scans</b> — les deux sources côte à côte</> : vueLitiges ? <>⚠️ <b style={{ fontSize: 17 }}>{lits.length} litige{lits.length > 1 ? "s" : ""}</b>{lits.length ? ` · ${ent(lits.reduce((t, x) => t + (Number(x.r) || 0), 0))} colis refusés` : ""}</>
                   : besoin ? <>📦 <b style={{ fontSize: 17 }}>{ent(tot.q)} colis commandés</b> par {nbClients} client{nbClients > 1 ? "s" : ""} · {ent(tot.lv)} livrés{tot.m ? ` · ${ent(tot.m)} manquants` : ""}</>
                   : tot.m ? <>Il a manqué <b style={{ color: "#fecaca", fontSize: 17 }}>{ent(tot.m)} colis</b> sur {ent(tot.q)} commandés</> : <>✅ Tout a été livré ({ent(tot.q)} colis)</>}
               </div>
             </div>
             {boutonsExport(f.valeur, ls)}
-            <button type="button" onClick={() => { fermerFiche(); if (f.type === "selection") toutDecocher(); }} style={{ padding: "8px 12px", borderRadius: 9, border: "1.5px solid rgba(255,255,255,.4)", background: "transparent", color: "#fff", fontWeight: 800, cursor: "pointer" }}>✕ Effacer</button>
+            <button type="button" onClick={() => { fermerFiche(); if (f.type === "selection") toutDecocher(); }} style={{ padding: "8px 12px", borderRadius: 9, border: `1.5px solid ${vueLitiges ? "rgba(66,32,6,.4)" : "rgba(255,255,255,.4)"}`, background: "transparent", color: vueLitiges ? "#422006" : "#fff", fontWeight: 800, cursor: "pointer" }}>✕ Effacer</button>
           </div>
         )}
         {!vueGeslot && chiffres(tot, lits.length)}
@@ -1019,7 +1019,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
               const onglets = [
                 ["besoin", "📦", "Besoin", "Ce qui a été commandé", "#305a55", "#eef4f2"],
                 ["manque", "❌", "Manquants", "Ce qui n'a pas été livré", "#b91c1c", "#fef2f2"],
-                ["litiges", "⚠️", `Litiges (${nbLit})`, "Refus et litiges clients", "#b45309", "#fffbeb"],
+                ["litiges", "⚠️", `Litiges (${nbLit})`, "Refus et litiges clients", "#ca8a04", "#fefce8"],
                 ["geslot", "🧾", "Geslot / scans", "Ventes Geslot vs commandes scannées", "#1d4ed8", "#eff6ff"],
               ] as const;
               return (
@@ -1030,7 +1030,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                       return (
                         <button key={v} type="button" onClick={() => setVue(v)}
                           style={{ display: "flex", alignItems: "center", gap: 10, textAlign: "left", padding: "10px 14px", borderRadius: 14, cursor: "pointer", minWidth: 0,
-                            border: `2.5px solid ${coul}`, background: on ? coul : doux, color: on ? "#fff" : coul }}>
+                            border: `2.5px solid ${coul}`, background: on ? (v === "litiges" ? "#facc15" : coul) : doux, color: on ? (v === "litiges" ? "#422006" : "#fff") : coul }}>
                           <span style={{ fontSize: 22 }}>{ic}</span>
                           <span style={{ minWidth: 0 }}>
                             <span style={{ display: "block", fontSize: 15, fontWeight: 900 }}>{titre}{on ? " ✓" : ""}</span>
