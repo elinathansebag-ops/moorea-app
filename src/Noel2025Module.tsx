@@ -163,7 +163,7 @@ async function envoyerScans(fichiers: File[], dejaLa: Record<string, string>, pr
 // 🗂️ famille, 📅 jour, 🧾 BL / commande — « hv » = haricot vert…) ouvre une FICHE claire : chiffres,
 // ce qui a manqué, jour par jour, commandes avec le scan, litiges, export Excel / PDF.
 // mode « besoin » : la même fiche, mais centrée sur ce qui a été commandé (ouverte depuis l'onglet Besoin).
-type Fiche = { type: string; valeur: string; filtre: (l: Ligne) => boolean; filtreR: (r: Rupture) => boolean; filtreL: (x: Litige) => boolean; mode?: "besoin" };
+type Fiche = { type: string; valeur: string; filtre: (l: Ligne) => boolean; filtreR: (r: Rupture) => boolean; filtreL: (x: Litige) => boolean; mode?: "besoin"; jourChoisi?: string };
 const C: Couleurs = { fond: "#f5f3ee", carte: "#fff", texte: "#1a2e1a", gris: "#6b7280", bord: "#e8e0d0", vert: "#305a55", sombre: false };
 const pct = (a: number, b: number) => (b ? `${(a / b * 100).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %` : "—");
 const TITRES: Record<string, string> = { client: "👤", article: "", famille: "🗂️", jour: "📅", bl: "🧾", fournisseur: "🏭" };
@@ -461,7 +461,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const nbClients = new Set(lc.map(l => l.c)).size;
     const tableBesoin = <div style={{ marginTop: 14 }}>{carteBesoin(construireTableau(lc.filter(l => (!periode.du || l.d >= periode.du) && (!periode.au || l.d <= periode.au))),
       <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 10 }}>📅 Besoin jour par jour <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— {f.valeur}</span></div>, f.valeur)}</div>;
-    const surJour = f.type === "jour" ? undefined : (iso: string) => allerA({ ...f, valeur: `${f.valeur} · ${jjmm(iso)}`, filtre: l => f.filtre(l) && l.d === iso, filtreR: r => f.filtreR(r) && r.d === iso, filtreL: x => f.filtreL(x) && x.d === iso });
+    const surJour = f.type === "jour" || f.jourChoisi ? undefined : (iso: string) => allerA({ ...f, jourChoisi: iso, valeur: `${f.valeur} · ${jjmm(iso)}`, filtre: l => f.filtre(l) && l.d === iso, filtreR: r => f.filtreR(r) && r.d === iso, filtreL: x => f.filtreL(x) && x.d === iso });
     return (
       <div>
         {historique.length > 0 && (
