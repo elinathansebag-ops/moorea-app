@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 118, date: "16/10", pages: ["lidl"], texte: "🛒 Le mot du jour pour Jordan : 30 nouveaux compliments, plus drôles et bien plus flatteurs." },
   { id: 117, date: "16/10", pages: ["extractions"], texte: "🎄 Noël 2025 : les onglets Résumé / Besoin / ⚠️ Litiges restent visibles même dans une fiche ; chaque fiche indique aussi quand elle n'a aucun litige." },
   { id: 116, date: "16/10", pages: ["rapports", "qualite"], texte: "⚖️ Rapport qualité : section « Pesées (g) » sous Poids — on ajoute autant de pesées qu'on veut (moyenne, min, max). Elles sont dans le mail et le PDF du rapport, et dans 🧪 Récap qualité › ⚖️ Poids avec les pesées du pointage." },
   { id: 115, date: "16/10", pages: ["lidl"], texte: "🛒 Bon Geslot Lidl : en bas, après le récap des commandes, un encadré « Le mot du jour pour Jordan » avec un compliment différent chaque jour." },
