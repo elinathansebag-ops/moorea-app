@@ -27,9 +27,10 @@ const avecRechargement = <T,>(f: () => Promise<T>) => () => f().catch(err => {
 });
 const StatsAchatsModule = lazy(avecRechargement(() => import("./StatsAchatsModule")));
 const StattModule = lazy(avecRechargement(() => import("./StattModule").then(m => ({ default: m.StattModule }))));
+const Noel2025Module = lazy(avecRechargement(() => import("./Noel2025Module").then(m => ({ default: m.Noel2025Module }))));
 
 type LigneVente = { d: string; f: string; c: string; a: string; fam: string; g: string; col: number; ach: number; ven: number; res: number; pc: number; kg: number; sa?: number };
-type Onglet = "client" | "arrivage" | "produits" | "analyse" | "programme" | "config" | "fiche" | "jour" | "litiges";
+type Onglet = "client" | "arrivage" | "produits" | "analyse" | "programme" | "config" | "fiche" | "jour" | "litiges" | "noel";
 type Preset = { client?: string; fournisseur?: string; articles?: string[]; familles?: string[]; date?: string; fournisseursMotsCles?: string[]; rapport?: Rapport; fiche?: { type: "client" | "fournisseur"; nom: string }; vueLitiges?: "clients" | "arrivages" };
 // 14/10/2026 — Rapports enregistrés (« programmes ») : stats_rapports/{id}. Période fixe ou
 // glissante (« 30 derniers jours » recalculée à chaque ouverture), filtres et vue ; partage avec
@@ -381,6 +382,8 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
   const chargement = <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: c.gris }}>Chargement…</div>;
   if (onglet === "analyse" && voirMarge) return <Suspense fallback={chargement}><StatsAchatsModule onClose={retour} userName={userName} /></Suspense>;
   if (onglet === "programme" && voirProgramme) return <Suspense fallback={chargement}><StattModule onClose={retour} userName={userName} /></Suspense>;
+  // 16/10/2026 — Commandes de Noël 2025 scannées : demandé / livré / manquant, litiges, scans.
+  if (onglet === "noel" && voirExtractions) return <Suspense fallback={chargement}><Noel2025Module onClose={retour} estAdmin={estAdmin} /></Suspense>;
 
   const ouvrir = (o: Option) => {
     // 14/10/2026 — Un client ou un fournisseur ouvre sa FICHE (tout au même endroit).
@@ -402,6 +405,7 @@ export function Extractions({ onClose, darkMode, voirMarge, voirExtractions = tr
     ] : []),
     ...(voirMarge ? [{ k: "analyse" as Onglet, icone: "💶", titre: "Analyse ventes & marge", detail: "Fournisseurs, familles, articles, clients, évolution · import Geslot" }] : []),
     ...(voirProgramme ? [{ k: "programme" as Onglet, icone: "🛒", titre: "Programme d'achat", detail: "Préparer une période (Noël, promo) d'après l'an dernier" }] : []),
+    ...(voirExtractions ? [{ k: "noel" as Onglet, icone: "🎄", titre: "Commandes Noël 2025", detail: "Demandé / livré / manquant par client, produit et jour · litiges · scans" }] : []),
     ...(voirMarge ? [{ k: "config" as Onglet, icone: "⚙️", titre: "Configuration", detail: "Jours importés / pas encore · importer un fichier Geslot" }] : []),
   ];
   const titreOnglet = cartes.find(x => x.k === onglet);

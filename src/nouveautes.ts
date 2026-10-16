@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 88, date: "16/10", pages: ["extractions"], texte: "🎄 📊 Stats › « Commandes Noël 2025 » : recherche par BL, commande, jour, client ou article (« il a manqué … »), tableau demande produit × jour (commandé / livré / manquant / taux), manquants par jour et par produit, litiges, et lien vers le scan PDF de la commande. Import des fichiers et des scans en bas de la page (admin)." },
   { id: 87, date: "16/10", pages: ["reconditionnement", "prestataires"], texte: "🚚 Case « IFCO — Moorea » (Reconditionnement et Prestataires) : les prochaines livraisons de palettes IFCO commandées, avec la date (ex. « 4 palettes (2 560 caisses) · le 21/10 »)." },
   { id: 86, date: "16/10", pages: ["prestataires"], texte: "📦 Commande de cartons : choisir « Déjà commandé par téléphone » (mail de confirmation à Go-Embal) ou « Commander par mail » (mail de demande de commande, avec la date de livraison souhaitée)." },
   { id: 85, date: "16/10", pages: ["reconditionnement"], texte: "📦 Reconditionnement : sous les compteurs IFCO, le nombre de caisses IFCO utilisées par semaine (moyenne 4 semaines + graphique), les caisses vides disponibles, combien de semaines ça couvre et combien commander pour tenir 3 semaines." },
