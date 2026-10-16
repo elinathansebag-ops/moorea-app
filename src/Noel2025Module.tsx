@@ -159,7 +159,7 @@ async function envoyerScans(fichiers: File[], dejaLa: Record<string, string>, pr
 type Fiche = { type: string; valeur: string; filtre: (l: Ligne) => boolean; filtreR: (r: Rupture) => boolean; filtreL: (x: Litige) => boolean };
 const C: Couleurs = { fond: "#f5f3ee", carte: "#fff", texte: "#1a2e1a", gris: "#6b7280", bord: "#e8e0d0", vert: "#305a55", sombre: false };
 const pct = (a: number, b: number) => (b ? `${(a / b * 100).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %` : "—");
-const TITRES: Record<string, string> = { client: "👤", article: "", famille: "🗂️", jour: "📅", bl: "🧾" };
+const TITRES: Record<string, string> = { client: "👤", article: "", famille: "🗂️", jour: "📅", bl: "🧾", fournisseur: "🏭" };
 
 export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; estAdmin?: boolean }) {
   const [don, setDon] = useState<Donnees | null>(null);
@@ -177,7 +177,13 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const [tClients, setTClients] = useState<string[]>([]);
   const [tArticles, setTArticles] = useState<string[]>([]);
   const [tFamilles, setTFamilles] = useState<string[]>([]);
-  const [lignesPar, setLignesPar] = useState<"article" | "clientArticle" | "client">("clientArticle");
+  const [tFournisseurs, setTFournisseurs] = useState<string[]>([]);
+  const [periode, setPeriode] = useState<{ du: string; au: string }>({ du: "", au: "" });
+  const [lignesPar, setLignesPar] = useState<"article" | "clientArticle" | "fournisseurArticle" | "client">("clientArticle");
+  // 16/10/2026 — « le besoin de Yukon sur une période » : les commandes scannées ne disent pas d'où
+  // vient la marchandise. Chaque réf est rattachée au fournisseur qui en a fourni le plus en
+  // décembre 2025 dans 📊 Stats (à défaut, sur toute la base des ventes). Noms Geslot identiques.
+  const [fournisseurDe, setFournisseurDe] = useState<Record<string, string>>({});
   const [clientsFermes, setClientsFermes] = useState<Record<string, boolean>>({});
   const [selection, setSelection] = useState<Option[]>([]);
   const [mesure, setMesure] = useState<"q" | "lv" | "m" | "taux">("q");
@@ -189,6 +195,24 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
 
   useEffect(() => { setDon(null); charger().then(setDon).catch(e => setErreur(e?.message || "lecture impossible")); }, [rechargement]);
 
+  useEffect(() => {
+    if (!don) return;
+    let fini = false;
+    import("./ventesCache").then(m => m.chargerJoursVentes()).then(jv => {
+      const tout = new Map<string, Map<string, number>>(), dec = new Map<string, Map<string, number>>();
+      Object.entries(jv).forEach(([d, v]) => {
+        const cible = d >= "2025-12-01" && d <= "2025-12-31" ? dec : tout;
+        (Array.isArray(v) ? v : Object.values(v || {})).forEach((r: any) => {
+          if (!r?.a || !r?.f) return;
+          const m = cible.get(r.a) || new Map<string, number>(); m.set(r.f, (m.get(r.f) || 0) + (Number(r.col) || 0) + 0.001); cible.set(r.a, m);
+        });
+      });
+      const out: Record<string, string> = {}, choisir = (m: Map<string, number>) => [...m].sort((a, b) => b[1] - a[1])[0][0];
+      tout.forEach((m, a) => { out[a] = choisir(m); }); dec.forEach((m, a) => { out[a] = choisir(m); });
+      if (!fini) setFournisseurDe(out);
+    }).catch(() => {});
+    return () => { fini = true; };
+  }, [don]);
   const lignes = useMemo(() => (don?.lignes || []).filter(compte), [don]);
   const jours = useMemo(() => [...new Set(lignes.map(l => l.d).filter(Boolean))].sort(), [lignes]);
   const totaux = useMemo(() => lignes.reduce((t, l) => ({ q: t.q + l.q, lv: t.lv + l.lv, m: t.m + l.m }), { q: 0, lv: 0, m: 0 }), [lignes]);
@@ -200,9 +224,9 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       if (!valeur) return; const k = type + "|" + valeur; const o: any = m.get(k) || { type, valeur, poids: 0, man: 0 };
       o.poids += q; o.man += man; o.detail = `${ent(o.poids)} colis commandés${o.man ? ` · ${ent(o.man)} manquants` : " · tout livré"}`; m.set(k, o);
     };
-    lignes.forEach(l => { ajout("client", l.c, l.q, l.m); ajout("article", l.a, l.q, l.m); ajout("famille", l.f, l.q, l.m); });
+    lignes.forEach(l => { ajout("client", l.c, l.q, l.m); ajout("article", l.a, l.q, l.m); ajout("famille", l.f, l.q, l.m); ajout("fournisseur", fournisseurDe[l.a], l.q, l.m); });
     return [...m.values()];
-  }, [lignes]);
+  }, [lignes, fournisseurDe]);
   const extra = (q: string): Option[] => {
     const t = q.trim(); const out: Option[] = [];
     const j = t.match(/^(\d{1,2})[/.-](\d{1,2})/);
@@ -224,6 +248,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       o.type === "client" ? { type: "client", valeur: v, filtre: l => l.c === v, filtreR: r => r.c === v, filtreL: x => norm(x.c) === norm(v) || norm(x.cf).includes(norm(v)) } :
       o.type === "article" ? { type: "article", valeur: v, filtre: l => l.a === v, filtreR: r => r.a === v, filtreL: x => x.a === v } :
       o.type === "famille" ? { type: "famille", valeur: v, filtre: l => l.f === v, filtreR: r => r.f === v, filtreL: () => false } :
+      o.type === "fournisseur" ? { type: "fournisseur", valeur: v, filtre: l => fournisseurDe[l.a] === v, filtreR: r => fournisseurDe[r.a] === v, filtreL: x => fournisseurDe[x.a] === v } :
       o.type === "jour" ? { type: "jour", valeur: `Livraisons du ${jjmm(cle)}`, filtre: l => l.d === cle, filtreR: r => r.d === cle, filtreL: x => x.d === cle } :
       o.type === "commande" ? { type: "bl", valeur: v, filtre: l => l.n === cle, filtreR: r => r.n === cle, filtreL: () => false } :
       { type: "bl", valeur: v, filtre: l => l.bl.replace(/\s/g, "").split(",").includes(v), filtreR: r => r.bl.includes(v), filtreL: x => x.bl === v };
@@ -237,8 +262,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const cocher = (o: Option) => setSelection(s => (s.some(x => cleOpt(x) === cleOpt(o)) ? s.filter(x => cleOpt(x) !== cleOpt(o)) : [...s, o]));
   const deType = (t: string) => selection.filter(o => o.type === t).map(o => o.valeur);
   const ouvrirSelection = () => {
-    const cs = deType("client"), as = deType("article"), fs = deType("famille");
-    const prod = (a: string, f: string) => (!as.length && !fs.length) || as.includes(a) || fs.includes(f);
+    const cs = deType("client"), as = deType("article"), fs = deType("famille"), fo = deType("fournisseur");
+    const prod = (a: string, f: string) => (!as.length && !fs.length && !fo.length) || as.includes(a) || fs.includes(f) || fo.includes(fournisseurDe[a]);
     setFiche({
       type: "selection", valeur: selection.map(o => o.valeur).join(" + "),
       filtre: l => (!cs.length || cs.includes(l.c)) && prod(l.a, l.f),
@@ -248,7 +273,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     setCmdOuverte(null); window.scrollTo(0, 0);
   };
   const tableauSelection = () => {
-    setTClients(deType("client")); setTArticles(deType("article")); setTFamilles(deType("famille"));
+    setTClients(deType("client")); setTArticles(deType("article")); setTFamilles(deType("famille")); setTFournisseurs(deType("fournisseur"));
     setFiche(null); setVue("tableau");
   };
 
@@ -467,16 +492,18 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const tableau = useMemo(() => {
     const ajouter = (r: Cellules, l: Ligne) => { const x = r[l.d] || { q: 0, lv: 0, m: 0 }; x.q += l.q; x.lv += l.lv; x.m += l.m; r[l.d] = x; };
     const totaliser = (r: Cellules) => Object.values(r).reduce((t, x) => ({ tq: t.tq + x.q, tlv: t.tlv + x.lv, tm: t.tm + x.m }), { tq: 0, tlv: 0, tm: 0 });
-    const filtrees = lignes.filter(l => (!tClients.length || tClients.includes(l.c)) && ((!tArticles.length && !tFamilles.length) || tArticles.includes(l.a) || tFamilles.includes(l.f)));
+    const filtrees = lignes.filter(l => (!periode.du || l.d >= periode.du) && (!periode.au || l.d <= periode.au) && (!tClients.length || tClients.includes(l.c))
+      && ((!tArticles.length && !tFamilles.length && !tFournisseurs.length) || tArticles.includes(l.a) || tFamilles.includes(l.f) || tFournisseurs.includes(fournisseurDe[l.a])));
     const nomArt = (l: Ligne) => l.a || `(${l.l})`;
-    if (lignesPar !== "clientArticle") {
+    const groupeDe = (l: Ligne) => (lignesPar === "fournisseurArticle" ? fournisseurDe[l.a] || "Fournisseur inconnu" : l.c || "—");
+    if (lignesPar !== "clientArticle" && lignesPar !== "fournisseurArticle") {
       const m = new Map<string, Cellules>();
       filtrees.forEach(l => { const k = lignesPar === "client" ? l.c || "—" : nomArt(l); const r = m.get(k) || {}; ajouter(r, l); m.set(k, r); });
       return [...m].map(([k, r]): LigneTab => ({ cle: k, art: k, client: lignesPar === "client" ? k : undefined, r, ...totaliser(r) })).sort((a, b) => b.tq - a.tq).slice(0, 600);
     }
     const parClient = new Map<string, Map<string, Cellules>>();
     filtrees.forEach(l => {
-      const c = l.c || "—", arts = parClient.get(c) || new Map<string, Cellules>(), r = arts.get(nomArt(l)) || {};
+      const c = groupeDe(l), arts = parClient.get(c) || new Map<string, Cellules>(), r = arts.get(nomArt(l)) || {};
       ajouter(r, l); arts.set(nomArt(l), r); parClient.set(c, arts);
     });
     const out: LigneTab[] = [];
@@ -490,7 +517,10 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
         .forEach(x => out.push({ cle: `${g.c}|${x.a}`, art: x.a, client: g.c, r: x.r, tq: x.tq, tlv: x.tlv, tm: x.tm }));
     });
     return out.slice(0, 2500);
-  }, [lignes, tClients, tArticles, tFamilles, lignesPar, clientsFermes]);
+  }, [lignes, tClients, tArticles, tFamilles, tFournisseurs, periode, fournisseurDe, lignesPar, clientsFermes]);
+  const joursT = useMemo(() => jours.filter(j => (!periode.du || j >= periode.du) && (!periode.au || j <= periode.au)), [jours, periode]);
+  const groupe = lignesPar === "clientArticle" || lignesPar === "fournisseurArticle";
+  const iconeGroupe = lignesPar === "fournisseurArticle" ? "🏭" : "👤";
   const valeur = (x?: { q: number; lv: number; m: number }) => {
     if (!x) return "";
     if (mesure === "taux") return x.q ? `${Math.round((x.lv / x.q) * 100)} %` : "";
@@ -498,18 +528,19 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   };
   const basculerT = (o: Option) => {
     const bascule = (s: string[]) => (s.includes(o.valeur) ? s.filter(x => x !== o.valeur) : [...s, o.valeur]);
-    if (o.type === "client") setTClients(bascule); else if (o.type === "famille") setTFamilles(bascule); else setTArticles(bascule);
+    if (o.type === "client") setTClients(bascule); else if (o.type === "famille") setTFamilles(bascule); else if (o.type === "fournisseur") setTFournisseurs(bascule); else setTArticles(bascule);
   };
-  const estCocheT = (o: Option) => (o.type === "client" ? tClients : o.type === "famille" ? tFamilles : tArticles).includes(o.valeur);
+  const estCocheT = (o: Option) => (o.type === "client" ? tClients : o.type === "famille" ? tFamilles : o.type === "fournisseur" ? tFournisseurs : tArticles).includes(o.valeur);
   const exporterTableau = async (format: "excel" | "pdf") => {
     const { exporterExcelMoorea, exporterPdfMoorea } = await import("./exportsMoorea");
     const lib = { q: "commandés (besoin)", lv: "livrés", m: "manquants", taux: "taux de service" }[mesure];
-    const par = { article: "par produit", clientArticle: "par client et par produit", client: "par client" }[lignesPar];
-    const deux = lignesPar === "clientArticle";
+    const par = { article: "par produit", clientArticle: "par client et par produit", fournisseurArticle: "par fournisseur et par produit", client: "par client" }[lignesPar];
+    const deux = groupe, nomG = lignesPar === "fournisseurArticle" ? "Fournisseur" : "Client";
     const e = { nomFichier: `Noel 2025 - ${lib} ${par} et par jour`, titre: `Noël 2025 — colis ${lib} ${par} et par jour`,
-      filtres: [tClients.length && `Clients : ${tClients.join(", ")}`, tArticles.length && `Articles : ${tArticles.join(", ")}`, tFamilles.length && `Familles : ${tFamilles.join(", ")}`].filter(Boolean) as string[],
-      entetes: [...(deux ? ["Client"] : []), lignesPar === "client" ? "Client" : "Article", ...jours.map(jjmm), "Total"],
-      lignes: tableau.map(({ art, client, titre, r, tq, tlv, tm }) => [...(deux ? [client || ""] : []), deux && titre ? "TOTAL CLIENT" : art, ...jours.map(j => valeur(r[j])), valeur({ q: tq, lv: tlv, m: tm })]) };
+      sousTitre: `Livraisons du ${jjmm(joursT[0] || "")} au ${jjmm(joursT[joursT.length - 1] || "")}/2025`,
+      filtres: [tFournisseurs.length && `Fournisseurs : ${tFournisseurs.join(", ")}`, tClients.length && `Clients : ${tClients.join(", ")}`, tArticles.length && `Articles : ${tArticles.join(", ")}`, tFamilles.length && `Familles : ${tFamilles.join(", ")}`].filter(Boolean) as string[],
+      entetes: [...(deux ? [nomG] : []), lignesPar === "client" ? "Client" : "Article", ...joursT.map(jjmm), "Total"],
+      lignes: tableau.map(({ art, client, titre, r, tq, tlv, tm }) => [...(deux ? [client || ""] : []), deux && titre ? `TOTAL ${nomG.toUpperCase()}` : art, ...joursT.map(j => valeur(r[j])), valeur({ q: tq, lv: tlv, m: tm })]) };
     if (format === "excel") await exporterExcelMoorea(e); else await exporterPdfMoorea(e);
   };
 
@@ -536,7 +567,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
                   {selection.map(o => (
                     <span key={cleOpt(o)} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 6px 5px 11px", borderRadius: 20, background: "rgba(255,255,255,.16)", border: "1px solid rgba(255,255,255,.35)", fontSize: 12.5, fontWeight: 700 }}>
-                      {o.type === "client" ? "👤" : o.type === "famille" ? "🗂️" : emojiProduit(o.valeur)} {o.valeur}
+                      {o.type === "client" ? "👤" : o.type === "famille" ? "🗂️" : o.type === "fournisseur" ? "🏭" : emojiProduit(o.valeur)} {o.valeur}
                       <button type="button" onClick={() => cocher(o)} aria-label="Retirer" style={{ width: 20, height: 20, borderRadius: "50%", border: "none", background: "rgba(0,0,0,.25)", color: "#fff", fontSize: 11, cursor: "pointer" }}>✕</button>
                     </span>
                   ))}
@@ -575,28 +606,35 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                 {vue === "tableau" && (
                   <div style={carte}>
                     <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>🎯 Quoi ? <span style={{ fontWeight: 500, color: "#6b7280" }}>— clients, articles, familles (cochez-en plusieurs)</span></div>
-                    <RechercheIntelligente multi options={options} placeholder="👤 Carrefour · 🫛 hv · 🗂️ passion… — cochez plusieurs" onChoisir={basculerT} estChoisi={estCocheT} c={C} />
+                    <RechercheIntelligente multi options={options} placeholder="🏭 Yukon · 👤 Carrefour · 🫛 hv · 🗂️ passion… — cochez plusieurs" onChoisir={basculerT} estChoisi={estCocheT} c={C} />
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", margin: "8px 0 12px" }}>
-                      {[...tClients.map(v => ({ type: "client", valeur: v })), ...tFamilles.map(v => ({ type: "famille", valeur: v })), ...tArticles.map(v => ({ type: "article", valeur: v }))].map(o => (
+                      {[...tFournisseurs.map(v => ({ type: "fournisseur", valeur: v })), ...tClients.map(v => ({ type: "client", valeur: v })), ...tFamilles.map(v => ({ type: "famille", valeur: v })), ...tArticles.map(v => ({ type: "article", valeur: v }))].map(o => (
                         <span key={o.type + o.valeur} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 6px 4px 10px", borderRadius: 20, background: "#eef4f2", border: "1.5px solid #305a55", color: "#1a2e1a", fontSize: 12.5, fontWeight: 700 }}>
-                          {o.type === "client" ? "👤" : o.type === "famille" ? "🗂️" : emojiProduit(o.valeur)} {o.valeur}
+                          {o.type === "client" ? "👤" : o.type === "famille" ? "🗂️" : o.type === "fournisseur" ? "🏭" : emojiProduit(o.valeur)} {o.valeur}
                           <button type="button" onClick={() => basculerT(o)} aria-label="Retirer" style={{ width: 19, height: 19, borderRadius: "50%", border: "none", background: "#305a55", color: "#fff", fontSize: 10, cursor: "pointer" }}>✕</button>
                         </span>
                       ))}
-                      {tClients.length + tArticles.length + tFamilles.length > 0
-                        ? <button type="button" onClick={() => { setTClients([]); setTArticles([]); setTFamilles([]); }} style={{ border: "none", background: "none", color: "#6b7280", fontSize: 12, textDecoration: "underline", cursor: "pointer" }}>Tout effacer</button>
+                      {tClients.length + tArticles.length + tFamilles.length + tFournisseurs.length > 0
+                        ? <button type="button" onClick={() => { setTClients([]); setTArticles([]); setTFamilles([]); setTFournisseurs([]); }} style={{ border: "none", background: "none", color: "#6b7280", fontSize: 12, textDecoration: "underline", cursor: "pointer" }}>Tout effacer</button>
                         : <span style={{ fontSize: 12, color: "#9ca3af" }}>Rien de coché : tous les clients et tous les produits.</span>}
                     </div>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
                       <span style={{ display: "inline-flex", border: "1.5px solid #305a55", borderRadius: 9, overflow: "hidden" }}>
-                        {([["clientArticle", "👤 Client × réf"], ["article", "🥬 Par réf"], ["client", "👤 Par client"]] as const).map(([v, lib]) => (
+                        {([["clientArticle", "👤 Client × réf"], ["fournisseurArticle", "🏭 Fournisseur × réf"], ["article", "🥬 Par réf"], ["client", "👤 Par client"]] as const).map(([v, lib]) => (
                           <button key={v} type="button" onClick={() => setLignesPar(v)} style={{ padding: "7px 11px", border: "none", background: lignesPar === v ? "#305a55" : "#fff", color: lignesPar === v ? "#fff" : "#305a55", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>{lib}</button>
                         ))}
                       </span>
-                      {lignesPar === "clientArticle" && (
+                      {groupe && (
                         <button type="button" onClick={() => setClientsFermes(f => (Object.keys(f).length ? {} : Object.fromEntries(tableau.filter(x => x.titre).map(x => [x.art, true]))))}
                           style={{ padding: "7px 11px", borderRadius: 9, border: "1.5px solid #e8e0d0", background: "#fff", color: "#374151", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>{Object.keys(clientsFermes).length ? "▾ Tout déplier" : "▸ Tout replier"}</button>
                       )}
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 800, color: "#374151" }}>
+                        📅 Du
+                        <select value={periode.du || jours[0]} onChange={e => setPeriode(p => ({ du: e.target.value, au: p.au && p.au < e.target.value ? e.target.value : p.au }))} style={sel}>{jours.map(j => <option key={j} value={j}>{jjmm(j)}</option>)}</select>
+                        au
+                        <select value={periode.au || jours[jours.length - 1]} onChange={e => setPeriode(p => ({ au: e.target.value, du: p.du && p.du > e.target.value ? e.target.value : p.du }))} style={sel}>{jours.map(j => <option key={j} value={j}>{jjmm(j)}</option>)}</select>
+                        {(periode.du || periode.au) && <button type="button" onClick={() => setPeriode({ du: "", au: "" })} style={{ border: "none", background: "none", color: "#6b7280", fontSize: 12, textDecoration: "underline", cursor: "pointer" }}>tout Noël</button>}
+                      </span>
                       <span style={{ flex: 1 }} />
                       <span style={{ display: "inline-flex", border: "1.5px solid #e8e0d0", borderRadius: 9, overflow: "hidden" }}>
                         {([["q", "📦 Besoin (commandé)"], ["lv", "✅ Livré"], ["m", "❌ Manquant"], ["taux", "🎯 Taux"]] as const).map(([v, lib]) => (
@@ -611,23 +649,23 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                     <div style={{ overflow: "auto", maxHeight: "70vh", border: "1px solid #eee8dc", borderRadius: 10 }}>
                       <table style={{ borderCollapse: "collapse", fontSize: 12 }}>
                         <thead><tr>
-                          <th style={{ ...th, position: "sticky", left: 0, top: 0, zIndex: 2, minWidth: 280 }}>{lignesPar === "article" ? "Article" : lignesPar === "client" ? "Client" : "Client › article"}</th>
-                          {jours.map(j => <th key={j} style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>{jjmm(j)}</th>)}
+                          <th style={{ ...th, position: "sticky", left: 0, top: 0, zIndex: 2, minWidth: 280 }}>{lignesPar === "article" ? "Article" : lignesPar === "client" ? "Client" : lignesPar === "fournisseurArticle" ? "Fournisseur › article" : "Client › article"}</th>
+                          {joursT.map(j => <th key={j} style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>{jjmm(j)}</th>)}
                           <th style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>Total</th>
                         </tr></thead>
                         <tbody>
-                          {!tableau.length && <tr><td style={{ ...td, color: "#9ca3af" }} colSpan={jours.length + 2}>Rien pour cette sélection.</td></tr>}
+                          {!tableau.length && <tr><td style={{ ...td, color: "#9ca3af" }} colSpan={joursT.length + 2}>Rien pour cette sélection.</td></tr>}
                           {tableau.map(({ cle, art, client, titre, r, tq, tm, tlv }) => {
                             const ferme = titre && clientsFermes[art];
                             const fond = titre ? "#eef4f2" : "#fff";
                             return (
                               <tr key={cle} style={{ background: titre ? fond : undefined }}>
-                                <td style={{ ...td, position: "sticky", left: 0, background: fond, fontWeight: titre ? 900 : 700, maxWidth: 340, cursor: "pointer", paddingLeft: lignesPar === "clientArticle" && !titre ? 26 : 8, borderTop: titre ? "2px solid #305a55" : undefined }}
+                                <td style={{ ...td, position: "sticky", left: 0, background: fond, fontWeight: titre ? 900 : 700, maxWidth: 340, cursor: "pointer", paddingLeft: groupe && !titre ? 26 : 8, borderTop: titre ? "2px solid #305a55" : undefined }}
                                   onClick={() => (titre ? setClientsFermes(f => { const n = { ...f }; if (n[art]) delete n[art]; else n[art] = true; return n; }) : ouvrirType(client && lignesPar === "client" ? "client" : "article", art))}
-                                  title={titre ? "Replier / déplier ce client" : lignesPar === "client" ? "Ouvrir la fiche du client" : "Ouvrir la fiche du produit"}>
-                                  {titre ? <><span style={{ display: "inline-block", width: 14, color: "#305a55" }}>{ferme ? "▸" : "▾"}</span>👤 {art}</> : lignesPar === "client" ? <>👤 {art}</> : <>{emojiProduit(art)} {art}</>}
+                                  title={titre ? "Replier / déplier" : lignesPar === "client" ? "Ouvrir la fiche du client" : "Ouvrir la fiche du produit"}>
+                                  {titre ? <><span style={{ display: "inline-block", width: 14, color: "#305a55" }}>{ferme ? "▸" : "▾"}</span>{iconeGroupe} {art}</> : lignesPar === "client" ? <>👤 {art}</> : <>{emojiProduit(art)} {art}</>}
                                 </td>
-                                {jours.map(j => <td key={j} style={{ ...td, textAlign: "right", fontWeight: titre ? 900 : undefined, borderTop: titre ? "2px solid #305a55" : undefined, color: mesure === "m" ? "#dc2626" : r[j]?.m && mesure === "q" ? "#b91c1c" : "#1f2937" }} title={r[j] ? `Commandé ${r[j].q} · livré ${r[j].lv} · manquant ${r[j].m}` : ""}>{valeur(r[j])}</td>)}
+                                {joursT.map(j => <td key={j} style={{ ...td, textAlign: "right", fontWeight: titre ? 900 : undefined, borderTop: titre ? "2px solid #305a55" : undefined, color: mesure === "m" ? "#dc2626" : r[j]?.m && mesure === "q" ? "#b91c1c" : "#1f2937" }} title={r[j] ? `Commandé ${r[j].q} · livré ${r[j].lv} · manquant ${r[j].m}` : ""}>{valeur(r[j])}</td>)}
                                 <td style={{ ...td, textAlign: "right", fontWeight: 900, borderTop: titre ? "2px solid #305a55" : undefined }}>{valeur({ q: tq, lv: tlv, m: tm })}</td>
                               </tr>
                             );
@@ -635,7 +673,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                         </tbody>
                       </table>
                     </div>
-                    <p style={{ fontSize: 11, color: "#9ca3af", margin: "8px 0 0" }}>Besoin = colis commandés par le client. Rouge = il a manqué ce jour-là. Touchez un client pour le replier, un article pour sa fiche. Hors lignes « pas de commande » et doublons.</p>
+                    <p style={{ fontSize: 11, color: "#9ca3af", margin: "8px 0 0" }}>Besoin = colis commandés par le client. Rouge = il a manqué ce jour-là. Touchez un client ou un fournisseur pour le replier, un article pour sa fiche. Fournisseur = celui qui a le plus fourni la réf en décembre 2025 (📊 Stats). Hors lignes « pas de commande » et doublons.</p>
                   </div>
                 )}
 
