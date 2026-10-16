@@ -15,6 +15,11 @@ export type ExportMoorea = {
   lignes: (string | number)[][];
   total?: (string | number)[];
   auteur?: string;
+  // 16/10/2026 — Couleur du texte d'une ligne (ex. « dont manquants » en rouge), même index que lignes.
+  couleurs?: (string | null | undefined)[];
+  gras?: boolean[];
+  fonds?: (string | null | undefined)[];   // fond d'une ligne (ex. rose pâle pour les manquants)
+  groupes?: number[];                      // lignes alternées par groupe (ex. un produit = 2 lignes)
 };
 type TypeCol = "texte" | "euro" | "pct" | "nombre";
 const VERT = "305A55", VERT_CLAIR = "74B484", FOND = "EAF2EE";
@@ -85,9 +90,11 @@ export async function exporterExcelMoorea(e: ExportMoorea) {
       const c = row.getCell(i + 1);
       c.value = valeur(v, types[i]);
       if (typeof v === "number") c.numFmt = fmt(types[i]);
-      c.font = { name: "Arial", size: 10 };
+      c.font = { name: "Arial", size: 10, bold: !!e.gras?.[k], ...(e.couleurs?.[k] ? { color: { argb: "FF" + e.couleurs[k]!.replace("#", "").toUpperCase() } } : {}) };
       c.alignment = { vertical: "middle", horizontal: types[i] === "texte" ? "left" : "right" };
-      if (k % 2 === 1) c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + FOND } };
+      const fondL = e.fonds?.[k]?.replace("#", "").toUpperCase();
+      if (fondL) c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + fondL } };
+      else if ((e.groupes ? e.groupes[k] : k) % 2 === 1) c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF" + FOND } };
       c.border = { bottom: { style: "hair", color: { argb: "FFDDE6E3" } } };
     });
   });
@@ -136,8 +143,10 @@ export async function exporterPdfMoorea(e: ExportMoorea) {
     doc.setFontSize(fs);
     const besoins = e.entetes.map((_, i) => mesurer(i));
     const fixes = besoins.reduce((t, b, i) => t + (types[i] === "texte" ? 0 : b), 0);
-    const textes = besoins.map((b, i) => (types[i] === "texte" ? Math.min(b, fs * 7) : 0));
-    const minTextes = textes.reduce((t, b) => t + Math.min(b, fs * 3.4), 0);
+    // Une colonne de texte n'est jamais plus étroite que son mot le plus long (pas de mot coupé).
+    const motMax = e.entetes.map((_, i) => (types[i] !== "texte" ? 0 : Math.max(0, ...echantillon.map(l => Math.max(0, ...fmtCell(l[i], types[i]).split(/\s+/).map(m => doc.getTextWidth(m)))))) + 3);
+    const textes = besoins.map((b, i) => (types[i] === "texte" ? Math.max(motMax[i], Math.min(b, fs * 7)) : 0));
+    const minTextes = textes.reduce((t, b, i) => t + Math.max(motMax[i], Math.min(b, fs * 3.4)), 0);
     if (fixes + minTextes <= dispo || fs <= 5.5) {
       const resteTexte = Math.max(0, dispo - fixes), sommeTextes = textes.reduce((a, b) => a + b, 0) || 1;
       largeurs = besoins.map((b, i) => (types[i] === "texte" ? (textes[i] / sommeTextes) * resteTexte : b));
@@ -162,7 +171,7 @@ export async function exporterPdfMoorea(e: ExportMoorea) {
       doc.setFont("helvetica", "bold"); doc.setFontSize(10); doc.text(sansEmoji(e.titre).slice(0, 120), M + 13, 10);
     }
   };
-  const pied = (p: number) => { doc.setFontSize(7.5); doc.setTextColor(120, 130, 128); doc.text("Moorea — document généré par l'appli", M, H - 6); doc.text(`Page ${p}`, W - M, H - 6, { align: "right" }); };
+  const pied = (p: number) => { doc.setFont("helvetica", "normal"); doc.setFontSize(7.5); doc.setTextColor(120, 130, 128); doc.text("Moorea — document généré par l'appli", M, H - 6); doc.text(`Page ${p}`, W - M, H - 6, { align: "right" }); };
   let page = 1, y: number;
   bandeau(true);
   y = 36;
@@ -179,13 +188,16 @@ export async function exporterPdfMoorea(e: ExportMoorea) {
   };
   enTete();
   const ligne = (l: (string | number)[], k: number, total = false) => {
-    doc.setFont("helvetica", total ? "bold" : "normal"); doc.setFontSize(fs);
+    doc.setFont("helvetica", total || e.gras?.[k] ? "bold" : "normal"); doc.setFontSize(fs);
     const cellules = l.map((v, i) => (types[i] === "texte" ? doc.splitTextToSize(fmtCell(v, types[i]), largeurs[i] - 2) as string[] : [fmtCell(v, types[i])]));
     const haut = Math.max(fs * 0.7, ...cellules.map(c => c.length * hl + 2.4));
     if (y + haut > H - 14) { pied(page); doc.addPage(); page++; bandeau(false); y = 22; enTete(); }
     if (total) { doc.setFillColor(220, 252, 231); doc.rect(M, y, dispo, haut, "F"); doc.setDrawColor(...vert); doc.setLineWidth(0.5); doc.line(M, y, M + dispo, y); }
-    else if (k % 2 === 1) { doc.setFillColor(234, 242, 238); doc.rect(M, y, dispo, haut, "F"); }
-    doc.setTextColor(total ? 48 : 30, total ? 90 : 43, total ? 85 : 41);
+    else if (e.fonds?.[k]) { const f = e.fonds[k]!.replace("#", ""); doc.setFillColor(parseInt(f.slice(0, 2), 16), parseInt(f.slice(2, 4), 16), parseInt(f.slice(4, 6), 16)); doc.rect(M, y, dispo, haut, "F"); }
+    else if ((e.groupes ? e.groupes[k] : k) % 2 === 1) { doc.setFillColor(234, 242, 238); doc.rect(M, y, dispo, haut, "F"); }
+    const coul = !total && e.couleurs?.[k] ? e.couleurs[k]!.replace("#", "") : null;
+    if (coul) doc.setTextColor(parseInt(coul.slice(0, 2), 16), parseInt(coul.slice(2, 4), 16), parseInt(coul.slice(4, 6), 16));
+    else doc.setTextColor(total ? 48 : 30, total ? 90 : 43, total ? 85 : 41);
     let x = M; cellules.forEach((c, i) => { doc.text(c, types[i] === "texte" ? x + 1 : x + largeurs[i] - 1, y + hl + 1.2, { align: types[i] === "texte" ? "left" : "right" }); x += largeurs[i]; });
     y += haut;
   };

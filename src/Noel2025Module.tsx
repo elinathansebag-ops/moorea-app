@@ -905,17 +905,25 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const vx = (x?: { q: number; lv: number; m: number }) => !x ? "" : mesure === "taux" ? (x.q ? `${Math.round((x.lv / x.q) * 100)} %` : "") : (x[mesure] || "");
     const filtres = [...(sujet ? [sujet] : [tFournisseurs.length && `Fournisseurs : ${tFournisseurs.join(", ")}`, tClients.length && `Clients : ${tClients.join(", ")}`, tArticles.length && `Articles : ${tArticles.join(", ")}`, tFamilles.length && `Familles : ${tFamilles.join(", ")}`].filter(Boolean) as string[]),
       ...(seul && seul !== sujet ? [`${nomG} : ${seul}`] : []), `Jours : colis ${lib}`];
+    // 16/10/2026 — « le besoin par jour ET le manquant, en rouge » : sous chaque ligne qui a eu des
+    // manquants, une ligne « dont manquants » jour par jour (texte rouge, fond rose).
+    const avecManq = mesure === "q";
+    const lignes: (string | number)[][] = [], couleurs: (string | null)[] = [], fonds: (string | null)[] = [], gras: boolean[] = [], bandes: number[] = [];
+    tableau.forEach(({ art, client, titre, base, r, tq, tlv, tm }, k) => {
+      const debut = [...(deux ? [client || ""] : []), titre && groupe ? (deux ? `TOTAL ${nomG.toUpperCase()}` : `TOTAL ${art}`) : base ? base : art, ...(lignesPar === "articleClient" ? [base ? art : titre ? "" : "TOUTES BASES"] : [])];
+      lignes.push([...debut, ...(avecManq ? ["Commandés"] : []), ...colonnes.map(c => vx(cellule(r, c))), Math.round(tq), Math.round(tlv), tm ? Math.round(tm) : "", tq ? Math.round((tlv / tq) * 1000) / 10 : ""]);
+      couleurs.push(null); fonds.push(null); gras.push(!!titre); bandes.push(k);
+      if (avecManq && tm > 0) {
+        lignes.push([...debut.map(() => ""), "dont manquants", ...colonnes.map(c => { const x = cellule(r, c); return x?.m ? Math.round(x.m) : ""; }), "", "", Math.round(tm), ""]);
+        couleurs.push("#B91C1C"); fonds.push("#FEF2F2"); gras.push(true); bandes.push(k);
+      }
+    });
     const e = { nomFichier: `Noel 2025 - ${lib} ${par}${seul ? ` - ${seul}` : ""}`, titre: `Noël 2025 — colis ${lib} ${par}`,
       sousTitre: `Livraisons du ${jjmm(joursT[0] || "")} au ${jjmm(joursT[joursT.length - 1] || "")}/2025`,
       filtres,
-      entetes: [...(deux ? [nomG] : []), lignesPar === "client" || lignesPar === "articleClient" ? "Client" : "Article", ...(lignesPar === "articleClient" ? ["Base"] : []),
+      entetes: [...(deux ? [nomG] : []), lignesPar === "client" || lignesPar === "articleClient" ? "Client" : "Article", ...(lignesPar === "articleClient" ? ["Base"] : []), ...(avecManq ? ["Détail"] : []),
         ...colonnes.map(c => (c.sous ? `${c.lib} (${c.sous})` : c.lib)), "Total commandé", "Total livré", "Manquant", "Taux de service"],
-      lignes: tableau.map(({ art, client, titre, base, r, tq, tlv, tm }) => [
-        ...(deux ? [client || ""] : []),
-        titre && groupe ? (deux ? `TOTAL ${nomG.toUpperCase()}` : `TOTAL ${art}`) : base ? base : art,
-        ...(lignesPar === "articleClient" ? [base ? art : titre ? "" : "TOUTES BASES"] : []),
-        ...colonnes.map(c => vx(cellule(r, c))),
-        Math.round(tq), Math.round(tlv), tm ? Math.round(tm) : "", tq ? Math.round((tlv / tq) * 1000) / 10 : ""]) };
+      lignes, couleurs, fonds, gras, groupes: bandes };
     if (format === "excel") await exporterExcelMoorea(e); else await exporterPdfMoorea(e);
   };
 
