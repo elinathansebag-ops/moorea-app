@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 94, date: "16/10", pages: ["extractions"], texte: "🎄 Noël 2025 : dans une fiche, les commandes sont rangées par client puis par base (729 Dammartin, Savigny, Base 10 Coudray…) avec le total livré / manquant de chaque base. Bouton « 📅 Par date » pour revenir à l'ancienne liste." },
   { id: 93, date: "16/10", pages: ["reconditionnement"], texte: "📦 Case « Carton Andès » : prochaines livraisons de cartons commandées pour Andès (palettes, cartons, date) et production du jour (demandes, colis à produire, cartons BABY BLANC utilisés)." },
   { id: 92, date: "16/10", pages: ["admin.donnees"], texte: "🎄 Admin › Données : raccourci « Ouvrir l'import Noël 2025 » qui ouvre directement le panneau d'import (fichiers + scans PDF)." },
   { id: 91, date: "16/10", pages: ["rapports"], texte: "✉️ Rapports qualité : l'enveloppe demande d'abord à quelle adresse envoyer (qualité + commercial, commercial, qualité, moi, agréage, entrepôt ou autre) — la dernière adresse choisie est retenue." },

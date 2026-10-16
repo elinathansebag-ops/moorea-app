@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { db, ref, get, update, set, stockage } from "./firebase";
 import { PageHeader } from "./shared";
 import { RechercheIntelligente, emojiProduit, type Option, type Couleurs } from "./Extractions";
+import { cleBase, fusionnerCles, nomBase } from "./noelBases";
 
 // ─── 🎄 Commandes Noël 2025 (📊 Stats) ───
 // 16/10/2026 — Demande d'Elinathan (récap « RECAP_TOTAL_POUR_CLAUDE_CODE.md ») : les commandes clients
@@ -174,6 +175,10 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const [mesure, setMesure] = useState<"q" | "lv" | "m" | "taux">("q");
   const [filtreArticle, setFiltreArticle] = useState("");
   const [cmdOuverte, setCmdOuverte] = useState<string | null>(null);
+  // Les commandes d'une fiche : rangées par client puis par base (par défaut), ou l'ancienne liste par date.
+  const [vueCmds, setVueCmdsEtat] = useState<"base" | "date">(() => { try { return localStorage.getItem("noel-vue-cmds") === "date" ? "date" : "base"; } catch { return "base"; } });
+  const setVueCmds = (v: "base" | "date") => { setVueCmdsEtat(v); try { localStorage.setItem("noel-vue-cmds", v); } catch { /* */ } };
+  const [baseOuverte, setBaseOuverte] = useState<string | null>(null);
 
   useEffect(() => { setDon(null); charger().then(setDon).catch(e => setErreur(e?.message || "lecture impossible")); }, [rechargement]);
 
@@ -295,6 +300,54 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   );
 
   // ── Fiche (client, article, famille, jour, BL / commande) ──
+  const ligneCmd = (k: string, g: Ligne[], dansBase: boolean) => {
+    const l0 = g[0], t = g.filter(compte).reduce((a, l) => ({ q: a.q + l.q, m: a.m + l.m }), { q: 0, m: 0 }), ouvert = cmdOuverte === k;
+    return (
+      <div key={k} style={{ border: `1.5px solid ${t.m ? "#fecaca" : "#e5e7eb"}`, borderRadius: 12, overflow: "hidden" }}>
+        <div onClick={() => setCmdOuverte(ouvert ? null : k)} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "9px 12px", cursor: "pointer", background: t.m ? "#fff7f7" : "#fff" }}>
+          <span style={{ fontSize: 13, fontWeight: 900, minWidth: 48 }}>📅 {jjmm(l0.d)}</span>
+          {!dansBase && <span style={{ fontSize: 13, fontWeight: 800 }}>👤 {l0.c}</span>}
+          <span style={{ fontSize: 12, color: "#6b7280", flex: "1 1 160px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{dansBase ? (l0.n ? `cde ${l0.n}` : "") : `${l0.s}${l0.n ? ` · cde ${l0.n}` : ""}`}</span>
+          <span style={{ fontSize: 12.5, fontWeight: 900, color: t.m ? "#dc2626" : "#15803d", whiteSpace: "nowrap" }}>{t.m ? `−${ent(t.m)} / ${ent(t.q)}` : `✓ ${ent(t.q)}`}</span>
+          {boutonScan(l0)}
+          <span style={{ color: "#9ca3af", transform: ouvert ? "rotate(90deg)" : "none", transition: "transform .15s" }}>›</span>
+        </div>
+        {ouvert && (
+          <div style={{ overflowX: "auto", borderTop: "1px solid #f3f0e8" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 620 }}>
+              <thead><tr><th style={th}>Commandé par le client</th><th style={th}>Article Moorea</th><th style={{ ...th, textAlign: "right" }}>Cdé</th><th style={{ ...th, textAlign: "right" }}>Livré</th><th style={{ ...th, textAlign: "right" }}>Manque</th><th style={th}>Statut</th><th style={th}>BL</th></tr></thead>
+              <tbody>{g.map(l => (
+                <tr key={l.i} style={{ opacity: compte(l) ? 1 : 0.45, background: l.m ? "#fef2f2" : undefined }}>
+                  <td style={td}>{l.l}{l.an ? <span style={{ color: "#9ca3af", fontSize: 11 }}> · « {l.an} »</span> : null}</td>
+                  <td style={td}>{l.a ? `${emojiProduit(l.a)} ${l.a}` : "—"}</td>
+                  <td style={{ ...td, textAlign: "right" }}>{ent(l.q)}</td><td style={{ ...td, textAlign: "right", color: "#15803d" }}>{ent(l.lv)}</td>
+                  <td style={{ ...td, textAlign: "right", color: "#dc2626", fontWeight: 900 }}>{l.m ? ent(l.m) : ""}</td>
+                  <td style={{ ...td, fontSize: 11.5 }}>{l.st}</td><td style={{ ...td, fontSize: 11, color: "#6b7280" }}>{l.bl}</td>
+                </tr>
+              ))}</tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // Client (ordre alphabétique) → base (729 Dammartin, Savigny…) → commandes par date.
+  const groupesCmds = (cmds: [string, Ligne[]][]) => {
+    const parClient = new Map<string, [string, Ligne[]][]>();
+    cmds.forEach(e => { const c = e[1][0].c || "—"; parClient.set(c, [...(parClient.get(c) || []), e]); });
+    const multi = parClient.size > 1;
+    return [...parClient].sort((a, b) => a[0].localeCompare(b[0], "fr")).map(([client, cs]) => {
+      const cles = cs.map(([, g]) => cleBase(client, g[0].cf, g[0].s)), vers = fusionnerCles(cles);
+      const parBase = new Map<string, [string, Ligne[]][]>();
+      cs.forEach((e, i) => { const k = vers.get(cles[i]) ?? cles[i]; parBase.set(k, [...(parBase.get(k) || []), e]); });
+      const bases = [...parBase].map(([k, c]) => ({
+        k, cs: c, nom: nomBase(k, c.map(([, g]) => g[0].s)),
+        t: c.flatMap(([, g]) => g.filter(compte)).reduce((a, l) => ({ q: a.q + l.q, m: a.m + l.m }), { q: 0, m: 0 }),
+      })).sort((a, b) => a.nom.localeCompare(b.nom, "fr", { numeric: true }));
+      return { client, bases, multi, n: cs.length };
+    });
+  };
   const rendreFiche = (f: Fiche) => {
     const ls = (don?.lignes || []).filter(f.filtre), lc = ls.filter(compte);
     const tot = lc.reduce((t, l) => ({ q: t.q + l.q, lv: t.lv + l.lv, m: t.m + l.m }), { q: 0, lv: 0, m: 0 });
@@ -339,40 +392,40 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
           </div>
         )}
         <div style={carte}>
-          <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 8 }}>🧾 Les commandes ({listeCmds.length})</div>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+            <div style={{ fontSize: 15, fontWeight: 900, flex: 1 }}>🧾 Les commandes ({listeCmds.length})</div>
+            <div style={{ display: "flex", border: "1.5px solid #305a55", borderRadius: 9, overflow: "hidden" }}>
+              {([["base", "📍 Par base"], ["date", "📅 Par date"]] as const).map(([v, t]) => (
+                <button key={v} type="button" onClick={() => setVueCmds(v)} style={{ padding: "5px 11px", border: "none", fontSize: 12.5, fontWeight: 800, cursor: "pointer", background: vueCmds === v ? "#305a55" : "#fff", color: vueCmds === v ? "#fff" : "#305a55" }}>{t}</button>
+              ))}
+            </div>
+          </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {listeCmds.slice(0, 200).map(([k, g]) => {
-              const l0 = g[0], t = g.filter(compte).reduce((a, l) => ({ q: a.q + l.q, m: a.m + l.m }), { q: 0, m: 0 }), ouvert = cmdOuverte === k;
-              return (
-                <div key={k} style={{ border: `1.5px solid ${t.m ? "#fecaca" : "#e5e7eb"}`, borderRadius: 12, overflow: "hidden" }}>
-                  <div onClick={() => setCmdOuverte(ouvert ? null : k)} style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "9px 12px", cursor: "pointer", background: t.m ? "#fff7f7" : "#fff" }}>
-                    <span style={{ fontSize: 13, fontWeight: 900, minWidth: 48 }}>📅 {jjmm(l0.d)}</span>
-                    <span style={{ fontSize: 13, fontWeight: 800 }}>👤 {l0.c}</span>
-                    <span style={{ fontSize: 12, color: "#6b7280", flex: "1 1 160px", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l0.s}{l0.n ? ` · cde ${l0.n}` : ""}</span>
-                    <span style={{ fontSize: 12.5, fontWeight: 900, color: t.m ? "#dc2626" : "#15803d", whiteSpace: "nowrap" }}>{t.m ? `−${ent(t.m)} / ${ent(t.q)}` : `✓ ${ent(t.q)}`}</span>
-                    {boutonScan(l0)}
-                    <span style={{ color: "#9ca3af", transform: ouvert ? "rotate(90deg)" : "none", transition: "transform .15s" }}>›</span>
+            {vueCmds === "date" ? listeCmds.slice(0, 200).map(([k, g]) => ligneCmd(k, g, false)) : groupesCmds(listeCmds).map(gc => (
+              <div key={gc.client} style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                {gc.multi && (
+                  <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap", margin: "8px 2px 0", paddingBottom: 4, borderBottom: "2px solid #305a55" }}>
+                    <span style={{ fontSize: 14.5, fontWeight: 900, color: "#305a55" }}>👤 {gc.client}</span>
+                    <span style={{ fontSize: 12, color: "#6b7280" }}>{gc.bases.length} base{gc.bases.length > 1 ? "s" : ""} · {gc.n} commande{gc.n > 1 ? "s" : ""}</span>
                   </div>
-                  {ouvert && (
-                    <div style={{ overflowX: "auto", borderTop: "1px solid #f3f0e8" }}>
-                      <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 620 }}>
-                        <thead><tr><th style={th}>Commandé par le client</th><th style={th}>Article Moorea</th><th style={{ ...th, textAlign: "right" }}>Cdé</th><th style={{ ...th, textAlign: "right" }}>Livré</th><th style={{ ...th, textAlign: "right" }}>Manque</th><th style={th}>Statut</th><th style={th}>BL</th></tr></thead>
-                        <tbody>{g.map(l => (
-                          <tr key={l.i} style={{ opacity: compte(l) ? 1 : 0.45, background: l.m ? "#fef2f2" : undefined }}>
-                            <td style={td}>{l.l}{l.an ? <span style={{ color: "#9ca3af", fontSize: 11 }}> · « {l.an} »</span> : null}</td>
-                            <td style={td}>{l.a ? `${emojiProduit(l.a)} ${l.a}` : "—"}</td>
-                            <td style={{ ...td, textAlign: "right" }}>{ent(l.q)}</td><td style={{ ...td, textAlign: "right", color: "#15803d" }}>{ent(l.lv)}</td>
-                            <td style={{ ...td, textAlign: "right", color: "#dc2626", fontWeight: 900 }}>{l.m ? ent(l.m) : ""}</td>
-                            <td style={{ ...td, fontSize: 11.5 }}>{l.st}</td><td style={{ ...td, fontSize: 11, color: "#6b7280" }}>{l.bl}</td>
-                          </tr>
-                        ))}</tbody>
-                      </table>
+                )}
+                {gc.bases.map(b => {
+                  const cle = `${gc.client}|${b.k}`, ouverte = baseOuverte === cle || gc.bases.length === 1;
+                  return (
+                    <div key={cle} style={{ border: `1.5px solid ${ouverte ? "#305a55" : b.t.m ? "#fecaca" : "#e5e7eb"}`, borderRadius: 12, overflow: "hidden" }}>
+                      <div onClick={() => setBaseOuverte(ouverte ? null : cle)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "9px 12px", cursor: "pointer", background: ouverte ? "#eef4f2" : b.t.m ? "#fff7f7" : "#fff" }}>
+                        <span style={{ fontSize: 13.5, fontWeight: 900, color: "#1a2e1a", flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={b.nom}>📍 {b.nom}</span>
+                        <span style={{ fontSize: 12, color: "#6b7280", whiteSpace: "nowrap" }}>{b.cs.length} cde{b.cs.length > 1 ? "s" : ""}</span>
+                        <span style={{ fontSize: 12.5, fontWeight: 900, color: b.t.m ? "#dc2626" : "#15803d", whiteSpace: "nowrap", minWidth: 64, textAlign: "right" }}>{b.t.m ? `−${ent(b.t.m)} / ${ent(b.t.q)}` : `✓ ${ent(b.t.q)}`}</span>
+                        <span style={{ color: "#9ca3af", transform: ouverte ? "rotate(90deg)" : "none", transition: "transform .15s" }}>›</span>
+                      </div>
+                      {ouverte && <div style={{ display: "flex", flexDirection: "column", gap: 6, padding: 8, borderTop: "1px solid #e5ece9", background: "#fafcfb" }}>{b.cs.map(([k, g]) => ligneCmd(k, g, true))}</div>}
                     </div>
-                  )}
-                </div>
-              );
-            })}
-            {listeCmds.length > 200 && <p style={{ fontSize: 12, color: "#9ca3af" }}>… et {listeCmds.length - 200} autres : utilisez l'export Excel pour tout voir.</p>}
+                  );
+                })}
+              </div>
+            ))}
+            {vueCmds === "date" && listeCmds.length > 200 && <p style={{ fontSize: 12, color: "#9ca3af" }}>… et {listeCmds.length - 200} autres : utilisez l'export Excel pour tout voir.</p>}
           </div>
         </div>
       </div>
