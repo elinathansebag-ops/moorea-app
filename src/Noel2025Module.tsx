@@ -324,12 +324,12 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       ))}
     </div>
   );
-  const barresJours = (ls: Ligne[], surClic?: (iso: string) => void) => {
+  const barresJours = (ls: Ligne[], surClic?: (iso: string) => void, joursAff: string[] = jours) => {
     const parJ = new Map<string, { q: number; m: number }>(); ls.filter(compte).forEach(l => { const x = parJ.get(l.d) || { q: 0, m: 0 }; x.q += l.q; x.m += l.m; parJ.set(l.d, x); });
     const max = Math.max(1, ...[...parJ.values()].map(x => x.m));
     return (
       <div style={{ display: "flex", gap: 5, alignItems: "flex-end", overflowX: "auto", paddingBottom: 4 }}>
-        {jours.map(j => { const x = parJ.get(j); return (
+        {joursAff.map(j => { const x = parJ.get(j); return (
           <button key={j} type="button" disabled={!surClic} onClick={() => surClic?.(j)} title={x ? `${jjmm(j)} : ${ent(x.q)} commandés, ${ent(x.m)} manquants` : jjmm(j)}
             style={{ border: "none", background: "none", padding: 0, cursor: surClic ? "pointer" : "default", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, minWidth: 30 }}>
             <span style={{ fontSize: 10, fontWeight: 800, color: "#dc2626", minHeight: 12 }}>{x?.m ? ent(x.m) : ""}</span>
@@ -510,11 +510,18 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     });
     return out;
   }, [lignes]);
+  // Ce qui est coché en haut + la période : sert au résumé ET au tableau de l'onglet Besoin.
+  const filtreBesoin = (l: { d: string; c: string; a: string; f?: string }) => (!periode.du || l.d >= periode.du) && (!periode.au || l.d <= periode.au) && (!tClients.length || tClients.includes(l.c))
+    && ((!tArticles.length && !tFamilles.length && !tFournisseurs.length) || tArticles.includes(l.a) || (!!l.f && tFamilles.includes(l.f)) || tFournisseurs.includes(fournisseurDe[l.a]));
+  const familleDe = useMemo(() => { const m = new Map<string, string>(); lignes.forEach(l => { if (l.a && l.f) m.set(l.a, l.f); }); return m; }, [lignes]);
+  const lignesBesoin = useMemo(() => lignes.filter(filtreBesoin), [lignes, tClients, tArticles, tFamilles, tFournisseurs, periode, fournisseurDe]); // eslint-disable-line react-hooks/exhaustive-deps
+  const totBesoin = useMemo(() => lignesBesoin.reduce((t, l) => ({ q: t.q + l.q, lv: t.lv + l.lv, m: t.m + l.m }), { q: 0, lv: 0, m: 0 }), [lignesBesoin]);
+  const litigesBesoin = useMemo(() => (don?.litiges || []).filter(x => filtreBesoin({ d: x.d, c: tClients.find(c => norm(c) === norm(x.c)) || x.c, a: x.a, f: familleDe.get(x.a) })).length,
+    [don, tClients, tArticles, tFamilles, tFournisseurs, periode, fournisseurDe, familleDe]); // eslint-disable-line react-hooks/exhaustive-deps
   const tableau = useMemo(() => {
     const ajouter = (r: Cellules, l: Ligne) => { const x = r[l.d] || { q: 0, lv: 0, m: 0 }; x.q += l.q; x.lv += l.lv; x.m += l.m; r[l.d] = x; };
     const totaliser = (r: Cellules) => Object.values(r).reduce((t, x) => ({ tq: t.tq + x.q, tlv: t.tlv + x.lv, tm: t.tm + x.m }), { tq: 0, tlv: 0, tm: 0 });
-    const filtrees = lignes.filter(l => (!periode.du || l.d >= periode.du) && (!periode.au || l.d <= periode.au) && (!tClients.length || tClients.includes(l.c))
-      && ((!tArticles.length && !tFamilles.length && !tFournisseurs.length) || tArticles.includes(l.a) || tFamilles.includes(l.f) || tFournisseurs.includes(fournisseurDe[l.a])));
+    const filtrees = lignesBesoin;
     const nomArt = (l: Ligne) => l.a || `(${l.l})`;
     const groupeDe = (l: Ligne) => (lignesPar === "fournisseurArticle" ? fournisseurDe[l.a] || "Fournisseur inconnu" : lignesPar === "articleClient" ? nomArt(l) : l.c || "—");
     const sousCle = (l: Ligne) => (lignesPar === "articleClient" ? l.c || "—" : nomArt(l));
@@ -549,7 +556,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
         });
     });
     return out.slice(0, 2500);
-  }, [lignes, tClients, tArticles, tFamilles, tFournisseurs, periode, fournisseurDe, lignesPar, clientsFermes, baseDe]);
+  }, [lignesBesoin, fournisseurDe, lignesPar, clientsFermes, baseDe]);
   const joursT = useMemo(() => jours.filter(j => (!periode.du || j >= periode.du) && (!periode.au || j <= periode.au)), [jours, periode]);
   const groupe = lignesPar === "clientArticle" || lignesPar === "fournisseurArticle" || lignesPar === "articleClient";
   const iconeGroupe = (nom: string) => (lignesPar === "fournisseurArticle" ? "🏭" : lignesPar === "articleClient" ? emojiProduit(nom) : "👤");
@@ -647,6 +654,21 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                 )}
 
                 {vue === "tableau" && (
+                  <>
+                  {/* 16/10/2026 — « présenté comme Résumé en haut » : chiffres + manquants par jour de la sélection. */}
+                  {chiffres(totBesoin, litigesBesoin)}
+                  <div style={{ ...carte, marginTop: 14 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+                      <span style={{ fontSize: 15, fontWeight: 900, flex: 1 }}>📅 Colis manquants par jour <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— {selection.length ? "sélection cochée" : "tout Noël"}{periode.du || periode.au ? ` du ${jjmm(joursT[0] || "")} au ${jjmm(joursT[joursT.length - 1] || "")}` : ""} · touchez un jour pour le détail</span></span>
+                      {boutonsExport(selection.length ? selection.map(o => o.valeur).join(" + ") : "toutes les commandes", lignesBesoin)}
+                    </div>
+                    {barresJours(lignesBesoin, iso => {
+                      setFiche({ type: "jour", valeur: `${selection.length ? selection.map(o => o.valeur).join(" + ") + " · " : ""}${jjmm(iso)}`,
+                        filtre: l => l.d === iso && filtreBesoin(l), filtreR: r => r.d === iso && filtreBesoin(r),
+                        filtreL: x => x.d === iso && filtreBesoin({ d: x.d, c: tClients.find(c => norm(c) === norm(x.c)) || x.c, a: x.a, f: familleDe.get(x.a) }) });
+                      setCmdOuverte(null); window.scrollTo(0, 0);
+                    }, joursT)}
+                  </div>
                   <div style={carte}>
                     {!selection.length && <p style={{ margin: "0 0 10px", fontSize: 12.5, color: "#6b7280" }}>Rien de coché dans « 🎯 Quoi ? » en haut : tous les clients et tous les produits. Cochez par exemple 🏭 Yukon ou une réf pour filtrer.</p>}
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
@@ -711,6 +733,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                     </div>
                     <p style={{ fontSize: 11, color: "#9ca3af", margin: "8px 0 0" }}>Besoin = colis commandés par le client. Rouge = il a manqué ce jour-là. Touchez une ligne verte (réf, client ou fournisseur) pour la replier, un article pour sa fiche. Fournisseur = celui qui a le plus fourni la réf en décembre 2025 (📊 Stats). Hors lignes « pas de commande » et doublons.</p>
                   </div>
+                  </>
                 )}
 
                 {vue === "litiges" && (
