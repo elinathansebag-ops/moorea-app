@@ -450,6 +450,8 @@ export const MODULE_DEFS: ModuleDef[] = [
   { key: "catalogue", label: "📚 Catalogue" },
   { key: "dashboard_tv", label: "📺 Tableau de bord (écran)" },
   { key: "gencodes", label: "🏷️ Gencodes GMS" },
+  // 16/10/2026 — Demande d'Elinathan : choisir un PDF sur l'ordinateur et l'imprimer sur une imprimante du bureau.
+  { key: "imprimer_pdf", label: "🖨️ Imprimer un PDF" },
   { key: "yukon", label: "🌿 Besoins Yukon" },
   { key: "taches", label: "✅ Tâches", tabs: [
     { key: "mes_taches", label: "Mes tâches" },
@@ -474,7 +476,7 @@ export const GROUPES_DROITS: { titre: string; detail: string; cles: string[] }[]
   { titre: "🗂️ Bureau", detail: "Une carte chacun sur l'accueil", cles: ["prestataires", "factures_prestataires", "reconditionnement", "chargement"] },
   { titre: "🌱 Appro", detail: "Une seule carte sur l'accueil, visible dès qu'un de ces écrans est coché", cles: ["appro", "yukon"] },
   { titre: "📊 Stats", detail: "Une seule carte sur l'accueil (Stats ou Programme d'achat coché) ; les deux réglages € et marge s'appliquent à l'intérieur", cles: ["extractions", "statt", "euros", "marge"] },
-  { titre: "🧰 Autres", detail: "Une carte chacun sur l'accueil", cles: ["catalogue", "gencodes", "taches", "dashboard_tv"] },
+  { titre: "🧰 Autres", detail: "Une carte chacun sur l'accueil", cles: ["catalogue", "gencodes", "taches", "imprimer_pdf", "dashboard_tv"] },
   { titre: "💤 En veille", detail: "Retirés de l'appli pour l'instant : cocher ne fait rien apparaître", cles: ["etiquettes", "messagerie", "litiges"] },
 ];
 // 14/10/2026 — Nature de chaque module, affichée dans Droits d'accès › Par module :

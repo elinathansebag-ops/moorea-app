@@ -12,7 +12,7 @@ const FAMILLES: { nom: string; cles: string[] }[] = [
   { nom: "Stock et produits", cles: ["stock", "prestataires", "raccourci_cartons", "raccourci_palette_vierge", "factures_prestataires", "gencodes", "catalogue", "appro", "yukon"] },
   { nom: "Qualité", cles: ["rapports", "qualite", "lidl_consultation", "litiges"] },
   { nom: "Pilotage", cles: ["extractions", "stats_achats", "statt", "dashboard_tv"] },
-  { nom: "Équipe et outils", cles: ["taches"] },
+  { nom: "Équipe et outils", cles: ["taches", "imprimer_pdf"] },
 ];
 
 const ICONES: Record<string, string> = {
@@ -22,6 +22,7 @@ const ICONES: Record<string, string> = {
   reconditionnement: "M4 12a8 8 0 0 1 14-5.3L21 9 M21 4v5h-5 M20 12a8 8 0 0 1-14 5.3L3 15 M3 20v-5h5",
   retours: "M9 14 4 9l5-5 M4 9h11a5 5 0 0 1 0 10h-3",
   refus_signer: "M4 20h4L19 9l-4-4L4 16z M13.5 6.5l4 4 M14 20h6",
+  imprimer_pdf: "M6 9V3h12v6 M6 18H4a1 1 0 0 1-1-1v-6a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v6a1 1 0 0 1-1 1h-2 M6 14h12v7H6z",
   rack: "M4 3v18 M20 3v18 M4 8h16 M4 14h16 M4 20h16",
   chargement: "M3 17h18 M5 17V9h6v8 M13 17V5h6v12",
   etiquettes: "M12.6 2.6 21.4 11.4a2 2 0 0 1 0 2.8l-7.2 7.2a2 2 0 0 1-2.8 0L2.6 12.6A2 2 0 0 1 2 11.2V4a2 2 0 0 1 2-2h7.2a2 2 0 0 1 1.4.6Z M7.5 7.5h.01",

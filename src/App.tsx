@@ -4493,6 +4493,24 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       { key: "dashboard_tv", icon: "📺", label: "Tableau de bord", color: "#c8a84b", stat: "Suivi en direct (écran bureau)", action: () => { setShowAccueil(false); setShowDashboard(true); } },
       { key: "gencodes", icon: "🏷️", label: "Gencodes GMS", color: "#3b82f6", stat: "EAN & codes barres", action: () => { setShowAccueil(false); setShowGencode(true); } },
       { key: "taches", icon: "✅", label: "Mes tâches", color: "#eab308", stat: "Ma to-do avec sous-tâches", action: () => { setShowAccueil(false); setShowTaches(true); } },
+      // 16/10/2026 — Choisir un PDF sur l'appareil → fenêtre « Où imprimer ? » (imprimantes du PC du bureau).
+      { key: "imprimer_pdf", icon: "🖨️", label: "Imprimer un PDF", color: "#305a55", stat: "Un PDF de l'ordinateur → une imprimante du bureau", action: () => {
+        const champ = document.createElement("input");
+        champ.type = "file"; champ.accept = "application/pdf,.pdf";
+        champ.onchange = () => {
+          const f = champ.files?.[0];
+          if (!f) return;
+          if (!/\.pdf$/i.test(f.name) && f.type !== "application/pdf") { showToast("Choisis un fichier PDF", "error"); return; }
+          if (f.size > 9 * 1024 * 1024) { showToast(`PDF trop lourd (${(f.size / 1048576).toFixed(1)} Mo) : 9 Mo maximum pour l'envoyer à l'imprimante`, "error"); return; }
+          const lecteur = new FileReader();
+          lecteur.onload = async () => {
+            const { imprimerPdf } = await import("./ImpressionPdf");
+            imprimerPdf({ titre: f.name, nom: f.name, base64: String(lecteur.result).split(",")[1] });
+          };
+          lecteur.readAsDataURL(f);
+        };
+        champ.click();
+      } },
       // 17/09/2026 — "Archiver" et "Historique" retirés d'ici (demande d'Elinathan : ça ne
       // mérite pas une carte de module comme les autres) — déplacés dans Admin > Réglages, voir
       // plus bas.
