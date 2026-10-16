@@ -1,5 +1,5 @@
 import { chargerLogoMoorea, VERT_MOOREA } from "./logoMoorea";
-import { useState, useEffect, useRef, ChangeEvent, Fragment } from "react";
+import { useState, useEffect, useRef, useMemo, ChangeEvent, Fragment } from "react";
 import { BarreMailsRecond } from "./BarreMailsRecond";
 import { noterHistoriqueDemande, parDansHistorique } from "./historiqueRecond";
 import { alerterRecond, alerterPush } from "./NotificationsPush";
@@ -439,6 +439,64 @@ function retourEnIfcoDemande(d: Demande): boolean {
 // déclarations clients, vidages manuels, ajustements de stock à la main, retours clients, et
 // bien sûr les envois/retours de reconditionnement (demande d'Elinathan, 01/09/2026 : TOUT
 // mouvement IFCO doit apparaître ici, pas seulement le reconditionnement).
+// 16/10/2026 — Demande d'Elinathan : « une indication de combien de caisses IFCO on utilise par semaine,
+// pour connaître mon besoin et en commander ». Caisses utilisées = colis qui reviennent de NLT en caisses
+// IFCO (caisses pleines reçues si le retour est saisi, sinon colis à entrer), par semaine de création.
+function lundiDe(d: Date) { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; }
+function dateDemande(d: Demande): Date | null {
+  const iso = d.dateCreation ? new Date(d.dateCreation) : null;
+  if (iso && !isNaN(iso.getTime())) return iso;
+  const m = String(d.dateCreationFr || "").match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+  return m ? new Date(+m[3], +m[2] - 1, +m[1]) : null;
+}
+function BesoinIfcoHebdo({ demandes, stockMoorea, stockNlt }: { demandes: Demande[]; stockMoorea: number; stockNlt: number }) {
+  const semaines = useMemo(() => {
+    const lundiCourant = lundiDe(new Date());
+    const liste = Array.from({ length: 7 }, (_, i) => { const l = new Date(lundiCourant); l.setDate(l.getDate() - 7 * (6 - i)); return { lundi: l, caisses: 0 }; });
+    (demandes || []).forEach(d => {
+      if (!d || d.statut === "annulé" || String(d.numero || "").startsWith("PAL") || !retourEnIfcoDemande(d)) return;
+      const dt = dateDemande(d); if (!dt) return;
+      const l = lundiDe(dt).getTime();
+      const s = liste.find(x => x.lundi.getTime() === l);
+      if (s) s.caisses += Number(d.retour?.caissesIfcoPleinesRecues) || Number(d.nbColisAEntrer) || 0;
+    });
+    return liste;
+  }, [demandes]);
+  const completes = semaines.slice(2, 6); // les 4 dernières semaines terminées
+  const moyenne = Math.round(completes.reduce((t, s) => t + s.caisses, 0) / completes.length);
+  const dispo = (stockMoorea || 0) + (stockNlt || 0);
+  const couverture = moyenne > 0 ? dispo / moyenne : null;
+  const aCommander = moyenne > 0 ? Math.max(0, Math.ceil(3 * moyenne - dispo)) : 0;
+  const max = Math.max(1, ...semaines.map(s => s.caisses));
+  const sem = (d: Date) => { const t = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate())); const j = t.getUTCDay() || 7; t.setUTCDate(t.getUTCDate() + 4 - j); const a = new Date(Date.UTC(t.getUTCFullYear(), 0, 1)); return Math.ceil(((t.getTime() - a.getTime()) / 86400000 + 1) / 7); };
+  const couleur = couverture == null ? "#6b7280" : couverture < 1.5 ? "#dc2626" : couverture < 3 ? "#d97706" : "#16a34a";
+  return (
+    <div style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "12px 16px", margin: "0 0 12px", display: "flex", gap: 18, flexWrap: "wrap", alignItems: "center" }}>
+      <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: "#6b7280" }}>📦 Caisses IFCO utilisées</div>
+        <div style={{ fontSize: 24, fontWeight: 900, color: "#1a2e1a", lineHeight: 1.15 }}>~{moyenne.toLocaleString("fr-FR")} <span style={{ fontSize: 13, fontWeight: 700, color: "#6b7280" }}>/ semaine</span></div>
+        <div style={{ fontSize: 11, color: "#9ca3af" }}>moyenne des 4 dernières semaines · cette semaine : {semaines[6].caisses}</div>
+      </div>
+      <div style={{ display: "flex", alignItems: "flex-end", gap: 5, height: 54 }} title="Caisses IFCO utilisées par semaine">
+        {semaines.map((s, i) => (
+          <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+            <span style={{ fontSize: 9.5, color: "#6b7280", fontWeight: 700 }}>{s.caisses || ""}</span>
+            <div style={{ width: 22, height: Math.max(3, Math.round((s.caisses / max) * 34)), borderRadius: 4, background: i === 6 ? "#c7d2fe" : i >= 2 && i <= 5 ? "#305a55" : "#cbd5d1" }} />
+            <span style={{ fontSize: 9, color: "#9ca3af" }}>S{sem(s.lundi)}</span>
+          </div>
+        ))}
+      </div>
+      <div style={{ flex: "1 1 220px", minWidth: 0 }}>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: "#6b7280" }}>Caisses vides disponibles (Moorea + NLT)</div>
+        <div style={{ fontSize: 18, fontWeight: 900, color: couleur }}>{dispo.toLocaleString("fr-FR")}{couverture != null && <span style={{ fontSize: 13 }}> · ~{couverture.toLocaleString("fr-FR", { maximumFractionDigits: 1 })} semaine{couverture >= 2 ? "s" : ""}</span>}</div>
+        <div style={{ fontSize: 11.5, fontWeight: 700, color: aCommander ? "#b45309" : "#16a34a" }}>
+          {moyenne === 0 ? "Pas encore assez d'historique" : aCommander ? `Pour tenir 3 semaines : commander ~${aCommander.toLocaleString("fr-FR")} caisses` : "Assez pour 3 semaines"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function classifierMouvementIfco(m: any): { icone: string; label: string; bg: string; color: string; signe: "+" | "-" | "→" } {
   const raison = String(m.raison || "");
   if (raison.startsWith("Reconditionnement — retour")) return { icone: "📥", label: "Retour caisses pleines (reconditionnement)", bg: COLORS.secondaryLight, color: COLORS.secondary, signe: "+" };
@@ -4120,6 +4178,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
             {/* Stock — même bloc que sur "Nouvelle demande", pour l'avoir sous les yeux sans
                 changer d'onglet en consultant les demandes en cours (demande du 27/08/2026). */}
             <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt} nltAujourdhui={nltAujourdhui} />
+            <BesoinIfcoHebdo demandes={demandes} stockMoorea={stockIfco.moorea} stockNlt={stockIfco.nlt} />
 
             {/* 04/09/2026 — La correction manuelle du stock (IFCO NLT / carton Andès) vit
                 maintenant dans l'onglet "⚙️ Configuration" (demande d'Elinathan : pas ici, sous
@@ -4689,6 +4748,7 @@ export function ReconditionnementModule({ onClose, userName, onOpenPrestatairesC
 
             {/* Stock, en couleur pâle pour repérer chaque compteur d'un coup d'œil */}
             <StockCardsIfco moorea={stockIfco.moorea} nlt={stockIfco.nlt} cartonAndes={stockBabyBlancAndes} nltEngage={caissesEngageesNlt} nltAujourdhui={nltAujourdhui} />
+            <BesoinIfcoHebdo demandes={demandes} stockMoorea={stockIfco.moorea} stockNlt={stockIfco.nlt} />
 
             {/* 11/09/2026 — Demande d'Elinathan : un seul bouton d'import (voir importerPdf) au
                 lieu de deux — plus besoin de deviner d'avance si le PDF choisi a une ou plusieurs
