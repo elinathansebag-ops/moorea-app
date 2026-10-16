@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 104, date: "16/10", pages: ["extractions"], texte: "🎄 Noël 2025 : chaque fiche (article, client, fournisseur, sélection, jour…) a maintenant son tableau « 📅 Besoin jour par jour » juste sous les chiffres — réf × client × base, par jour ou par semaine, Excel / PDF." },
   { id: 103, date: "16/10", pages: ["extractions"], texte: "🎄 Noël 2025 : « Voir la sélection » et « Besoin jour par jour » sont maintenant deux grandes cases sous la recherche (celle ouverte en vert)." },
   { id: 102, date: "16/10", pages: ["extractions"], texte: "🎄 Noël 2025 › Besoin jour par jour : en haut, le même résumé que l'onglet Résumé (commandés, livrés, manquants, taux de service, litiges + manquants par jour) calculé sur ce qui est coché et la période choisie." },
   { id: 101, date: "16/10", pages: ["extractions"], texte: "🔎 Recherche (📊 Stats et Noël) : les articles sont rangés par origine — tous les 🇨🇴 Colombie ensemble, tous les 🇻🇳 Vietnam ensemble… avec un petit titre par pays." },
