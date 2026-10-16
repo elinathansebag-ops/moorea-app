@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 120, date: "16/10", pages: ["extractions"], texte: "🎄 Noël 2025 : nouvel onglet « 🧾 Geslot / scans » — toutes les ventes Geslot de décembre 2025 à côté des commandes scannées, sans les mélanger : livré Geslot, commandé / livré scans, écart, % couvert par un scan, jour par jour, par client / jour / article (Excel, PDF). Les clients livrés sans aucun scan sont aussi dans la recherche." },
   { id: 119, date: "16/10", pages: ["extractions"], texte: "🎄 Noël 2025 réorganisé : ce qui est dans « Quoi ? » (un client, un fournisseur, une réf, plusieurs cochés… ou rien = tout Noël) est le sujet, et les 3 onglets 📦 Besoin · ❌ Manquants · ⚠️ Litiges montrent ce sujet. Fini les pages globales à part." },
   { id: 118, date: "16/10", pages: ["lidl"], texte: "🛒 Le mot du jour pour Jordan : 30 nouveaux compliments, plus drôles et bien plus flatteurs." },
   { id: 117, date: "16/10", pages: ["extractions"], texte: "🎄 Noël 2025 : les onglets Résumé / Besoin / ⚠️ Litiges restent visibles même dans une fiche ; chaque fiche indique aussi quand elle n'a aucun litige." },

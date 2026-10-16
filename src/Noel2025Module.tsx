@@ -39,6 +39,19 @@ const semaineIso = (iso: string) => {
 };
 
 let cache: Promise<Donnees> | null = null;
+// 16/10/2026 — Demande d'Elinathan : « ajouter toutes les ventes Geslot mais ne pas mélanger, pouvoir
+// comparer Geslot / scans ». Ventes 2025 jour × client facturé × article (même fichier que le
+// Programme d'achat, /api/reference-ventes, réservé aux comptes connectés). Jamais ajoutées aux
+// chiffres des scans : seulement dans l'onglet « 🧾 Geslot / scans ».
+type VenteGeslot = { a: string; c: string; d: string; colis: number; mtVente?: number };
+let cacheGeslot: Promise<VenteGeslot[]> | null = null;
+function chargerGeslot(): Promise<VenteGeslot[]> {
+  if (!cacheGeslot) cacheGeslot = fetch("/api/reference-ventes").then(r => { if (!r.ok) throw new Error(`ventes Geslot indisponibles (HTTP ${r.status})`); return r.json(); })
+    .then((v: any) => (Array.isArray(v) ? v : []).filter((x: any) => x && x.d >= "2025-12-01" && x.d <= "2026-01-10"))
+    .catch(e => { cacheGeslot = null; throw e; });
+  return cacheGeslot;
+}
+const nomGeslot = (s: any) => String(s ?? "").toUpperCase().replace(/\s+/g, " ").trim();
 function charger(): Promise<Donnees> {
   if (cache) return cache;
   cache = Promise.all(["commandes", "ruptures", "litiges", "scans", "meta"].map(k => get(ref(db, `${RACINE}/${k}`)).then(s => s.val())))
@@ -173,7 +186,10 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const [erreur, setErreur] = useState("");
   // 16/10/2026 — « les onglets doivent être des onglets de la recherche » : ce qui est dans la recherche
   // (fiche ouverte, ou cases cochées, ou rien = tout Noël) est le SUJET ; les onglets en sont trois vues.
-  const [vue, setVue] = useState<"besoin" | "manque" | "litiges">("manque");
+  const [vue, setVue] = useState<"besoin" | "manque" | "litiges" | "geslot">("manque");
+  const [ventesGeslot, setVentesGeslot] = useState<VenteGeslot[] | null>(null);
+  const [erreurGeslot, setErreurGeslot] = useState("");
+  const [compPar, setCompPar] = useState<"client" | "jour" | "article">("client");
   const [fiche, setFiche] = useState<Fiche | null>(null);
   // 16/10/2026 — « je clique sur un jour du diagramme, je ne peux pas revenir en arrière » : les fiches
   // ouvertes depuis une fiche s'empilent ; « ← Retour » revient à la précédente.
@@ -237,6 +253,24 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const lignes = useMemo(() => (don?.lignes || []).filter(compte), [don]);
   const jours = useMemo(() => [...new Set(lignes.map(l => l.d).filter(Boolean))].sort(), [lignes]);
 
+  useEffect(() => {
+    if (!don || ventesGeslot || erreurGeslot) return; // chargées dès l'ouverture (commandes prises au téléphone : pas de scan)
+    chargerGeslot().then(setVentesGeslot).catch(e => setErreurGeslot(e?.message || "erreur"));
+  }, [don, ventesGeslot, erreurGeslot]);
+  // Lignes Geslot rangées comme les lignes scannées (client = enseigne retrouvée par le « client facturé »
+  // des scans ; un client sans aucun scan garde son nom Geslot). Période des scans seulement.
+  const lignesGeslot = useMemo((): Ligne[] => {
+    if (!ventesGeslot || !don || !jours.length) return [];
+    const vote = new Map<string, Map<string, number>>(), fam = new Map<string, string>();
+    don.lignes.forEach(l => { const k = nomGeslot(l.cf); if (l.a && l.f) fam.set(l.a, l.f); if (!k || !l.c) return; const m = vote.get(k) || new Map<string, number>(); m.set(l.c, (m.get(l.c) || 0) + 1); vote.set(k, m); });
+    const enseigne = new Map([...vote].map(([k, m]) => [k, [...m].sort((a, b) => b[1] - a[1])[0][0]]));
+    const d0 = jours[0], d1 = jours[jours.length - 1];
+    return ventesGeslot.filter(v => v.d >= d0 && v.d <= d1 && (Number(v.colis) || 0) > 0).map((v, k) => {
+      const c = enseigne.get(nomGeslot(v.c)) || nomGeslot(v.c), q = Number(v.colis) || 0;
+      return { i: `g${k}`, d: v.d, c, cf: v.c, s: "", n: "", cc: "", l: v.a, o: "", q, u: "", lv: q, m: 0, st: "geslot", an: "", rq: "", f: fam.get(v.a) || "", ca: "", a: v.a, src: "geslot", bl: "", v: "", pdf: "", scan: "", p: "" };
+    });
+  }, [ventesGeslot, don, jours]);
+
   // Options de la recherche intelligente.
   const options = useMemo(() => {
     const m = new Map<string, Option>();
@@ -245,8 +279,12 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       o.poids += q; o.man += man; o.detail = `${ent(o.poids)} colis commandés${o.man ? ` · ${ent(o.man)} manquants` : " · tout livré"}`; m.set(k, o);
     };
     lignes.forEach(l => { ajout("client", l.c, l.q, l.m); ajout("article", l.a, l.q, l.m); ajout("famille", l.f, l.q, l.m); ajout("fournisseur", fournisseurDe[l.a], l.q, l.m); });
+    // Clients livrés d'après Geslot mais sans aucune commande scannée.
+    const geslotSeul = new Map<string, number>();
+    lignesGeslot.forEach(l => { if (!m.has("client|" + l.c)) geslotSeul.set(l.c, (geslotSeul.get(l.c) || 0) + l.q); });
+    geslotSeul.forEach((q, c) => m.set("client|" + c, { type: "client", valeur: c, poids: q, detail: `🧾 Geslot uniquement · ${ent(q)} colis livrés · aucune commande scannée` } as any));
     return [...m.values()];
-  }, [lignes, fournisseurDe]);
+  }, [lignes, fournisseurDe, lignesGeslot]);
   const extra = (q: string): Option[] => {
     const t = q.trim(); const out: Option[] = [];
     const j = t.match(/^(\d{1,2})[/.-](\d{1,2})/);
@@ -436,6 +474,110 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       return { client, bases, multi, n: cs.length };
     });
   };
+  // ── 🧾 Geslot / scans : les deux sources côte à côte, jamais additionnées ──
+  const rendreComparaison = (f: Fiche) => {
+    if (erreurGeslot) return <div style={{ ...carte, color: "#b91c1c", fontWeight: 700 }}>Ventes Geslot indisponibles : {erreurGeslot}</div>;
+    if (!ventesGeslot) return <p style={{ textAlign: "center", color: "#9ca3af", padding: 30 }}>🧾 Chargement des ventes Geslot de décembre 2025…</p>;
+    const gs = lignesGeslot.filter(f.filtre), sc = (don?.lignes || []).filter(f.filtre).filter(compte);
+    const tg = gs.reduce((t, l) => t + l.q, 0), tq = sc.reduce((t, l) => t + l.q, 0), tlv = sc.reduce((t, l) => t + l.lv, 0);
+    const cleCJ = (l: Ligne) => `${l.c}|${l.d}`, scannes = new Set(sc.map(cleCJ));
+    const couvert = gs.filter(l => scannes.has(cleCJ(l))).reduce((t, l) => t + l.q, 0);
+    const pctC = tg ? Math.round((couvert / tg) * 100) : 0;
+    // Par jour (graphique) et tableau (client, jour ou article).
+    type Ag = { g: number; q: number; lv: number; jg: Set<string>; js: Set<string> };
+    const agreger = (cle: (l: Ligne) => string) => {
+      const m = new Map<string, Ag>(); const x = (k: string) => { let a = m.get(k); if (!a) { a = { g: 0, q: 0, lv: 0, jg: new Set(), js: new Set() }; m.set(k, a); } return a; };
+      gs.forEach(l => { const a = x(cle(l)); a.g += l.q; a.jg.add(l.d); });
+      sc.forEach(l => { const a = x(cle(l)); a.q += l.q; a.lv += l.lv; a.js.add(l.d); });
+      return m;
+    };
+    const parJour = agreger(l => l.d);
+    const maxJ = Math.max(1, ...[...parJour.values()].map(a => Math.max(a.g, a.q)));
+    const lignesT = [...agreger(l => (compPar === "client" ? l.c : compPar === "jour" ? l.d : l.a) || "—")]
+      .sort((a, b) => (compPar === "jour" ? a[0].localeCompare(b[0]) : b[1].g + b[1].q - (a[1].g + a[1].q)));
+    const statut = (a: Ag) => !a.q ? ["🧾 Geslot seulement", "#1d4ed8"] : !a.g ? ["📄 Scans seulement", "#7c3aed"]
+      : compPar !== "jour" && a.jg.size > a.js.size ? [`⚠️ ${a.jg.size - a.js.size} jour${a.jg.size - a.js.size > 1 ? "s" : ""} livré${a.jg.size - a.js.size > 1 ? "s" : ""} sans scan`, "#b45309"] : ["✅ Les deux", "#15803d"];
+    const exporterComp = async (format: "excel" | "pdf") => {
+      const { exporterExcelMoorea, exporterPdfMoorea } = await import("./exportsMoorea");
+      const lib = { client: "Client", jour: "Jour", article: "Article" }[compPar];
+      const e = { nomFichier: `Noel 2025 - Geslot vs scans - ${f.valeur}`, titre: `Noël 2025 — Geslot / commandes scannées — ${f.valeur}`, sousTitre: `Livraisons du ${jjmm(jours[0] || "")} au ${jjmm(jours[jours.length - 1] || "")}/2025 · colis`,
+        entetes: [lib, "Livré Geslot", "Commandé (scans)", "Livré (scans)", "Écart Geslot − livré scans", ...(compPar !== "jour" ? ["Jours Geslot", "Jours scannés"] : []), "Statut"],
+        lignes: lignesT.map(([k, a]) => [compPar === "jour" ? jjmm(k) : k, Math.round(a.g), a.q, a.lv, Math.round(a.g - a.lv), ...(compPar !== "jour" ? [a.jg.size, a.js.size] : []), statut(a)[0].replace(/^\S+\s/, "")]),
+        total: ["TOTAL", Math.round(tg), tq, tlv, Math.round(tg - tlv), ...(compPar !== "jour" ? ["", ""] : []), ""] };
+      if (format === "excel") await exporterExcelMoorea(e as any); else await exporterPdfMoorea(e as any);
+    };
+    return (
+      <>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(170px, 100%), 1fr))", gap: 10 }}>
+          {[["🧾 Livré selon Geslot", ent(tg), "#1d4ed8"], ["📄 Commandé (scans)", ent(tq), "#1a2e1a"], ["✅ Livré (scans)", ent(tlv), "#15803d"],
+            ["Δ Geslot − livré scans", `${tg - tlv >= 0 ? "+" : ""}${ent(tg - tlv)}`, Math.abs(tg - tlv) > tg * 0.1 ? "#b45309" : "#6b7280"],
+            ["📎 Geslot couvert par un scan", `${pctC} %`, pctC >= 90 ? "#15803d" : pctC >= 60 ? "#b45309" : "#dc2626"]].map(([lib, v, c]) => (
+            <div key={lib} style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: "10px 14px" }}>
+              <div style={{ fontSize: 11.5, fontWeight: 700, color: "#6b7280" }}>{lib}</div>
+              <div style={{ fontSize: 22, fontWeight: 900, color: c }}>{v}</div>
+            </div>
+          ))}
+        </div>
+        <p style={{ fontSize: 12, color: "#6b7280", margin: "8px 2px 0" }}>« Couvert » = colis Geslot d'un client un jour où ce client a aussi une commande scannée. Les deux sources ne sont jamais additionnées.</p>
+        <div style={{ ...carte, marginTop: 14 }}>
+          <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 4 }}>📅 Jour par jour <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— <span style={{ color: "#2563eb", fontWeight: 800 }}>■ Geslot livré</span> · <span style={{ color: "#6f9c94", fontWeight: 800 }}>■ scans commandé</span></span></div>
+          <div style={{ display: "flex", gap: 6, alignItems: "flex-end", overflowX: "auto", paddingBottom: 4 }}>
+            {jours.map(j => { const a = parJour.get(j); return (
+              <div key={j} title={a ? `${jjmm(j)} : Geslot ${ent(a.g)} · scans ${ent(a.q)} commandés / ${ent(a.lv)} livrés` : jjmm(j)} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, minWidth: 40 }}>
+                <span style={{ fontSize: 9.5, fontWeight: 800, color: "#2563eb", minHeight: 11 }}>{a?.g ? ent(a.g) : ""}</span>
+                <span style={{ fontSize: 9.5, fontWeight: 800, color: "#305a55", minHeight: 11 }}>{a?.q ? ent(a.q) : ""}</span>
+                <span style={{ display: "flex", gap: 2, alignItems: "flex-end", height: 90 }}>
+                  <span style={{ width: 14, height: Math.max(2, Math.round(((a?.g || 0) / maxJ) * 90)), borderRadius: 3, background: a?.g ? "#2563eb" : "#e5e7eb" }} />
+                  <span style={{ width: 14, height: Math.max(2, Math.round(((a?.q || 0) / maxJ) * 90)), borderRadius: 3, background: a?.q ? "#6f9c94" : "#e5e7eb" }} />
+                </span>
+                <span style={{ fontSize: 10, color: "#6b7280" }}>{jjmm(j)}</span>
+              </div>
+            ); })}
+          </div>
+        </div>
+        <div style={carte}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10 }}>
+            <span style={{ fontSize: 15, fontWeight: 900, flex: 1 }}>⚖️ Comparaison</span>
+            <span style={{ display: "inline-flex", border: "1.5px solid #305a55", borderRadius: 9, overflow: "hidden" }}>
+              {([["client", "👤 Par client"], ["jour", "📅 Par jour"], ["article", "🥬 Par article"]] as const).map(([v, lib]) => (
+                <button key={v} type="button" onClick={() => setCompPar(v)} style={{ padding: "7px 11px", border: "none", background: compPar === v ? "#305a55" : "#fff", color: compPar === v ? "#fff" : "#305a55", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>{lib}</button>
+              ))}
+            </span>
+            <button type="button" onClick={() => exporterComp("excel")} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #16a34a", background: "#f0fdf4", color: "#15803d", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>📊 Excel</button>
+            <button type="button" onClick={() => exporterComp("pdf")} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #dc2626", background: "#fef2f2", color: "#b91c1c", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>📄 PDF</button>
+          </div>
+          <div style={{ overflow: "auto", maxHeight: "70vh", border: "1px solid #eee8dc", borderRadius: 10 }}>
+            <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12.5, minWidth: 720 }}>
+              <thead><tr>
+                <th style={{ ...th, position: "sticky", top: 0 }}>{{ client: "Client", jour: "Jour", article: "Article" }[compPar]}</th>
+                <th style={{ ...th, position: "sticky", top: 0, textAlign: "right", color: "#1d4ed8" }}>Livré Geslot</th>
+                <th style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>Commandé scans</th>
+                <th style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>Livré scans</th>
+                <th style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>Écart</th>
+                {compPar !== "jour" && <th style={{ ...th, position: "sticky", top: 0, textAlign: "center" }}>Jours Geslot / scannés</th>}
+                <th style={{ ...th, position: "sticky", top: 0 }}>Statut</th>
+              </tr></thead>
+              <tbody>
+                {lignesT.slice(0, 600).map(([k, a]) => { const [st, coul] = statut(a); const ec = a.g - a.lv; return (
+                  <tr key={k} onClick={() => compPar === "jour" ? undefined : ouvrirType(compPar, k)} style={{ cursor: compPar === "jour" ? "default" : "pointer" }}>
+                    <td style={{ ...td, fontWeight: 700 }}>{compPar === "jour" ? jjmm(k) : compPar === "article" ? `${emojiProduit(k)} ${k}` : `👤 ${k}`}</td>
+                    <td style={{ ...td, textAlign: "right", color: "#1d4ed8", fontWeight: 800 }}>{a.g ? ent(a.g) : ""}</td>
+                    <td style={{ ...td, textAlign: "right" }}>{a.q ? ent(a.q) : ""}</td>
+                    <td style={{ ...td, textAlign: "right", color: "#15803d" }}>{a.lv ? ent(a.lv) : ""}</td>
+                    <td style={{ ...td, textAlign: "right", fontWeight: 800, color: Math.abs(ec) > Math.max(a.g, a.lv) * 0.1 ? "#b45309" : "#6b7280" }}>{ec ? `${ec > 0 ? "+" : ""}${ent(ec)}` : "="}</td>
+                    {compPar !== "jour" && <td style={{ ...td, textAlign: "center" }}>{a.jg.size} / {a.js.size}</td>}
+                    <td style={{ ...td, fontSize: 11.5, fontWeight: 800, color: coul, whiteSpace: "nowrap" }}>{st}</td>
+                  </tr>
+                ); })}
+              </tbody>
+            </table>
+          </div>
+          <p style={{ fontSize: 11, color: "#9ca3af", margin: "8px 0 0" }}>Geslot = ventes facturées (client facturé, rattaché à l'enseigne des scans). Écart = livré Geslot − livré d'après les scans. Touchez une ligne pour sa fiche.</p>
+        </div>
+      </>
+    );
+  };
+
   const rendreFiche = (f: Fiche) => {
     const ls = (don?.lignes || []).filter(f.filtre), lc = ls.filter(compte);
     const tot = lc.reduce((t, l) => ({ q: t.q + l.q, lv: t.lv + l.lv, m: t.m + l.m }), { q: 0, lv: 0, m: 0 });
@@ -443,7 +585,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const cmds = new Map<string, Ligne[]>(); ls.forEach(l => { const k = `${l.d}|${l.c}|${l.n}|${l.s}`; cmds.set(k, [...(cmds.get(k) || []), l]); });
     const listeCmds = [...cmds].sort((a, b) => a[1][0].d.localeCompare(b[1][0].d) || a[1][0].c.localeCompare(b[1][0].c));
     const icone = f.type === "article" ? emojiProduit(f.valeur) : TITRES[f.type] || "🔎";
-    const besoin = vue === "besoin", vueLitiges = vue === "litiges", global = f.type === "global";
+    const besoin = vue === "besoin", vueLitiges = vue === "litiges", vueGeslot = vue === "geslot", global = f.type === "global";
     const nbClients = new Set(lc.map(l => l.c)).size;
     const tableBesoin = <div style={{ marginTop: 14 }}>{carteBesoin(construireTableau(lc.filter(l => (!periode.du || l.d >= periode.du) && (!periode.au || l.d <= periode.au))),
       <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 10 }}>📅 Besoin jour par jour <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— {f.valeur}</span></div>, f.valeur)}</div>;
@@ -465,12 +607,12 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
           </button>
         )}
         {!global && (
-          <div style={{ ...carte, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: besoin ? "#305a55" : vueLitiges ? "#92400e" : "#8f1d1d", border: "none", color: "#fff", marginBottom: 12 }}>
+          <div style={{ ...carte, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: besoin ? "#305a55" : vueLitiges ? "#92400e" : vueGeslot ? "#1e40af" : "#8f1d1d", border: "none", color: "#fff", marginBottom: 12 }}>
             <span style={{ fontSize: 38 }}>{icone}</span>
             <div style={{ flex: 1, minWidth: 200 }}>
               <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1.15 }}>{f.valeur}</div>
               <div style={{ fontSize: 14, marginTop: 4, color: "#f3f4f6" }}>
-                {vueLitiges ? <>⚠️ <b style={{ fontSize: 17 }}>{lits.length} litige{lits.length > 1 ? "s" : ""}</b>{lits.length ? ` · ${ent(lits.reduce((t, x) => t + (Number(x.r) || 0), 0))} colis refusés` : ""}</>
+                {vueGeslot ? <>🧾 <b style={{ fontSize: 17 }}>Geslot / scans</b> — les deux sources côte à côte</> : vueLitiges ? <>⚠️ <b style={{ fontSize: 17 }}>{lits.length} litige{lits.length > 1 ? "s" : ""}</b>{lits.length ? ` · ${ent(lits.reduce((t, x) => t + (Number(x.r) || 0), 0))} colis refusés` : ""}</>
                   : besoin ? <>📦 <b style={{ fontSize: 17 }}>{ent(tot.q)} colis commandés</b> par {nbClients} client{nbClients > 1 ? "s" : ""} · {ent(tot.lv)} livrés{tot.m ? ` · ${ent(tot.m)} manquants` : ""}</>
                   : tot.m ? <>Il a manqué <b style={{ color: "#fecaca", fontSize: 17 }}>{ent(tot.m)} colis</b> sur {ent(tot.q)} commandés</> : <>✅ Tout a été livré ({ent(tot.q)} colis)</>}
               </div>
@@ -479,8 +621,19 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             <button type="button" onClick={() => { fermerFiche(); if (f.type === "selection") toutDecocher(); }} style={{ padding: "8px 12px", borderRadius: 9, border: "1.5px solid rgba(255,255,255,.4)", background: "transparent", color: "#fff", fontWeight: 800, cursor: "pointer" }}>✕ Effacer</button>
           </div>
         )}
-        {chiffres(tot, lits.length)}
-        {vueLitiges ? (
+        {!vueGeslot && chiffres(tot, lits.length)}
+        {!vueGeslot && !vueLitiges && lignesGeslot.length > 0 && (() => {
+          const gs = lignesGeslot.filter(f.filtre), tg = gs.reduce((t, l) => t + l.q, 0);
+          if (!tg) return null;
+          const scannes = new Set(lc.map(l => `${l.c}|${l.d}`)), sans = gs.filter(l => !scannes.has(`${l.c}|${l.d}`)).reduce((t, l) => t + l.q, 0);
+          if (sans < tg * 0.05) return null;
+          return (
+            <button type="button" onClick={() => setVue("geslot")} style={{ ...carte, width: "100%", textAlign: "left", cursor: "pointer", marginTop: 12, marginBottom: 0, padding: "10px 14px", borderColor: "#93c5fd", background: "#eff6ff", color: "#1e3a8a", fontSize: 13 }}>
+              🧾 D'après <b>Geslot</b>, {f.type === "global" ? "Noël" : f.valeur} = <b>{ent(tg)} colis livrés</b>, dont <b>{ent(sans)}</b> ({Math.round((sans / tg) * 100)} %) des jours sans commande scannée (téléphone, mail…). Les chiffres ci-dessous ne comptent que les scans. <u>Comparer ›</u>
+            </button>
+          );
+        })()}
+        {vueGeslot ? rendreComparaison(f) : vueLitiges ? (
           <div style={{ ...carte, marginTop: 14, overflowX: "auto", borderColor: "#fcd34d" }}>
             <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
               <span style={{ fontSize: 15, fontWeight: 900, color: "#b45309", flex: 1 }}>⚠️ Litiges — {f.valeur} ({lits.length})</span>
@@ -529,10 +682,10 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             )}
           </>
         )}
-        {!vueLitiges && (lits.length === 0 || global) && (
+        {!vueLitiges && !vueGeslot && (lits.length === 0 || global) && (
           <button type="button" onClick={() => setVue("litiges")} style={{ ...carte, width: "100%", textAlign: "left", cursor: "pointer", borderColor: "#fde68a", padding: "10px 16px", fontSize: 13.5, color: "#92400e" }}>⚠️ <b>Litiges</b> — {lits.length ? `${lits.length} litiges` : `aucun litige pour ${f.valeur}`}{lits.length ? " · voir l'onglet ⚠️ Litiges ›" : ""}</button>
         )}
-        {!vueLitiges && !global && lits.length > 0 && (
+        {!vueLitiges && !vueGeslot && !global && lits.length > 0 && (
           <div style={{ ...carte, borderColor: "#fcd34d" }}>
             <div style={{ fontSize: 15, fontWeight: 900, color: "#b45309", marginBottom: 6 }}>⚠️ Litiges ({lits.length})</div>
             {lits.map((x, i) => (
@@ -544,7 +697,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             ))}
           </div>
         )}
-        {!global && !vueLitiges && (
+        {!global && !vueLitiges && !vueGeslot && (
         <div style={carte}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
             <div style={{ fontSize: 15, fontWeight: 900, flex: 1 }}>🧾 Les commandes ({listeCmds.length})</div>
@@ -796,10 +949,11 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                 ["besoin", "📦", "Besoin", "Ce qui a été commandé", "#305a55", "#eef4f2"],
                 ["manque", "❌", "Manquants", "Ce qui n'a pas été livré", "#b91c1c", "#fef2f2"],
                 ["litiges", "⚠️", `Litiges (${nbLit})`, "Refus et litiges clients", "#b45309", "#fffbeb"],
+                ["geslot", "🧾", "Geslot / scans", "Ventes Geslot vs commandes scannées", "#1d4ed8", "#eff6ff"],
               ] as const;
               return (
                 <>
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(3, minmax(0, 1fr))", gap: 8, marginBottom: 6 }}>
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(200px, 100%), 1fr))", gap: 8, marginBottom: 6 }}>
                     {onglets.map(([v, ic, titre, detail, coul, doux]) => {
                       const on = vue === v;
                       return (
