@@ -10,7 +10,7 @@ import { createPortal } from "react-dom";
 // StockApp (stocks/{id} + comptages/{id}_{équipe}).
 // ═══════════════════════════════════════════════════════════════════════════
 
-type Semaine = { cle: string; n: number; annee: number; sid: string; date: string; ecarts: Map<string, { e: number | null; stock: number; compte: number | null }> };
+type Semaine = { cle: string; n: number; annee: number; sid: string; date: string; heure: string; ecarts: Map<string, { e: number | null; stock: number; compte: number | null }> };
 
 function semaineIso(d: Date) {
   const u = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
@@ -32,6 +32,10 @@ const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCa
 export function HistoriqueEcartsStock({ onFermer }: { onFermer: () => void }) {
   const [equipe, setEquipe] = useState<"GMS" | "PRESTIGE">(() => { try { return localStorage.getItem("stock-histo-equipe") === "PRESTIGE" ? "PRESTIGE" : "GMS"; } catch { return "GMS"; } });
   const [nbSem, setNbSem] = useState(8);
+  // 16/10/2026 — « manque la semaine actuelle » : il y a un stock presque chaque jour (lun → jeu) ;
+  // « Tous les comptages » montre chaque stock (rangés par semaine), « 1 par semaine » le dernier de la semaine.
+  const [tousComptages, setTousComptages] = useState(() => { try { return localStorage.getItem("stock-histo-mode") !== "semaine"; } catch { return true; } });
+  useEffect(() => { try { localStorage.setItem("stock-histo-mode", tousComptages ? "tous" : "semaine"); } catch { /* */ } }, [tousComptages]);
   const [semaines, setSemaines] = useState<Semaine[] | null>(null);
   const [erreur, setErreur] = useState("");
   const [cherche, setCherche] = useState("");
@@ -60,7 +64,10 @@ export function HistoriqueEcartsStock({ onFermer }: { onFermer: () => void }) {
         const deja = parSem.get(cle);
         if (!deja || s.cloture || !deja.cloture) parSem.set(cle, s);
       });
-      const choisis = [...parSem.entries()].sort((a, b) => b[0].localeCompare(a[0])).slice(0, nbSem);
+      const choisis: [string, any][] = tousComptages
+        ? stocks.filter(s => { const w = semaineIso(dateStock(s)), cle = `${w.annee}-${String(w.n).padStart(2, "0")}`; return [...parSem.keys()].sort().reverse().slice(0, nbSem).includes(cle); })
+            .sort((a, b) => b.id.localeCompare(a.id)).map(s => [s.id, s] as [string, any])
+        : [...parSem.entries()].sort((a, b) => b[0].localeCompare(a[0])).slice(0, nbSem);
       const ids = choisis.map(([, s]) => `${s.id}_${equipe}`), comptages: Record<string, any> = {};
       for (let i = 0; i < ids.length; i += 10) {
         const cs = await getDocs(query(collection(fs, "comptages"), where(documentId(), "in", ids.slice(i, i + 10))));
@@ -75,12 +82,12 @@ export function HistoriqueEcartsStock({ onFermer }: { onFermer: () => void }) {
         });
         // Articles ajoutés pendant le comptage (absents du fichier Geslot) : stock 0.
         Object.keys(data).forEach(k => { if (!ecarts.has(k)) { const c = compteDe(data[k]); if (c !== null) ecarts.set(k, { e: c, stock: 0, compte: c }); } });
-        return { cle, n: w.n, annee: w.annee, sid: s.id, date: String(s.dateLabel || "").slice(0, 10), ecarts };
+        return { cle, n: w.n, annee: w.annee, sid: s.id, date: String(s.dateLabel || "").slice(0, 10), heure: String(s.dateLabel || "").slice(11, 16), ecarts };
       });
       if (!annule) setSemaines(res);
     })().catch(e => { if (!annule) setErreur(e?.message || String(e)); });
     return () => { annule = true; };
-  }, [equipe, nbSem]);
+  }, [equipe, nbSem, tousComptages]);
 
   const bilan = useMemo(() => (semaines || []).map(s => {
     let lignes = 0, moins = 0, plus = 0, comptees = 0;
@@ -111,6 +118,8 @@ export function HistoriqueEcartsStock({ onFermer }: { onFermer: () => void }) {
   }
 
   const vert = "#305a55";
+  // Trait vert entre deux semaines (mode « tous les comptages »).
+  const debutSemaine = (i: number) => !!semaines && tousComptages && i > 0 && semaines[i].n !== semaines[i - 1].n;
   const puce = (actif: boolean) => ({ padding: "6px 12px", borderRadius: 9, border: `1.5px solid ${actif ? vert : "#d6cfbf"}`, background: actif ? vert : "#fff", color: actif ? "#fff" : "#1a2e1a", fontSize: 12.5, fontWeight: 800, cursor: "pointer" } as const);
   const th = { padding: "7px 8px", fontSize: 11.5, color: "#6b7280", background: "#faf8f3", borderBottom: "1px solid #e8e0d0", whiteSpace: "nowrap" as const, position: "sticky" as const, top: 0, zIndex: 1 };
 
@@ -126,6 +135,9 @@ export function HistoriqueEcartsStock({ onFermer }: { onFermer: () => void }) {
           <button type="button" style={puce(equipe === "GMS")} onClick={() => setEquipe("GMS")}>🌿 GMS</button>
           <button type="button" style={puce(equipe === "PRESTIGE")} onClick={() => setEquipe("PRESTIGE")}>✨ Prestige</button>
           <span style={{ width: 8 }} />
+          <button type="button" style={puce(tousComptages)} onClick={() => setTousComptages(true)}>📋 Tous les comptages</button>
+          <button type="button" style={puce(!tousComptages)} onClick={() => setTousComptages(false)}>🗓️ 1 par semaine</button>
+          <span style={{ width: 8 }} />
           {[4, 8, 12, 26].map(n => <button key={n} type="button" style={puce(nbSem === n)} onClick={() => setNbSem(n)}>{n} sem.</button>)}
           <span style={{ flex: 1 }} />
           <input value={cherche} onChange={e => setCherche(e.target.value)} placeholder="🔍 Article…" style={{ padding: "7px 10px", borderRadius: 9, border: "1.5px solid #d6cfbf", fontSize: 13, minWidth: 0, width: 200, maxWidth: "100%" }} />
@@ -138,7 +150,7 @@ export function HistoriqueEcartsStock({ onFermer }: { onFermer: () => void }) {
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 8, marginBottom: 14 }}>
               {semaines.map((s, i) => (
                 <div key={s.cle} style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 12, padding: "9px 11px" }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 900 }}>S{s.n} <span style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af" }}>{s.date}</span></div>
+                  <div style={{ fontSize: 13.5, fontWeight: 900 }}>{tousComptages ? <>{s.date.slice(0, 5)} <span style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af" }}>S{s.n} · {s.heure}</span></> : <>S{s.n} <span style={{ fontSize: 11, fontWeight: 600, color: "#9ca3af" }}>{s.date}</span></>}</div>
                   <div style={{ fontSize: 12, marginTop: 3 }}><b>{bilan[i].lignes}</b> ligne{bilan[i].lignes > 1 ? "s" : ""} en écart <span style={{ color: "#9ca3af" }}>/ {bilan[i].comptees}</span></div>
                   <div style={{ fontSize: 12.5, fontWeight: 800, marginTop: 2 }}>
                     <span style={{ color: "#dc2626" }}>−{bilan[i].moins}</span> <span style={{ color: "#b45309", marginLeft: 6 }}>+{bilan[i].plus}</span> <span style={{ fontSize: 10.5, color: "#9ca3af", fontWeight: 600 }}>colis</span>
@@ -156,7 +168,7 @@ export function HistoriqueEcartsStock({ onFermer }: { onFermer: () => void }) {
                 <thead><tr>
                   <th style={{ ...th, textAlign: "left", left: 0, zIndex: 2, minWidth: 200 }}>Article</th>
                   <th style={{ ...th, textAlign: "center" }} title="Nombre de semaines où l'article était en écart">Sem. en écart</th>
-                  {semaines.map(s => <th key={s.cle} style={{ ...th, textAlign: "center" }}>S{s.n}<div style={{ fontSize: 10, fontWeight: 500 }}>{s.date.slice(0, 5)}</div></th>)}
+                  {semaines.map((s, i) => <th key={s.cle} style={{ ...th, textAlign: "center", borderLeft: debutSemaine(i) ? "2px solid #305a55" : undefined }}>{tousComptages ? <>{s.date.slice(0, 5)}<div style={{ fontSize: 10, fontWeight: 500 }}>S{s.n} · {s.heure}</div></> : <>S{s.n}<div style={{ fontSize: 10, fontWeight: 500 }}>{s.date.slice(0, 5)}</div></>}</th>)}
                 </tr></thead>
                 <tbody>
                   {lignes.map(l => (
@@ -168,7 +180,7 @@ export function HistoriqueEcartsStock({ onFermer }: { onFermer: () => void }) {
                         const [fond, coul] = e === undefined || e === null ? ["transparent", "#d1d5db"] : e < 0 ? ["#fee2e2", "#b91c1c"] : e > 0 ? ["#fef3c7", "#b45309"] : ["transparent", "#86efac"];
                         return (
                           <td key={i} title={c ? (c.compte === null ? `Stock ${c.stock} · non compté` : `Stock ${c.stock} · compté ${c.compte}`) : "Pas dans ce stock"}
-                            style={{ padding: "6px 8px", borderBottom: "1px solid #f3f0e8", textAlign: "center", background: fond, color: coul, fontWeight: e ? 900 : 600 }}>
+                            style={{ padding: "6px 8px", borderBottom: "1px solid #f3f0e8", textAlign: "center", background: fond, color: coul, fontWeight: e ? 900 : 600, borderLeft: debutSemaine(i) ? "2px solid #305a55" : undefined }}>
                             {e === undefined ? "" : e === null ? "·" : e === 0 ? "✓" : signe(e)}
                           </td>
                         );

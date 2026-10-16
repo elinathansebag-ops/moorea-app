@@ -396,6 +396,10 @@ export const MODULE_DEFS: ModuleDef[] = [
     // 14/10/2026 — Module « Refus à faire signer » (carte d'accueil) : coché par défaut avec Rapports.
     { key: "refus_signer", label: "🔄 Refus à faire signer (bons de reprise)" },
   ] },
+  // 16/10/2026 — Demande d'Elinathan : faire apparaître « Refus à faire signer » sur le compte
+  // entrepôt sans lui donner les rapports d'agréage → module à part (l'ancienne case sous
+  // « Rapports d'agréage » marche toujours).
+  { key: "refus_signer", label: "🔄 Refus à faire signer (bons de reprise)" },
   { key: "qualite", label: "🧪 Traçabilité, températures, poids" },
   { key: "litiges", label: "⛔ Litiges" },
   { key: "stock", label: "📦 Stock", tabs: [
@@ -465,7 +469,7 @@ export const MODULE_DEFS: ModuleDef[] = [
 // 14/10/2026 — Page Droits d'accès rangée comme l'accueil : une carte de l'accueil = un groupe,
 // avec dessous les cases des écrans qu'elle contient. Ne change aucun droit, seulement l'affichage.
 export const GROUPES_DROITS: { titre: string; detail: string; cles: string[] }[] = [
-  { titre: "🏭 Entrepôt", detail: "Une carte chacun sur l'accueil", cles: ["arrivages", "stock", "lidl", "retours", "preparation", "rack"] },
+  { titre: "🏭 Entrepôt", detail: "Une carte chacun sur l'accueil", cles: ["arrivages", "refus_signer", "stock", "lidl", "retours", "preparation", "rack"] },
   { titre: "🧪 Récap qualité", detail: "Une seule carte sur l'accueil, visible dès qu'un de ces écrans est coché ; à l'intérieur, seulement les écrans cochés", cles: ["rapports", "qualite", "lidl_consultation"] },
   { titre: "🗂️ Bureau", detail: "Une carte chacun sur l'accueil", cles: ["prestataires", "factures_prestataires", "reconditionnement", "chargement"] },
   { titre: "🌱 Appro", detail: "Une seule carte sur l'accueil, visible dès qu'un de ces écrans est coché", cles: ["appro", "yukon"] },

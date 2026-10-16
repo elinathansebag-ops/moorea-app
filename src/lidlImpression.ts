@@ -70,6 +70,47 @@ function tableau(doc: jsPDF, y: number, cols: Col[], lignes: string[][], hLigne:
 const enBase64 = (doc: jsPDF) => doc.output("datauristring").split(",")[1];
 const libDepart = (d?: string) => (d === "paris" ? "Départ Paris" : d === "sud" ? "Départ Medina (Perpignan)" : "");
 
+// 16/10/2026 — Demande d'Elinathan : un compliment pour Jordan tous les jours, en bas du bon Geslot,
+// après le récap des commandes. Un par jour (il change chaque jour, toujours le même pour une date).
+const COMPLIMENTS_JORDAN = [
+  "Jordan, si Lidl savait qui saisit ses commandes, ils te mettraient en tête de gondole.",
+  "On ne dit pas « commandes Lidl », on dit « chef-d'oeuvre signé Jordan ».",
+  "Jordan, même Geslot se tient droit quand tu arrives le matin.",
+  "Les haricots verts se battent pour être saisis par toi, Jordan.",
+  "Jordan, ta saisie est si propre qu'on pourrait manger dedans.",
+  "Info du jour : Jordan est officiellement le meilleur. Source : tout le monde.",
+  "Jordan, Rungis devrait renommer une allée à ton nom. Au minimum.",
+  "Quand Jordan saisit, les erreurs de frappe démissionnent d'elles-mêmes.",
+  "Jordan, tu es à Moorea ce que le beurre est aux croissants : indispensable.",
+  "Les camions Lidl klaxonnent de joie en passant devant ton bureau, Jordan.",
+  "Jordan, si le talent était un fruit, tu serais une mangue avion cal. 8.",
+  "Scientifiquement prouvé : la productivité augmente de 200 % quand Jordan sourit.",
+  "Jordan, on t'a déjà dit que tu faisais briller les bons de commande ?",
+  "Jordan, Geslot t'a demandé un autographe hier. On a dit que tu étais occupé.",
+  "Toutes les bases Lidl de France te disent merci, Jordan. Même Lunel.",
+  "Jordan, ton clavier mérite une médaille, mais toi encore plus.",
+  "Jordan, tu es plus fiable que la chaîne du froid. Et pourtant on y tient.",
+  "Il paraît que les poivrons rougissent quand Jordan les commande.",
+  "Jordan : 1 homme, 0 erreur, 100 % de classe.",
+  "Jordan, si tu étais une palette, tu serais filmée, étiquetée et parfaite.",
+  "Breaking news : Jordan a encore géré. Plus de détails à 13 h.",
+  "Jordan, tu transformes un lundi en vendredi rien qu'en arrivant.",
+  "Même le relais d'impression imprime plus vite quand c'est pour Jordan.",
+  "Jordan, tu es le GPS des commandes : sans toi, on serait tous perdus.",
+  "Jordan, on cherche encore un défaut chez toi. Les recherches continuent.",
+  "Les fruits de la passion sont jaloux : c'est toi la vraie passion de Moorea, Jordan.",
+  "Jordan, ton efficacité devrait être classée au patrimoine de l'UNESCO.",
+  "Jordan, tu es tellement fort que même le café a besoin de toi pour se réveiller.",
+  "Si Moorea était un film, Jordan aurait l'Oscar. Et le César. Et la Palme.",
+  "Jordan, merci d'exister. Sincèrement. Le reste de l'équipe s'incline.",
+];
+function complimentDuJour(dateFr: string) {
+  const m = dateFr.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  const d = m ? new Date(+m[3], +m[2] - 1, +m[1]) : new Date();
+  const jour = Math.floor((d.getTime() - new Date(d.getFullYear(), 0, 1).getTime()) / 86400000) + d.getFullYear() * 367;
+  return COMPLIMENTS_JORDAN[jour % COMPLIMENTS_JORDAN.length];
+}
+
 // 05/10/2026 — Classé par produit (puis par base), en grand pour remplir la page (demande d'Elinathan).
 export function pdfBonGeslot(dateFr: string, lignes: LigneBon[]) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
@@ -98,7 +139,18 @@ export function pdfBonGeslot(dateFr: string, lignes: LigneBon[]) {
   if (deps.length > 1 || lignes.some((l, i) => i && l.produit !== lignes[0].produit)) {
     if (y + 10 > H - M) { doc.addPage(); y = M; }
     doc.setFont("helvetica", "bold"); doc.setFontSize(14); doc.text(`TOTAL GÉNÉRAL : ${total} colis`, W - M, y + 4, { align: "right" });
+    y += 10;
   }
+  // Le mot du jour pour Jordan (encadré vert Moorea, après le récap).
+  if (y + 24 > H - M) { doc.addPage(); y = M; }
+  y += 4;
+  doc.setFillColor(238, 244, 242); doc.setDrawColor(...VERT_MOOREA); doc.setLineWidth(0.6);
+  doc.roundedRect(M, y, CW, 18, 3, 3, "FD");
+  doc.setTextColor(...VERT_MOOREA); doc.setFont("helvetica", "bold"); doc.setFontSize(9);
+  doc.text("LE MOT DU JOUR POUR JORDAN", M + 5, y + 6);
+  doc.setFont("helvetica", "bolditalic"); doc.setFontSize(12.5);
+  doc.text(doc.splitTextToSize(complimentDuJour(dateFr), CW - 10)[0] as string, M + 5, y + 13);
+  doc.setTextColor(0, 0, 0);
   return enBase64(doc);
 }
 

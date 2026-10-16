@@ -77,6 +77,18 @@ export function MesuresQualite({ type, rapports, arrivages, recherche, du, au }:
       c.temps.push({ valeur: v, brut: String(r.temperature), at: r.timestamp || 0, source: "rapport" });
       if (!c.at) c.at = r.timestamp || 0;
     });
+    // 16/10/2026 — Pesées saisies dans un rapport qualité : avec celles du pointage (même carte si le
+    // rapport est lié à un arrivage).
+    (rapports || []).forEach((r: any) => {
+      const ms = lireMesures(r.pesees);
+      if (!ms.length) return;
+      const lie = r.arrivage_id && parArrivageId.get(r.arrivage_id);
+      const c = lie
+        ? carteDe(`a_${r.arrivage_id}`, {})
+        : carteDe(`r_${r.id || r.firebaseKey || r.numeroRapport}`, { at: r.timestamp || 0, produit: r.produit || "", fournisseur: r.fournisseur || "", lot: String(r.lotMoorea || r.lotFournisseur || ""), date: r.date || "" });
+      ms.forEach(m => { const v = num(m.valeur); if (v != null) c.barquettes.push({ valeur: v, brut: m.valeur, at: m.at || r.timestamp || 0, source: "rapport" }); });
+      if (!c.at) c.at = r.timestamp || 0;
+    });
     const bDu = du ? new Date(`${du}T00:00:00`).getTime() : null;
     const bAu = au ? new Date(`${au}T23:59:59`).getTime() : null;
     const q = recherche.trim().toLowerCase();

@@ -4,7 +4,7 @@
 import { noterHistoriqueDemande } from "./historiqueRecond";
 import { Calculatrice } from "./Calculatrice";
 import { useState, useEffect, useRef, useMemo, lazy, createElement, Suspense } from "react";
-import { useProfilGenerique, avecProfil, ouvrirWhatsApp, nomSignataire } from "./ProfilGenerique";
+import { useProfilGenerique, avecProfil, ouvrirWhatsApp, nomSignataire, COMPTES_GENERIQUES } from "./ProfilGenerique";
 import { CameraMulti } from "./CameraMulti";
 import { AccueilModulesV2, ordonnerModules, COULEURS_PASTEL } from "./AccueilModulesV2";
 import { NOUVEAUTES, NOUVEAUTES_POUR } from "./nouveautes";
@@ -220,6 +220,15 @@ export default function App() {
   const [photos, setPhotos] = useState<{ name: string; url: string; arrivageId?: string }[]>([]);
   const [poidsStatut, setPoidsStatut] = useState("");
   const [poidsEcart, setPoidsEcart] = useState("");
+  // 16/10/2026 — Demande d'Elinathan : dans le rapport, des pesées comme au contrôle poids (en g),
+  // enregistrées dans le rapport et affichées avec les autres pesées (🧪 Récap qualité › ⚖️ Poids).
+  const [pesees, setPesees] = useState<{ valeur: string; at: number }[]>([]);
+  const [peseeSaisie, setPeseeSaisie] = useState("");
+  const ajouterPesee = () => {
+    const v = peseeSaisie.trim().replace(",", ".");
+    if (!v || isNaN(parseFloat(v))) return;
+    setPesees(p => [...p, { valeur: v, at: Date.now() }]); setPeseeSaisie("");
+  };
   const [etiquetteAbsente, setEtiquetteAbsente] = useState(false);
   const [etiquette, setEtiquette] = useState(initialEtiquette);
   const [observations, setObservations] = useState("");
@@ -521,7 +530,20 @@ export default function App() {
   const [aSignerSeul, setASignerSeul] = useState(false);
   const [imprimerBonEntrepot, setImprimerBonEntrepot] = useState(false);
   const [confirmerToutRecupere, setConfirmerToutRecupere] = useState(false);
-  const refusASigner = (r: any) => r?.decision === "refus" && !r?.transporteur?.signatureBase64 && !r?.recupereSansSig;
+  // 16/10/2026 — Demande d'Elinathan : sur la page « Refus à faire signer », pouvoir quand même
+  // accepter une palette refusée sur décision du commercial (qui + pourquoi, gardé dans le rapport).
+  const [accepterRefus, setAccepterRefus] = useState<{ cle: string; commercial: string; motif: string } | null>(null);
+  const accepterRefusCommercial = async (r: any, commercial: string, motif: string) => {
+    if (!r?.firebaseKey) return;
+    const le = new Date(), info = { commercial, motif: motif.trim(), par: nomSignataire() || "", le: le.toLocaleString("fr-FR").slice(0, 16), ts: le.getTime() };
+    const maj: Record<string, any> = { [`rapports/${r.firebaseKey}/accepteCommercial`]: info };
+    [r.arrivage_id, ...(r.arrivage_ids || [])].filter(Boolean).forEach((id: string) => {
+      maj[`arrivages/${id}/statut`] = "validé"; maj[`arrivages/${id}/accepteCommercial`] = info;
+    });
+    try { await update(ref(db), maj); showToast(`✅ Palette acceptée sur décision de ${commercial}`); setAccepterRefus(null); }
+    catch (e: any) { showToast("Erreur : " + (e?.message || e), "error"); }
+  };
+  const refusASigner = (r: any) => r?.decision === "refus" && !r?.transporteur?.signatureBase64 && !r?.recupereSansSig && !r?.accepteCommercial;
   const [showStats, setShowStats] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState("date_desc");
@@ -794,6 +816,8 @@ export default function App() {
     ? { ...monAccesCompte, hasModule: (k: string) => !refusMonProfil[k] && monAccesCompte.hasModule(k), hasTab: (k: string) => !refusMonProfil[String(k).split(".")[0]] && monAccesCompte.hasTab(k) }
     : monAccesCompte;
   const monAcces = (apercuEmail && monAccesReel.isAdmin) ? calculerAcces(apercuEmail, permRoles, permUsers) : monAccesReel;
+  // « 🔄 Refus à faire signer » : module à part (compte entrepôt), ou l'ancienne case sous Rapports d'agréage.
+  const peutRefusSigner = monAcces.hasModule("refus_signer") || (monAcces.hasModule("rapports") && monAcces.hasTab("rapports.refus_signer"));
   // 29/09/2026 — Demande d'Elinathan (vitesse) : les grosses collections ne sont plus
   // téléchargées pour un compte qui n'a accès à AUCUN des modules qui s'en servent. Toujours
   // calculé sur les vrais droits (monAccesReel, jamais l'aperçu admin). Tant que le compte ou
@@ -804,7 +828,7 @@ export default function App() {
       : (user === undefined || !permsChargees) ? false
       : (monAccesReel.isAdmin || modules.some(k => monAccesReel.hasModule(k)));
   const chargerRecond = chargementAutorise(["reconditionnement", "preparation", "prestataires"]);
-  const chargerRapports = chargementAutorise(["arrivages", "rapports", "litiges", "qualite", "dashboard_tv"]);
+  const chargerRapports = chargementAutorise(["arrivages", "rapports", "refus_signer", "litiges", "qualite", "dashboard_tv"]);
   const chargerGencodes = chargementAutorise(["gencodes", "stock"]);
   const chargerRetours = chargementAutorise(["retours"]);
   const chargerJournal = chargementAutorise([]);
@@ -2470,7 +2494,7 @@ export default function App() {
     setProduit(""); setConditionnement(""); setCalibre(""); setPoids("");
     setOrigine(""); setLotMoorea(""); setLotFournisseur(""); setDlc(""); setNumeroTracabilite(""); setTemperature("");
     setNotes(initialNotes); setConformite(""); setDecision(""); setPourcentage(""); setNbColisTotal(""); setNbColisAEcarter("");
-    setPhotos([]); setPoidsStatut(""); setPoidsEcart(""); setRapportGroupe(null);
+    setPhotos([]); setPoidsStatut(""); setPoidsEcart(""); setPesees([]); setPeseeSaisie(""); setRapportGroupe(null);
     setEtiquetteAbsente(false); setEtiquette(initialEtiquette); setObservations("");
     setControles({ temperature: "C", fraicheur: "C", maturite: "C", coloration: "C", sanitaire: "C" });
   };
@@ -2602,7 +2626,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         nbColisRefuses: nbColisRefuses !== null ? nbColisRefuses : null,
         nbPhotos: photos.length,
         photoUrls: [],
-        poidsStatut, poidsEcart, etiquetteAbsente, etiquette, controles,
+        poidsStatut, poidsEcart, pesees, etiquetteAbsente, etiquette, controles,
         observations, score,
         date, heure,
         timestamp: Date.now(),
@@ -2693,6 +2717,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     setNbColisAEcarter(r.nbColisAEcarter || r.nbColisRefuses?.toString() || "");
     setPoidsStatut(r.poidsStatut || "");
     setPoidsEcart(r.poidsEcart || "");
+    setPesees(lireMesures(r.pesees)); setPeseeSaisie("");
     setEtiquetteAbsente(r.etiquetteAbsente || false);
     setEtiquette(r.etiquette || initialEtiquette);
     setObservations(r.observations || "");
@@ -2729,7 +2754,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         pourcentage: pourcentageCalc !== null ? pourcentageCalc.toString() : "",
         nbColisTotal: totalColis,
         nbColisRefuses: nbColisRefuses !== null ? nbColisRefuses : null,
-        poidsStatut, poidsEcart, etiquetteAbsente, etiquette, controles,
+        poidsStatut, poidsEcart, pesees, etiquetteAbsente, etiquette, controles,
         observations, score,
         photoUrls,
         nbPhotos: photoUrls.length,
@@ -2806,6 +2831,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       : r.poidsStatut === "ecart"
       ? `<span style="background:#fffbeb;color:#d97706;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid #fcd34d;">⚠ Écart${r.poidsEcart ? " : " + r.poidsEcart : ""}</span>`
       : `<span style="color:#9ca3af;font-size:13px;">Non renseigné</span>`;
+    const peseesR = lireMesures(r.pesees).map(m => parseFloat(m.valeur.replace(",", "."))).filter(v => !isNaN(v));
+    const peseesHTML = peseesR.length ? `<div style="margin-top:8px;font-size:13px;color:#374151">⚖️ Pesées (g) : <b>${peseesR.join(" · ")}</b> — moyenne <b>${Math.round(peseesR.reduce((a, b) => a + b, 0) / peseesR.length)} g</b> (min ${Math.min(...peseesR)}, max ${Math.max(...peseesR)})</div>` : "";
 
     const colisHTML = r.nbColisRecu || r.nbColisAttendu ? `
     <tr>
@@ -2938,7 +2965,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   <div style="background:#f8f6f2;padding:10px 28px;font-size:10px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1.5px;border-left:4px solid #c8a84b;">Conformité étiquette</div>
   <div style="padding:14px 28px;">${etiqHTML}</div>
   <div style="background:#f8f6f2;padding:10px 28px;font-size:10px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1.5px;border-left:4px solid #c8a84b;">Contrôle poids</div>
-  <div style="padding:14px 28px;">${poidsHTML}</div>
+  <div style="padding:14px 28px;">${poidsHTML}${peseesHTML}</div>
   ${reserveHTML}
   <div style="background:#f8f6f2;padding:10px 28px;font-size:10px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1.5px;border-left:4px solid #c8a84b;">Commentaire</div>
   <div style="padding:16px 28px;">
@@ -3067,20 +3094,26 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     }
     doc.setTextColor(217, 231, 225); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
     doc.text(`${r.date} a ${r.heure}`, W - M, 18, { align: "right" });
-    // 16/10/2026 — Logo du fournisseur (s'il a été importé) dans le bandeau, à gauche du n° de rapport.
+    // 16/10/2026 — Logo du fournisseur (s'il a été importé). Plus dans le bandeau vert (il passait sur
+    // le titre, sur un fond gris) : sur le blanc, sous le bandeau, à droite, sans cadre ; le nom du
+    // fournisseur à gauche sur la même ligne.
+    y = 38;
     const urlLogoF = logosFourn[cleLogoFourn(r.fournisseur)];
     if (urlLogoF) {
       try {
         const dataLogo = await chargerImageEnDataUrl(urlLogoF);
         if (dataLogo) {
           const dims = await new Promise<{ w: number; h: number }>(ok => { const im = new Image(); im.onload = () => ok({ w: im.naturalWidth || 1, h: im.naturalHeight || 1 }); im.onerror = () => ok({ w: 1, h: 1 }); im.src = dataLogo; });
-          const hMax = 20, wMax = 44; let lw = wMax, lh = (dims.h / dims.w) * wMax; if (lh > hMax) { lh = hMax; lw = (dims.w / dims.h) * hMax; }
-          doc.setFillColor(82, 101, 93); doc.roundedRect(W - M - 52 - wMax - 4, 4, wMax + 6, 22, 2, 2, "F");
-          doc.addImage(dataLogo, dataLogo.startsWith("data:image/png") ? "PNG" : "JPEG", W - M - 52 - wMax - 1 + (wMax - lw) / 2, 5 + (hMax - lh) / 2, lw, lh);
+          const hMax = 14, wMax = 48; let lw = wMax, lh = (dims.h / dims.w) * wMax; if (lh > hMax) { lh = hMax; lw = (dims.w / dims.h) * hMax; }
+          const haut = 34;
+          doc.addImage(dataLogo, dataLogo.startsWith("data:image/png") ? "PNG" : "JPEG", W - M - lw, haut + (hMax - lh) / 2, lw, lh);
+          doc.setTextColor(...VERT_MOOREA); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
+          doc.text(String(r.fournisseur || ""), M, haut + hMax / 2 + 2, { maxWidth: CW - lw - 8 });
+          doc.setDrawColor(232, 224, 208); doc.setLineWidth(0.3); doc.line(M, haut + hMax + 3, W - M, haut + hMax + 3);
+          y = haut + hMax + 7;
         }
       } catch { /* logo facultatif */ }
     }
-    y = 38;
 
     const dc = decisionColor(r.decision);
     doc.setFillColor(dc[0], dc[1], dc[2]);
@@ -3200,6 +3233,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       doc.text(`Ecart${ecartVal ? " : " + ecartVal + " g" : ""}`,M+6,y+4.5);
     }
     y+=12;
+    const peseesPdf = lireMesures(r.pesees).map(m => parseFloat(m.valeur.replace(",", "."))).filter(v => !isNaN(v));
+    if (peseesPdf.length) {
+      doc.setTextColor(55,65,81); doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
+      const moy = Math.round(peseesPdf.reduce((a, b) => a + b, 0) / peseesPdf.length);
+      const lignesP = doc.splitTextToSize(`Pesees (g) : ${peseesPdf.join(" - ")}   |   moyenne ${moy} g (min ${Math.min(...peseesPdf)}, max ${Math.max(...peseesPdf)})`, CW - 8);
+      doc.text(lignesP, M+4, y); y += lignesP.length * 4 + 4;
+    }
 
     section("CONFORMITE ETIQUETTE");
     if (r.etiquetteAbsente) {
@@ -4418,7 +4458,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     // (suivi administratif/commercial) — on les sépare visuellement avec un sous-titre dédié.
     const nbASigner = rapports.filter(refusASigner).length;
     const row2Entrepot = [
-      ...(monAcces.hasModule("rapports") && monAcces.hasTab("rapports.refus_signer") ? [{ key: "refus_signer", icon: "🔄", label: "Refus à faire signer", color: "#ea580c", badge: nbASigner || null, stat: nbASigner ? `${nbASigner} bon${nbASigner > 1 ? "s" : ""} de reprise en attente` : "Aucun en attente", action: () => { setShowAccueil(false); setSearchText(""); setFilterDecision(""); setFilterFournisseur(""); setFilterProduit(""); setFilterDateDebut(""); setFilterDateFin(""); setASignerSeul(true); setVue("historique"); setPageMode("arrivages"); } }] : []),
+      ...(peutRefusSigner ? [{ key: "refus_signer", icon: "🔄", label: "Refus à faire signer", color: "#ea580c", badge: nbASigner || null, stat: nbASigner ? `${nbASigner} bon${nbASigner > 1 ? "s" : ""} de reprise en attente` : "Aucun en attente", action: () => { setShowAccueil(false); setSearchText(""); setFilterDecision(""); setFilterFournisseur(""); setFilterProduit(""); setFilterDateDebut(""); setFilterDateFin(""); setASignerSeul(true); setVue("historique"); setPageMode("arrivages"); } }] : []),
       { key: "lidl", icon: "🛒", label: "Commandes Lidl", color: "#0050aa", badge: null, stat: "Tableau de répartition du jour", action: () => { setShowAccueil(false); setShowLidl(true); } },
       { key: "retours", icon: "🚚", label: "Retours clients", color: "#dc2626", badge: null, stat: "Gestion des retours", action: () => { setShowAccueil(false); setShowRetours(true); } },
       { key: "preparation", icon: "🏭", label: "Préparation", color: "#3b82f6", badge: null, stat: "Prêt à préparer / expédier", action: () => { setShowAccueil(false); setShowPreparation(true); } },
@@ -5121,7 +5161,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   // ─── 09/09/2026 — Dernier filet de sécurité des droits d'accès : cet écran par défaut sert
   // à la fois "Rapports" (vue === "historique") et "Pointer arrivage" (le reste : pageMode
   // arrivages / historique_arr / stats_arr / saisie_arr, tous atteints depuis Pointer arrivage).
-  if (vue === "historique" && !monAcces.hasModule("rapports")) return <AccesRefuse onRetour={() => setShowAccueil(true)} />;
+  if (vue === "historique" && !monAcces.hasModule("rapports") && !(aSignerSeul && peutRefusSigner)) return <AccesRefuse onRetour={() => setShowAccueil(true)} />;
   if (vue !== "historique" && !monAcces.hasModule("arrivages")) return <AccesRefuse onRetour={() => setShowAccueil(true)} />;
 
   // 22/09/2026 -- Bandeau d'alerte si un compte mail est casse (voir la note plus haut sur
@@ -6268,6 +6308,30 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     <input type="number" min="0" value={poidsEcart} onChange={e => setPoidsEcart(e.target.value)} placeholder="Ex: 120" style={{ border: "1.5px solid #fcd34d" }} />
                   </div>
                 )}
+                <div style={{ marginTop: 12, background: "#faf8f3", border: "1.5px solid #e8e0d0", borderRadius: 10, padding: "12px 14px" }}>
+                  <label style={{ fontSize: 12, color: "#305a55", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 6 }}>⚖️ Pesées (g) — contrôle poids</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input type="number" inputMode="decimal" min="0" value={peseeSaisie} onChange={e => setPeseeSaisie(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); ajouterPesee(); } }} placeholder="Ex : 512" style={{ flex: 1 }} />
+                    <button type="button" onClick={ajouterPesee} style={{ padding: "0 16px", borderRadius: 10, border: "none", background: "#305a55", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", whiteSpace: "nowrap" }}>＋ Ajouter</button>
+                  </div>
+                  {pesees.length > 0 && (() => {
+                    const vals = pesees.map(p => parseFloat(p.valeur)).filter(v => !isNaN(v));
+                    return (
+                      <>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                          {pesees.map((p, i) => (
+                            <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 6px 4px 10px", borderRadius: 16, background: "#fff", border: "1.5px solid #cfdcd7", fontSize: 13, fontWeight: 700 }}>
+                              {p.valeur} g
+                              <button type="button" aria-label="Retirer" onClick={() => setPesees(x => x.filter((_, j) => j !== i))} style={{ width: 18, height: 18, borderRadius: "50%", border: "none", background: "#e5e7eb", fontSize: 10, cursor: "pointer" }}>✕</button>
+                            </span>
+                          ))}
+                        </div>
+                        {vals.length > 0 && <div style={{ fontSize: 12.5, color: "#374151", marginTop: 8 }}>{vals.length} pesée{vals.length > 1 ? "s" : ""} · moyenne <b>{Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)} g</b> · min {Math.min(...vals)} · max {Math.max(...vals)}</div>}
+                      </>
+                    );
+                  })()}
+                  <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 6 }}>Enregistrées avec le rapport et visibles dans 🧪 Récap qualité › ⚖️ Poids, avec les pesées du pointage.</div>
+                </div>
               </div>
               <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: "1px solid #f0f0f0" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
@@ -6567,10 +6631,36 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                         <div style={{ fontSize: 14.5, fontWeight: 900, color: "#1a2e1a", lineHeight: 1.2 }}>{r.fournisseur || "Fournisseur ?"}</div>
                         <div style={{ fontSize: 12.5, color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.produit} · {r.date}</div>
                         <div style={{ fontSize: 19, fontWeight: 900, color: "#dc2626", margin: "2px 0 8px" }}>{r.nbColisRefuses ?? "?"} <span style={{ fontSize: 13, fontWeight: 700 }}>colis refusés{r.nbColisTotal ? ` / ${r.nbColisTotal}` : ""}</span></div>
-                        <button type="button" onClick={() => { setImprimerBonEntrepot(true); genererBonRetour(r); }}
-                          style={{ marginTop: "auto", padding: "10px 0", borderRadius: 10, border: "none", background: "#dc2626", color: "#fff", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>
-                          🖨️ Faire signer et imprimer
-                        </button>
+                        {accepterRefus?.cle === r.firebaseKey ? (
+                          <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: 6, padding: 10, borderRadius: 12, background: "#f0fdf4", border: "1.5px solid #86efac" }}>
+                            <span style={{ fontSize: 12.5, fontWeight: 900, color: "#15803d" }}>✅ Accepter quand même en stock</span>
+                            <span style={{ fontSize: 11.5, fontWeight: 700, color: "#374151" }}>Décision de quel commercial ?</span>
+                            <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+                              {(COMPTES_GENERIQUES["commercial@moorea.fr"] || []).map(n => (
+                                <button key={n} type="button" onClick={() => setAccepterRefus(a => a && { ...a, commercial: n })}
+                                  style={{ padding: "4px 9px", borderRadius: 8, fontSize: 12, fontWeight: 800, cursor: "pointer", border: `1.5px solid ${accepterRefus.commercial === n ? "#15803d" : "#d1d5db"}`, background: accepterRefus.commercial === n ? "#15803d" : "#fff", color: accepterRefus.commercial === n ? "#fff" : "#374151" }}>{n}</button>
+                              ))}
+                            </div>
+                            <textarea value={accepterRefus.motif} onChange={e => setAccepterRefus(a => a && { ...a, motif: e.target.value })} rows={2} placeholder="Pourquoi ? (ex. client d'accord, tri fait…)"
+                              style={{ width: "100%", boxSizing: "border-box", padding: "6px 8px", borderRadius: 8, border: "1.5px solid #d1d5db", fontSize: 12.5, fontFamily: "inherit", resize: "vertical" }} />
+                            <div style={{ display: "flex", gap: 6 }}>
+                              <button type="button" disabled={!accepterRefus.commercial} onClick={() => accepterRefusCommercial(r, accepterRefus.commercial, accepterRefus.motif)}
+                                style={{ flex: 1, padding: "8px 0", borderRadius: 9, border: "none", background: accepterRefus.commercial ? "#15803d" : "#9ca3af", color: "#fff", fontSize: 13, fontWeight: 800, cursor: accepterRefus.commercial ? "pointer" : "default" }}>✅ Accepter</button>
+                              <button type="button" onClick={() => setAccepterRefus(null)} style={{ padding: "8px 10px", borderRadius: 9, border: "1.5px solid #d1d5db", background: "#fff", fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>Annuler</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <>
+                            <button type="button" onClick={() => { setImprimerBonEntrepot(true); genererBonRetour(r); }}
+                              style={{ marginTop: "auto", padding: "10px 0", borderRadius: 10, border: "none", background: "#dc2626", color: "#fff", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>
+                              🖨️ Faire signer et imprimer
+                            </button>
+                            <button type="button" onClick={() => setAccepterRefus({ cle: r.firebaseKey, commercial: "", motif: "" })}
+                              style={{ marginTop: 6, padding: "8px 0", borderRadius: 10, border: "2px solid #16a34a", background: "#fff", color: "#15803d", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
+                              ✅ Accepter quand même (décision commerciale)
+                            </button>
+                          </>
+                        )}
                       </div>
                     </div>
                   );
@@ -7130,6 +7220,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       {r.score ? <div style={{ flexShrink: 0, width: 46, height: 46, borderRadius: 23, border: `3px solid ${Number(r.score) >= 4 ? "#16a34a" : Number(r.score) >= 3 ? "#d97706" : "#dc2626"}`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 900, color: "#1a2e1a" }}>{Number(r.score).toLocaleString("fr-FR", { maximumFractionDigits: 1 })}</div> : null}
                     </div>
                     <div style={{ padding: "0 14px 8px", display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      {r.accepteCommercial && <span title={r.accepteCommercial.motif || ""} style={{ fontSize: 12, fontWeight: 800, color: "#15803d", background: "#dcfce7", borderRadius: 8, padding: "3px 8px" }}>✅ Accepté quand même · {r.accepteCommercial.commercial}</span>}
                       {(r.decision === "reserve" || r.decision === "refus") && r.nbColisRefuses != null && <span style={{ fontSize: 12, fontWeight: 800, color: d.f, background: d.c, borderRadius: 8, padding: "3px 8px" }}>{r.nbColisRefuses} / {r.nbColisTotal} colis</span>}
                       {r.lotMoorea && <span style={{ fontSize: 11.5, background: "#faf8f0", color: "#8a6f2e", borderRadius: 8, padding: "3px 8px", fontWeight: 700 }}>Lot {r.lotMoorea}</span>}
                       {r.temperature && <span style={{ fontSize: 11.5, background: "#eff6ff", color: "#1d4ed8", borderRadius: 8, padding: "3px 8px", fontWeight: 700 }}>🌡 {r.temperature}°C</span>}
@@ -7146,7 +7237,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                       {(["fr", "en"] as const).map(l => <span key={l} style={{ display: "contents" }}>{petitBouton(l === "fr" ? "Télécharger le PDF en français" : "Télécharger le PDF en anglais", pdfLangueOccupe(r, l) ? "⏳" : <span style={{ fontSize: 10.5, fontWeight: 900, lineHeight: 1.05, textAlign: "center" }}>⬇<br />{l.toUpperCase()}</span>, () => telechargerRapport(r, l), { desactive: !!pdfLangueEnCours })}</span>)}
                       {petitBouton("Envoyer au commercial par mail", envoi ? "⏳" : "✉️", () => envoyerEmail(r), { desactive: envoi })}
                       {petitBouton("Partager sur WhatsApp", <svg width="18" height="18" viewBox="0 0 24 24" fill="#16a34a"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm0 18.2a8.2 8.2 0 0 1-4.2-1.2l-.3-.2-3 .8.8-2.9-.2-.3A8.2 8.2 0 1 1 12 20.2zm4.5-6.1c-.2-.1-1.5-.7-1.7-.8s-.4-.1-.6.1-.6.8-.8 1-.3.2-.5.1a6.7 6.7 0 0 1-3.3-2.9c-.2-.4.2-.4.7-1.2.1-.1 0-.3 0-.4l-.8-1.8c-.2-.5-.4-.4-.6-.4h-.5a1 1 0 0 0-.7.3 3 3 0 0 0-.9 2.2 5.1 5.1 0 0 0 1.1 2.7 11.7 11.7 0 0 0 4.5 4c1.7.7 2.3.8 3.2.6a2.7 2.7 0 0 0 1.8-1.3 2.2 2.2 0 0 0 .2-1.3c-.1-.1-.3-.2-.5-.3z"/></svg>, () => partagerWhatsApp(r))}
-                      {r.decision === "refus" && !r.bonRepriseSigné && !r.recupereSansSig && petitBouton("Bon de retour à faire signer", "🔄", () => genererBonRetour(r), { fond: "#fef2f2", texte: "#dc2626" })}
+                      {r.decision === "refus" && !r.bonRepriseSigné && !r.recupereSansSig && !r.accepteCommercial && petitBouton("Bon de retour à faire signer", "🔄", () => genererBonRetour(r), { fond: "#fef2f2", texte: "#dc2626" })}
                       <span style={{ flex: 1 }} />
                       {petitBouton("Modifier le rapport", "✏️", () => chargerRapportEdition(r), { fond: "#eff6ff" })}
                     </div>

@@ -166,6 +166,41 @@ function chercher(options: Option[], q: string, max = Infinity): Option[] {
   }
   return res.sort((a, b) => b.s - a.s || a.o.valeur.localeCompare(b.o.valeur)).slice(0, max).map(x => x.o);
 }
+// 16/10/2026 — Demande d'Elinathan : « ranger les recherches par origine, que Colombie soit ensemble
+// et Vietnam aussi ». Origine = pays écrit dans le libellé Geslot (« PASSION COLOMBIE (VRAC 2 KG) »).
+const PAYS: [string, string][] = [
+  ["afrique du sud", "🇿🇦 Afrique du Sud"], ["colombie", "🇨🇴 Colombie"], ["vietnam", "🇻🇳 Vietnam"], ["kenya", "🇰🇪 Kenya"], ["maroc", "🇲🇦 Maroc"],
+  ["perou", "🇵🇪 Pérou"], ["bresil", "🇧🇷 Brésil"], ["equateur", "🇪🇨 Équateur"], ["tanzanie", "🇹🇿 Tanzanie"], ["senegal", "🇸🇳 Sénégal"],
+  ["cote d ivoire", "🇨🇮 Côte d'Ivoire"], ["ivoire", "🇨🇮 Côte d'Ivoire"], ["inde", "🇮🇳 Inde"], ["thailande", "🇹🇭 Thaïlande"], ["israel", "🇮🇱 Israël"],
+  ["chili", "🇨🇱 Chili"], ["mexique", "🇲🇽 Mexique"], ["costa rica", "🇨🇷 Costa Rica"], ["egypte", "🇪🇬 Égypte"], ["zimbabwe", "🇿🇼 Zimbabwe"],
+  ["ethiopie", "🇪🇹 Éthiopie"], ["madagascar", "🇲🇬 Madagascar"], ["reunion", "🇷🇪 Réunion"], ["guadeloupe", "🇬🇵 Guadeloupe"], ["martinique", "🇲🇶 Martinique"],
+  ["guyane", "🇬🇫 Guyane"], ["espagne", "🇪🇸 Espagne"], ["france", "🇫🇷 France"], ["portugal", "🇵🇹 Portugal"], ["italie", "🇮🇹 Italie"],
+  ["hollande", "🇳🇱 Pays-Bas"], ["pays bas", "🇳🇱 Pays-Bas"], ["belgique", "🇧🇪 Belgique"], ["nouvelle zelande", "🇳🇿 Nouvelle-Zélande"], ["turquie", "🇹🇷 Turquie"],
+  ["ouganda", "🇺🇬 Ouganda"], ["ghana", "🇬🇭 Ghana"], ["cameroun", "🇨🇲 Cameroun"], ["togo", "🇹🇬 Togo"], ["benin", "🇧🇯 Bénin"], ["burkina", "🇧🇫 Burkina Faso"],
+  ["malaisie", "🇲🇾 Malaisie"], ["sri lanka", "🇱🇰 Sri Lanka"], ["chine", "🇨🇳 Chine"], ["rwanda", "🇷🇼 Rwanda"], ["guatemala", "🇬🇹 Guatemala"],
+  ["honduras", "🇭🇳 Honduras"], ["panama", "🇵🇦 Panama"], ["republique dominicaine", "🇩🇴 Rép. dominicaine"], ["dominicaine", "🇩🇴 Rép. dominicaine"],
+  ["argentine", "🇦🇷 Argentine"], ["australie", "🇦🇺 Australie"], ["zambie", "🇿🇲 Zambie"], ["namibie", "🇳🇦 Namibie"], ["mali", "🇲🇱 Mali"], ["usa", "🇺🇸 États-Unis"],
+  ["indonesie", "🇮🇩 Indonésie"], ["laos", "🇱🇦 Laos"], ["cambodge", "🇰🇭 Cambodge"], ["philippines", "🇵🇭 Philippines"], ["maurice", "🇲🇺 Île Maurice"],
+  ["jamaique", "🇯🇲 Jamaïque"], ["nicaragua", "🇳🇮 Nicaragua"], ["tunisie", "🇹🇳 Tunisie"], ["algerie", "🇩🇿 Algérie"], ["pakistan", "🇵🇰 Pakistan"],
+];
+export const origineArticle = (nom: string): string => {
+  const t = ` ${norm(nom).replace(/[^a-z0-9]+/g, " ")} `;
+  for (const [cle, lib] of PAYS) if (t.includes(` ${cle} `)) return lib;
+  return "";
+};
+// Les articles d'une même origine se suivent (le groupe prend la place de son meilleur résultat).
+function rangerParOrigine(res: Option[]): Option[] {
+  const groupes = new Map<string, Option[]>();
+  res.forEach(o => { if (o.type !== "article") return; const k = origineArticle(o.valeur); const g = groupes.get(k); if (g) g.push(o); else groupes.set(k, [o]); });
+  if (groupes.size < 2) return res;
+  const vus = new Set<string>(), out: Option[] = [];
+  res.forEach(o => {
+    if (o.type !== "article") { out.push(o); return; }
+    const k = origineArticle(o.valeur);
+    if (!vus.has(k)) { vus.add(k); out.push(...groupes.get(k)!); }
+  });
+  return out;
+}
 // 14/10/2026 — multi : cases à cocher, la liste reste ouverte (plusieurs articles sans retaper)
 // et « Tout cocher » pour prendre tous les résultats d'un coup.
 // 14/10/2026 — onCocher : case à cocher à part (sélection), le nom garde son action (ouvrir) ;
@@ -178,7 +213,8 @@ export function RechercheIntelligente({ options, placeholder, onChoisir, c, gran
   // 14/10/2026 — Filtres par type en haut de la liste (cases à cocher).
   const [typesMasques, setTypesMasques] = useState<Record<string, boolean>>({});
   const tousResultats = useMemo(() => multi ? chercher(options, q) : [...(extra ? extra(q) : []), ...chercher(options, q)], [options, q, extra, multi]);
-  const resultats = useMemo(() => tousResultats.filter(o => !typesMasques[o.type]), [tousResultats, typesMasques]);
+  const resultats = useMemo(() => rangerParOrigine(tousResultats.filter(o => !typesMasques[o.type])), [tousResultats, typesMasques]);
+  const plusieursOrigines = useMemo(() => new Set(resultats.filter(o => o.type === "article").map(o => origineArticle(o.valeur))).size > 1, [resultats]);
   const typesPresents = useMemo(() => [...tousResultats.reduce((m, o) => m.set(o.type, (m.get(o.type) || 0) + 1), new Map<string, number>())], [tousResultats]);
   const choisir = (o: Option) => { onChoisir(o); if (!multi) { setQ(""); setOuvert(false); } };
   return (
@@ -212,7 +248,14 @@ export function RechercheIntelligente({ options, placeholder, onChoisir, c, gran
           {resultats.length > 0 && <div style={{ padding: "6px 14px", fontSize: 11.5, fontWeight: 800, color: c.gris, borderBottom: `1px solid ${c.bord}` }}>{resultats.length} résultat{resultats.length > 1 ? "s" : ""}{multi && estChoisi ? ` · ${resultats.filter(o => estChoisi(o)).length} compris dans le calcul` : ""}{!multi && onCocher ? " · ☐ coche pour sélectionner plusieurs, touche le nom pour ouvrir" : ""}</div>}
           {!resultats.length && <div style={{ padding: "10px 14px", fontSize: 13, color: c.gris }}>Aucun résultat pour « {q} »</div>}
           {/* 14/10/2026 — Lignes « Tout cocher » retirées (demande d'Elinathan) : les filtres par type suffisent. */}
-          {resultats.map((o, i) => (
+          {resultats.map((o, i) => {
+            const orig = o.type === "article" ? origineArticle(o.valeur) : null;
+            const titreOrigine = plusieursOrigines && orig !== null && (i === 0 || resultats[i - 1].type !== "article" || origineArticle(resultats[i - 1].valeur) !== orig);
+            return [titreOrigine && (
+              <div key={"o" + i} style={{ padding: "6px 14px 3px", fontSize: 11.5, fontWeight: 900, color: c.vert, background: c.sombre ? "#16201e" : "#f6f9f8", borderTop: `1px solid ${c.bord}`, letterSpacing: 0.3 }}>
+                {orig || "🌍 Autres origines"} <span style={{ fontWeight: 600, color: c.gris }}>({resultats.filter(x => x.type === "article" && origineArticle(x.valeur) === orig).length})</span>
+              </div>
+            ),
             <button key={o.type + o.valeur} type="button" onMouseDown={e => { e.preventDefault(); choisir(o); }} onMouseEnter={() => setActif(i)}
               style={{ display: "flex", alignItems: "center", gap: 10, width: "100%", textAlign: "left", padding: "9px 14px", border: "none", borderLeft: (multi || onCocher) && estChoisi?.(o) ? "4px solid #16a34a" : "4px solid transparent",
                 background: (multi || onCocher) && estChoisi?.(o) ? (c.sombre ? "#173a24" : "#dcfce7") : i === actif ? (c.sombre ? "#1d2e2b" : "#eaf2ee") : "transparent", color: c.texte, cursor: "pointer", fontSize: 14 }}>
@@ -227,8 +270,8 @@ export function RechercheIntelligente({ options, placeholder, onChoisir, c, gran
                 {o.detail && <span style={{ display: "block", fontSize: 11.5, color: c.gris }}>{o.detail}</span>}
               </span>
               {(multi || onCocher) && estChoisi?.(o) && <span style={{ fontSize: 11.5, fontWeight: 900, color: "#15803d", whiteSpace: "nowrap" }}>✓ {multi ? "compris dans le calcul" : "sélectionné"}</span>}
-            </button>
-          ))}
+            </button>];
+          })}
           {!multi && actionSelection && (
             <div style={{ position: "sticky", bottom: 0, display: "flex", justifyContent: "flex-end", gap: 8, padding: "8px 12px", background: c.carte, borderTop: `1px solid ${c.bord}` }}>
               <button type="button" onMouseDown={e => { e.preventDefault(); setQ(""); setOuvert(false); actionSelection.onClick(); }} style={{ padding: "8px 16px", borderRadius: 10, border: "none", background: c.vert, color: "#fff", fontWeight: 800, cursor: "pointer" }}>{actionSelection.libelle}</button>
