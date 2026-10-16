@@ -162,7 +162,8 @@ async function envoyerScans(fichiers: File[], dejaLa: Record<string, string>, pr
 // d'achat, fun et simple à utiliser, avec PDF et Excel » : une grande recherche (👤 client, 🥬 article,
 // 🗂️ famille, 📅 jour, 🧾 BL / commande — « hv » = haricot vert…) ouvre une FICHE claire : chiffres,
 // ce qui a manqué, jour par jour, commandes avec le scan, litiges, export Excel / PDF.
-type Fiche = { type: string; valeur: string; filtre: (l: Ligne) => boolean; filtreR: (r: Rupture) => boolean; filtreL: (x: Litige) => boolean };
+// mode « besoin » : la même fiche, mais centrée sur ce qui a été commandé (ouverte depuis l'onglet Besoin).
+type Fiche = { type: string; valeur: string; filtre: (l: Ligne) => boolean; filtreR: (r: Rupture) => boolean; filtreL: (x: Litige) => boolean; mode?: "besoin" };
 const C: Couleurs = { fond: "#f5f3ee", carte: "#fff", texte: "#1a2e1a", gris: "#6b7280", bord: "#e8e0d0", vert: "#305a55", sombre: false };
 const pct = (a: number, b: number) => (b ? `${(a / b * 100).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %` : "—");
 const TITRES: Record<string, string> = { client: "👤", article: "", famille: "🗂️", jour: "📅", bl: "🧾", fournisseur: "🏭" };
@@ -250,7 +251,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     }
     return out;
   };
-  const ouvrir = (o: Option) => {
+  const ouvrir = (o: Option, mode?: "besoin") => {
     const cle = (o as any).cle;
     const v = o.valeur;
     const f: Fiche =
@@ -261,9 +262,9 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       o.type === "jour" ? { type: "jour", valeur: `Livraisons du ${jjmm(cle)}`, filtre: l => l.d === cle, filtreR: r => r.d === cle, filtreL: x => x.d === cle } :
       o.type === "commande" ? { type: "bl", valeur: v, filtre: l => l.n === cle, filtreR: r => r.n === cle, filtreL: () => false } :
       { type: "bl", valeur: v, filtre: l => l.bl.replace(/\s/g, "").split(",").includes(v), filtreR: r => r.bl.includes(v), filtreL: x => x.bl === v };
-    setFiche(f); setCmdOuverte(null); setVue("accueil"); window.scrollTo(0, 0);
+    setFiche({ ...f, mode }); setCmdOuverte(null); if (!mode) setVue("accueil"); window.scrollTo(0, 0);
   };
-  const ouvrirType = (type: string, valeur: string, cle?: string) => ouvrir({ type, valeur, cle } as any);
+  const ouvrirType = (type: string, valeur: string, cle?: string, mode?: "besoin") => ouvrir({ type, valeur, cle } as any, mode);
 
   // Cases à cocher de la grande recherche (comme 📊 Stats) : plusieurs clients / produits / familles
   // ensemble → une fiche commune, ou le tableau jour par jour filtré sur la sélection.
@@ -340,16 +341,46 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       </div>
     );
   };
+  // Colis commandés par jour (barre verte), la part qui a manqué en rouge au sommet.
+  const barresBesoin = (ls: Ligne[], surClic?: (iso: string) => void, joursAff: string[] = jours) => {
+    const parJ = new Map<string, { q: number; m: number }>(); ls.filter(compte).forEach(l => { const x = parJ.get(l.d) || { q: 0, m: 0 }; x.q += l.q; x.m += l.m; parJ.set(l.d, x); });
+    const max = Math.max(1, ...[...parJ.values()].map(x => x.q));
+    return (
+      <div style={{ display: "flex", gap: 5, alignItems: "flex-end", overflowX: "auto", paddingBottom: 4 }}>
+        {joursAff.map(j => { const x = parJ.get(j), h = Math.max(3, Math.round(((x?.q || 0) / max) * 90)), hm = x?.q ? Math.round((x.m / x.q) * h) : 0; return (
+          <button key={j} type="button" disabled={!surClic} onClick={() => surClic?.(j)} title={x ? `${jjmm(j)} : ${ent(x.q)} commandés, ${ent(x.m)} manquants` : jjmm(j)}
+            style={{ border: "none", background: "none", padding: 0, cursor: surClic ? "pointer" : "default", display: "flex", flexDirection: "column", alignItems: "center", gap: 2, minWidth: 34 }}>
+            <span style={{ fontSize: 10, fontWeight: 800, color: "#305a55", minHeight: 12 }}>{x?.q ? ent(x.q) : ""}</span>
+            <span style={{ width: 24, height: h, borderRadius: 4, overflow: "hidden", display: "flex", flexDirection: "column", background: x?.q ? "#6f9c94" : "#e5e7eb" }}>
+              {hm > 0 && <span style={{ height: hm, background: "#f87171" }} />}
+            </span>
+            <span style={{ fontSize: 10, color: "#6b7280" }}>{jjmm(j)}</span>
+          </button>
+        ); })}
+      </div>
+    );
+  };
   const topManques = (ls: Ligne[], par: "a" | "c", n = 12) => {
     const m = new Map<string, { q: number; m: number }>(); ls.filter(compte).forEach(l => { const k = (par === "a" ? l.a : l.c) || "—"; const x = m.get(k) || { q: 0, m: 0 }; x.q += l.q; x.m += l.m; m.set(k, x); });
     return [...m].filter(([, x]) => x.m > 0).sort((a, b) => b[1].m - a[1].m).slice(0, n);
   };
-  const listeTop = (titre: string, items: [string, { q: number; m: number }][], type: "article" | "client") => (
+  const topCommandes = (ls: Ligne[], par: "a" | "c", n = 15) => {
+    const m = new Map<string, { q: number; m: number }>(); ls.filter(compte).forEach(l => { const k = (par === "a" ? l.a : l.c) || "—"; const x = m.get(k) || { q: 0, m: 0 }; x.q += l.q; x.m += l.m; m.set(k, x); });
+    return [...m].filter(([, x]) => x.q > 0).sort((a, b) => b[1].q - a[1].q).slice(0, n);
+  };
+  const listeTop = (titre: string, items: [string, { q: number; m: number }][], type: "article" | "client", besoin?: boolean) => (
     <div style={carte}>
       <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 10 }}>{titre}</div>
-      {!items.length && <div style={{ fontSize: 13, color: "#15803d", fontWeight: 700 }}>✅ Rien n'a manqué</div>}
+      {!items.length && <div style={{ fontSize: 13, color: "#15803d", fontWeight: 700 }}>{besoin ? "Aucune commande" : "✅ Rien n'a manqué"}</div>}
       <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        {items.map(([k, x]) => (
+        {items.map(([k, x]) => besoin ? (
+          <button key={k} type="button" onClick={() => ouvrirType(type, k, undefined, "besoin")} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 10px", borderRadius: 10, border: "1px solid #e5ece9", background: "#fff", cursor: "pointer", textAlign: "left" }}>
+            <span style={{ fontSize: 18 }}>{type === "article" ? emojiProduit(k) : "👤"}</span>
+            <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: "#1a2e1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={k}>{k}</span>
+            <span style={{ fontSize: 13.5, fontWeight: 900, color: "#305a55", whiteSpace: "nowrap" }}>{ent(x.q)} colis</span>
+            {x.m > 0 && <span style={{ fontSize: 11, color: "#dc2626", whiteSpace: "nowrap" }}>dont −{ent(x.m)}</span>}
+          </button>
+        ) : (
           <button key={k} type="button" onClick={() => ouvrirType(type, k)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 10px", borderRadius: 10, border: "1px solid #f3e8e8", background: "#fff", cursor: "pointer", textAlign: "left" }}>
             <span style={{ fontSize: 18 }}>{type === "article" ? emojiProduit(k) : "👤"}</span>
             <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: "#1a2e1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={k}>{k}</span>
@@ -417,6 +448,11 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const cmds = new Map<string, Ligne[]>(); ls.forEach(l => { const k = `${l.d}|${l.c}|${l.n}|${l.s}`; cmds.set(k, [...(cmds.get(k) || []), l]); });
     const listeCmds = [...cmds].sort((a, b) => a[1][0].d.localeCompare(b[1][0].d) || a[1][0].c.localeCompare(b[1][0].c));
     const icone = f.type === "article" ? emojiProduit(f.valeur) : TITRES[f.type] || "🔎";
+    const besoin = f.mode === "besoin";
+    const nbClients = new Set(lc.map(l => l.c)).size;
+    const tableBesoin = <div style={{ marginTop: 14 }}>{carteBesoin(construireTableau(lc.filter(l => (!periode.du || l.d >= periode.du) && (!periode.au || l.d <= periode.au))),
+      <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 10 }}>📅 Besoin jour par jour <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— {f.valeur}</span></div>, f.valeur)}</div>;
+    const surJour = f.type === "jour" ? undefined : (iso: string) => setFiche({ ...f, valeur: `${f.valeur} · ${jjmm(iso)}`, filtre: l => f.filtre(l) && l.d === iso, filtreR: r => f.filtreR(r) && r.d === iso, filtreL: x => f.filtreL(x) && x.d === iso });
     return (
       <div>
         <div style={{ ...carte, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: "#305a55", border: "none", color: "#fff" }}>
@@ -424,25 +460,50 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
           <div style={{ flex: 1, minWidth: 200 }}>
             <div style={{ fontSize: 22, fontWeight: 900, lineHeight: 1.15 }}>{f.valeur}</div>
             <div style={{ fontSize: 14, marginTop: 4, color: "#d9e7e1" }}>
-              {tot.m ? <>Il a manqué <b style={{ color: "#fecaca", fontSize: 17 }}>{ent(tot.m)} colis</b> sur {ent(tot.q)} commandés</> : <>✅ Tout a été livré ({ent(tot.q)} colis)</>}
+              {besoin ? <>📦 <b style={{ color: "#fff", fontSize: 17 }}>{ent(tot.q)} colis commandés</b> par {nbClients} client{nbClients > 1 ? "s" : ""} · {ent(tot.lv)} livrés{tot.m ? ` · ${ent(tot.m)} manquants` : ""}</>
+                : tot.m ? <>Il a manqué <b style={{ color: "#fecaca", fontSize: 17 }}>{ent(tot.m)} colis</b> sur {ent(tot.q)} commandés</> : <>✅ Tout a été livré ({ent(tot.q)} colis)</>}
             </div>
           </div>
+          <span style={{ display: "inline-flex", border: "1.5px solid rgba(255,255,255,.5)", borderRadius: 9, overflow: "hidden" }}>
+            {([["besoin", "📦 Besoin"], ["manque", "❌ Manquants"]] as const).map(([v, lib]) => {
+              const on = (v === "besoin") === besoin;
+              return <button key={v} type="button" onClick={() => setFiche({ ...f, mode: v === "besoin" ? "besoin" : undefined })} style={{ padding: "7px 11px", border: "none", background: on ? "#fff" : "transparent", color: on ? "#305a55" : "#fff", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>{lib}</button>;
+            })}
+          </span>
           {boutonsExport(f.valeur, ls)}
           <button type="button" onClick={() => setFiche(null)} style={{ padding: "8px 12px", borderRadius: 9, border: "1.5px solid rgba(255,255,255,.4)", background: "transparent", color: "#fff", fontWeight: 800, cursor: "pointer" }}>✕ Fermer</button>
         </div>
         {chiffres(tot, lits.length)}
-        {/* 16/10/2026 — « j'ai pas les besoins là » : le tableau du besoin aussi dans chaque fiche. */}
-        <div style={{ marginTop: 14 }}>{carteBesoin(construireTableau(lc.filter(l => (!periode.du || l.d >= periode.du) && (!periode.au || l.d <= periode.au))),
-          <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 10 }}>📅 Besoin jour par jour <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— {f.valeur}</span></div>, f.valeur)}</div>
-        <div style={{ ...carte, marginTop: 14 }}>
-          <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 8 }}>📅 Manquants jour par jour</div>
-          {barresJours(ls, f.type === "jour" ? undefined : iso => setFiche({ ...f, valeur: `${f.valeur} · ${jjmm(iso)}`, filtre: l => f.filtre(l) && l.d === iso, filtreR: r => f.filtreR(r) && r.d === iso, filtreL: x => f.filtreL(x) && x.d === iso }))}
-        </div>
-        {f.type !== "bl" && (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap: 14 }}>
-            {f.type !== "article" && listeTop("❌ Produits qui ont manqué", topManques(ls, "a"), "article")}
-            {f.type !== "client" && listeTop("👤 Clients touchés", topManques(ls, "c"), "client")}
-          </div>
+        {/* 16/10/2026 — « j'ai pas les besoins là » : le tableau du besoin aussi dans chaque fiche.
+            Mode besoin (ouvert depuis l'onglet Besoin) : commandes par jour et plus gros clients / produits. */}
+        {besoin ? (
+          <>
+            <div style={{ ...carte, marginTop: 14 }}>
+              <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 8 }}>📦 Colis commandés par jour <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— en rouge la part qui a manqué{surJour ? " · touchez un jour pour le détail" : ""}</span></div>
+              {barresBesoin(ls, surJour)}
+            </div>
+            {f.type !== "bl" && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap: 14 }}>
+                {f.type !== "client" && listeTop("👤 Clients qui commandent le plus", topCommandes(ls, "c"), "client", true)}
+                {f.type !== "article" && listeTop("📦 Produits les plus commandés", topCommandes(ls, "a"), "article", true)}
+              </div>
+            )}
+            {tableBesoin}
+          </>
+        ) : (
+          <>
+            {tableBesoin}
+            <div style={{ ...carte, marginTop: 14 }}>
+              <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 8 }}>📅 Manquants jour par jour</div>
+              {barresJours(ls, surJour)}
+            </div>
+            {f.type !== "bl" && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap: 14 }}>
+                {f.type !== "article" && listeTop("❌ Produits qui ont manqué", topManques(ls, "a"), "article")}
+                {f.type !== "client" && listeTop("👤 Clients touchés", topManques(ls, "c"), "client")}
+              </div>
+            )}
+          </>
         )}
         {lits.length > 0 && (
           <div style={{ ...carte, borderColor: "#fcd34d" }}>
@@ -650,7 +711,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                             return (
                               <tr key={cle} style={{ background: titre ? fond : undefined }}>
                                 <td style={{ ...td, position: "sticky", left: 0, background: fond, fontWeight: titre ? 900 : base ? 500 : 700, color: base ? "#4b5563" : undefined, fontSize: base ? 12 : undefined, maxWidth: 340, cursor: "pointer", paddingLeft: base ? 46 : groupe && !titre ? 26 : 8, borderTop: titre ? "2px solid #305a55" : undefined }}
-                                  onClick={() => (titre ? setClientsFermes(f => { const n = { ...f }; if (n[art]) delete n[art]; else n[art] = true; return n; }) : ouvrirType(lignesPar === "client" || lignesPar === "articleClient" ? "client" : "article", base || art))}
+                                  onClick={() => (titre ? setClientsFermes(f => { const n = { ...f }; if (n[art]) delete n[art]; else n[art] = true; return n; }) : ouvrirType(lignesPar === "client" || lignesPar === "articleClient" ? "client" : "article", base || art, undefined, "besoin"))}
                                   title={titre ? "Replier / déplier" : lignesPar === "client" || lignesPar === "articleClient" ? "Ouvrir la fiche du client" : "Ouvrir la fiche du produit"}>
                                   {titre ? <><span style={{ display: "inline-block", width: 14, color: "#305a55" }}>{ferme ? "▸" : "▾"}</span>{iconeGroupe(art)} {art}</> : base ? <>📍 {art}</> : lignesPar === "client" || lignesPar === "articleClient" ? <>👤 {art}</> : <>{emojiProduit(art)} {art}</>}
                                 </td>
@@ -682,7 +743,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             <div style={{ ...carte, background: "linear-gradient(135deg, #305a55, #1f4440)", border: "none", color: "#fff" }}>
               <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 4 }}>🎯 Quoi ?</div>
               <div style={{ fontSize: 13, color: "#d9e7e1", marginBottom: 10 }}>Clients, fournisseurs, articles, familles : <b>cochez-en plusieurs</b> pour filtrer, ou touchez un nom pour sa fiche. Aussi un jour (« 19/12 »), un BL ou un n° de commande.</div>
-              <RechercheIntelligente options={options} placeholder="🏭 Yukon · 👤 Carrefour · 🫛 hv · 🗂️ passion · 📅 19/12 · 🧾 BL…" onChoisir={ouvrir} c={C} grand extra={extra}
+              <RechercheIntelligente options={options} placeholder="🏭 Yukon · 👤 Carrefour · 🫛 hv · 🗂️ passion · 📅 19/12 · 🧾 BL…" onChoisir={o => ouvrir(o, (!fiche && vue === "tableau") || fiche?.mode === "besoin" ? "besoin" : undefined)} c={C} grand extra={extra}
                 onCocher={cocher} estChoisi={estCocheT}
                 actionSelection={selection.length ? { libelle: `🔎 Voir la sélection (${selection.length})`, onClick: ouvrirSelection } : null} />
               {selection.length > 0 && (
