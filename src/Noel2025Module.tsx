@@ -446,6 +446,23 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
         {don && (estAdmin || vide) && (
           <div style={{ ...carte, marginTop: 20, borderStyle: "dashed" }}>
             <div style={{ fontSize: 13.5, fontWeight: 800, marginBottom: 4 }}>⚙️ Importer les données de Noël</div>
+            {/* 16/10/2026 — « je ne sais pas où trouver les fichiers » : un dossier « Import Noël 2025 » sur le
+                Bureau contient tout (3 fichiers + SCANS_COMMANDES) ; un seul bouton importe le dossier entier. */}
+            <label style={{ display: "block", textAlign: "center", padding: "16px 18px", borderRadius: 12, background: "#305a55", color: "#fff", fontWeight: 900, fontSize: 15, cursor: "pointer", marginBottom: 10 }}>
+              📦 Tout importer : choisir le dossier « Import Noël 2025 » (sur le Bureau)
+              <span style={{ display: "block", fontSize: 11.5, fontWeight: 500, opacity: .85, marginTop: 3 }}>Commandes, ruptures, litiges et scans PDF en une fois — laisser la page ouverte jusqu'au ✅</span>
+              <input type="file" multiple style={{ display: "none" }} {...({ webkitdirectory: "", directory: "" } as any)} onChange={async e => {
+                const fs = Array.from(e.target.files || []); e.target.value = "";
+                if (!fs.length) return;
+                try {
+                  const donnees = fs.filter(f => /\.(xlsx|xls|csv)$/i.test(f.name) && !/\/SCANS_COMMANDES\//.test((f as any).webkitRelativePath || ""));
+                  const r1 = donnees.length ? await importerFichiers(donnees, setImportEtat) : [];
+                  const r2 = await envoyerScans(fs, don.scans, setImportEtat);
+                  setImportEtat("✅ " + [...r1, r2].join(" · ")); setRechargement(x => x + 1);
+                } catch (err: any) { setImportEtat("❌ " + (err?.message || "import impossible")); }
+              }} />
+            </label>
+            <div style={{ fontSize: 11.5, color: "#9ca3af", margin: "0 0 8px" }}>Ou fichier par fichier :</div>
             <p style={{ fontSize: 12, color: "#6b7280", margin: "0 0 10px", lineHeight: 1.5 }}>
               1) Fichiers : <b>BASE_COMMANDES_SCANNEES_DEC2025.xlsx</b> (dossier 0_BASE), <b>ruptures_commandes_dec2025.csv</b> (4_RUPTURES › A_IMPORTER) et <b>litiges_surs_verifies.csv</b> (3_LITIGES_REFUS › A_IMPORTER) — on peut les choisir ensemble ; réimporter remplace l'ancienne version.<br />
               2) Scans : choisir le dossier <b>4_RUPTURES › SCANS_COMMANDES</b> (≈ 300 PDF, 370 Mo — laisser la page ouverte pendant l'envoi ; les PDF déjà envoyés sont sautés).
