@@ -192,7 +192,9 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   // décembre 2025 dans 📊 Stats (à défaut, sur toute la base des ventes). Noms Geslot identiques.
   const [fournisseurDe, setFournisseurDe] = useState<Record<string, string>>({});
   const [clientsFermes, setClientsFermes] = useState<Record<string, boolean>>({});
-  const [selection, setSelection] = useState<Option[]>([]);
+  // Une seule recherche (en haut) : ce qui y est coché filtre le tableau « Besoin » et la fiche « sélection ».
+  const selection: Option[] = [...tFournisseurs.map(valeur => ({ type: "fournisseur", valeur })), ...tClients.map(valeur => ({ type: "client", valeur })),
+    ...tFamilles.map(valeur => ({ type: "famille", valeur })), ...tArticles.map(valeur => ({ type: "article", valeur }))];
   const [mesure, setMesure] = useState<"q" | "lv" | "m" | "taux">("q");
   const [cmdOuverte, setCmdOuverte] = useState<string | null>(null);
   // Les commandes d'une fiche : rangées par client puis par base (par défaut), ou l'ancienne liste par date.
@@ -266,7 +268,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   // Cases à cocher de la grande recherche (comme 📊 Stats) : plusieurs clients / produits / familles
   // ensemble → une fiche commune, ou le tableau jour par jour filtré sur la sélection.
   const cleOpt = (o: Option) => `${o.type}\u0001${o.valeur}`;
-  const cocher = (o: Option) => setSelection(s => (s.some(x => cleOpt(x) === cleOpt(o)) ? s.filter(x => cleOpt(x) !== cleOpt(o)) : [...s, o]));
+  const cocher = (o: Option) => basculerT(o);
+  const toutDecocher = () => { setTClients([]); setTArticles([]); setTFamilles([]); setTFournisseurs([]); };
   const deType = (t: string) => selection.filter(o => o.type === t).map(o => o.valeur);
   const ouvrirSelection = () => {
     const cs = deType("client"), as = deType("article"), fs = deType("famille"), fo = deType("fournisseur");
@@ -280,7 +283,6 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     setCmdOuverte(null); window.scrollTo(0, 0);
   };
   const tableauSelection = () => {
-    setTClients(deType("client")); setTArticles(deType("article")); setTFamilles(deType("famille")); setTFournisseurs(deType("fournisseur"));
     setFiche(null); setVue("tableau");
   };
 
@@ -495,7 +497,19 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   // Tableau jour par jour : lignes par produit, par client × produit (le besoin de chaque client,
   // réf par réf) ou par client. Articles et familles cochés s'additionnent ; clients = filtre.
   type Cellules = Record<string, { q: number; lv: number; m: number }>;
-  type LigneTab = { cle: string; art: string; client?: string; titre?: boolean; r: Cellules; tq: number; tlv: number; tm: number };
+  type LigneTab = { cle: string; art: string; client?: string; titre?: boolean; base?: string; r: Cellules; tq: number; tlv: number; tm: number };
+  // Base de livraison de chaque ligne (Savigny, 729 Dammartin…) — mêmes regroupements que dans les fiches.
+  const baseDe = useMemo(() => {
+    const parC = new Map<string, Ligne[]>(); lignes.forEach(l => { const a = parC.get(l.c); if (a) a.push(l); else parC.set(l.c, [l]); });
+    const out = new Map<string, string>();
+    parC.forEach((ls, c) => {
+      const cles = ls.map(l => cleBase(c, l.cf, l.s)), vers = fusionnerCles(cles), sites = new Map<string, string[]>();
+      ls.forEach((l, i) => { const k = vers.get(cles[i]) ?? cles[i]; const a = sites.get(k); if (a) a.push(l.s); else sites.set(k, [l.s]); });
+      const noms = new Map([...sites].map(([k, ss]) => [k, nomBase(k, ss)]));
+      ls.forEach((l, i) => out.set(l.i, noms.get(vers.get(cles[i]) ?? cles[i]) || "Site non précisé"));
+    });
+    return out;
+  }, [lignes]);
   const tableau = useMemo(() => {
     const ajouter = (r: Cellules, l: Ligne) => { const x = r[l.d] || { q: 0, lv: 0, m: 0 }; x.q += l.q; x.lv += l.lv; x.m += l.m; r[l.d] = x; };
     const totaliser = (r: Cellules) => Object.values(r).reduce((t, x) => ({ tq: t.tq + x.q, tlv: t.tlv + x.lv, tm: t.tm + x.m }), { tq: 0, tlv: 0, tm: 0 });
@@ -510,9 +524,14 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       return [...m].map(([k, r]): LigneTab => ({ cle: k, art: k, client: lignesPar === "client" ? k : undefined, r, ...totaliser(r) })).sort((a, b) => b.tq - a.tq).slice(0, 600);
     }
     const parClient = new Map<string, Map<string, Cellules>>();
+    const parBase = new Map<string, Map<string, Cellules>>(); // « réf ¦ client » → base → cellules (vue Réf × client)
     filtrees.forEach(l => {
       const c = groupeDe(l), arts = parClient.get(c) || new Map<string, Cellules>(), r = arts.get(sousCle(l)) || {};
       ajouter(r, l); arts.set(sousCle(l), r); parClient.set(c, arts);
+      if (lignesPar === "articleClient") {
+        const k = `${c}\u0001${sousCle(l)}`, bs = parBase.get(k) || new Map<string, Cellules>(), b = baseDe.get(l.i) || "Site non précisé", rb = bs.get(b) || {};
+        ajouter(rb, l); bs.set(b, rb); parBase.set(k, bs);
+      }
     });
     const out: LigneTab[] = [];
     [...parClient].map(([c, arts]) => {
@@ -522,10 +541,15 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     }).sort((a, b) => b.tq - a.tq).forEach(g => {
       out.push({ cle: `#${g.c}`, art: g.c, client: g.c, titre: true, r: g.tot, tq: g.tq, tlv: g.tlv, tm: g.tm });
       if (!clientsFermes[g.c]) [...g.arts].map(([a, r]) => ({ a, r, ...totaliser(r) })).sort((x, y) => y.tq - x.tq)
-        .forEach(x => out.push({ cle: `${g.c}|${x.a}`, art: x.a, client: g.c, r: x.r, tq: x.tq, tlv: x.tlv, tm: x.tm }));
+        .forEach(x => {
+          out.push({ cle: `${g.c}|${x.a}`, art: x.a, client: g.c, r: x.r, tq: x.tq, tlv: x.tlv, tm: x.tm });
+          const bs = parBase.get(`${g.c}\u0001${x.a}`);
+          if (bs) [...bs].map(([b, r]) => ({ b, r, ...totaliser(r) })).sort((y, z) => z.tq - y.tq || y.b.localeCompare(z.b, "fr", { numeric: true }))
+            .forEach(y => out.push({ cle: `${g.c}|${x.a}|${y.b}`, art: y.b, client: g.c, base: x.a, r: y.r, tq: y.tq, tlv: y.tlv, tm: y.tm }));
+        });
     });
     return out.slice(0, 2500);
-  }, [lignes, tClients, tArticles, tFamilles, tFournisseurs, periode, fournisseurDe, lignesPar, clientsFermes]);
+  }, [lignes, tClients, tArticles, tFamilles, tFournisseurs, periode, fournisseurDe, lignesPar, clientsFermes, baseDe]);
   const joursT = useMemo(() => jours.filter(j => (!periode.du || j >= periode.du) && (!periode.au || j <= periode.au)), [jours, periode]);
   const groupe = lignesPar === "clientArticle" || lignesPar === "fournisseurArticle" || lignesPar === "articleClient";
   const iconeGroupe = (nom: string) => (lignesPar === "fournisseurArticle" ? "🏭" : lignesPar === "articleClient" ? emojiProduit(nom) : "👤");
@@ -558,8 +582,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const e = { nomFichier: `Noel 2025 - ${lib} ${par}`, titre: `Noël 2025 — colis ${lib} ${par}`,
       sousTitre: `Livraisons du ${jjmm(joursT[0] || "")} au ${jjmm(joursT[joursT.length - 1] || "")}/2025`,
       filtres: [tFournisseurs.length && `Fournisseurs : ${tFournisseurs.join(", ")}`, tClients.length && `Clients : ${tClients.join(", ")}`, tArticles.length && `Articles : ${tArticles.join(", ")}`, tFamilles.length && `Familles : ${tFamilles.join(", ")}`].filter(Boolean) as string[],
-      entetes: [...(deux ? [nomG] : []), lignesPar === "client" || lignesPar === "articleClient" ? "Client" : "Article", ...colonnes.map(c => (c.sous ? `${c.lib} (${c.sous})` : c.lib)), "Total"],
-      lignes: tableau.map(({ art, client, titre, r, tq, tlv, tm }) => [...(deux ? [client || ""] : []), deux && titre ? `TOTAL ${nomG.toUpperCase()}` : art, ...colonnes.map(c => valeur(cellule(r, c))), valeur({ q: tq, lv: tlv, m: tm })]) };
+      entetes: [...(deux ? [nomG] : []), lignesPar === "client" || lignesPar === "articleClient" ? "Client" : "Article", ...(lignesPar === "articleClient" ? ["Base"] : []), ...colonnes.map(c => (c.sous ? `${c.lib} (${c.sous})` : c.lib)), "Total"],
+      lignes: tableau.map(({ art, client, titre, base, r, tq, tlv, tm }) => [...(deux ? [client || ""] : []), deux && titre ? `TOTAL ${nomG.toUpperCase()}` : base ? base : art, ...(lignesPar === "articleClient" ? [base ? art : titre ? "" : "TOUTES BASES"] : []), ...colonnes.map(c => valeur(cellule(r, c))), valeur({ q: tq, lv: tlv, m: tm })]) };
     if (format === "excel") await exporterExcelMoorea(e); else await exporterPdfMoorea(e);
   };
 
@@ -577,10 +601,10 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
           <>
             {/* Grande recherche intelligente */}
             <div style={{ ...carte, background: "linear-gradient(135deg, #305a55, #1f4440)", border: "none", color: "#fff" }}>
-              <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 4 }}>🔎 Qu'est-ce qui a manqué à Noël ?</div>
-              <div style={{ fontSize: 13, color: "#d9e7e1", marginBottom: 10 }}>Tapez un client, un produit (« hv », « passion »…), une famille, un jour (« 19/12 »), un BL ou un n° de commande.</div>
-              <RechercheIntelligente options={options} placeholder="👤 Carrefour · 🫛 haricot vert · 📅 19/12 · 🧾 BL2025125313…" onChoisir={ouvrir} c={C} grand extra={extra}
-                onCocher={cocher} estChoisi={o => selection.some(x => cleOpt(x) === cleOpt(o))}
+              <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 4 }}>🎯 Quoi ?</div>
+              <div style={{ fontSize: 13, color: "#d9e7e1", marginBottom: 10 }}>Clients, fournisseurs, articles, familles : <b>cochez-en plusieurs</b> pour filtrer, ou touchez un nom pour sa fiche. Aussi un jour (« 19/12 »), un BL ou un n° de commande.</div>
+              <RechercheIntelligente options={options} placeholder="🏭 Yukon · 👤 Carrefour · 🫛 hv · 🗂️ passion · 📅 19/12 · 🧾 BL…" onChoisir={ouvrir} c={C} grand extra={extra}
+                onCocher={cocher} estChoisi={estCocheT}
                 actionSelection={selection.length ? { libelle: `🔎 Voir la sélection (${selection.length})`, onClick: ouvrirSelection } : null} />
               {selection.length > 0 && (
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
@@ -591,8 +615,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                     </span>
                   ))}
                   <button type="button" onClick={ouvrirSelection} style={{ padding: "6px 12px", borderRadius: 9, border: "none", background: "#fff", color: "#305a55", fontWeight: 900, fontSize: 12.5, cursor: "pointer" }}>🔎 Voir la sélection</button>
-                  <button type="button" onClick={tableauSelection} style={{ padding: "6px 12px", borderRadius: 9, border: "1.5px solid #fff", background: "transparent", color: "#fff", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>📅 Besoin jour par jour</button>
-                  <button type="button" onClick={() => setSelection([])} style={{ border: "none", background: "none", color: "#d9e7e1", fontSize: 12, textDecoration: "underline", cursor: "pointer" }}>Tout effacer</button>
+                  {(fiche || vue !== "tableau") && <button type="button" onClick={tableauSelection} style={{ padding: "6px 12px", borderRadius: 9, border: "1.5px solid #fff", background: "transparent", color: "#fff", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>📅 Besoin jour par jour</button>}
+                  <button type="button" onClick={toutDecocher} style={{ border: "none", background: "none", color: "#d9e7e1", fontSize: 12, textDecoration: "underline", cursor: "pointer" }}>Tout effacer</button>
                 </div>
               )}
             </div>
@@ -624,19 +648,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
 
                 {vue === "tableau" && (
                   <div style={carte}>
-                    <div style={{ fontSize: 13, fontWeight: 900, marginBottom: 6 }}>🎯 Quoi ? <span style={{ fontWeight: 500, color: "#6b7280" }}>— clients, articles, familles (cochez-en plusieurs)</span></div>
-                    <RechercheIntelligente multi options={options} placeholder="🏭 Yukon · 👤 Carrefour · 🫛 hv · 🗂️ passion… — cochez plusieurs" onChoisir={basculerT} estChoisi={estCocheT} c={C} />
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", margin: "8px 0 12px" }}>
-                      {[...tFournisseurs.map(v => ({ type: "fournisseur", valeur: v })), ...tClients.map(v => ({ type: "client", valeur: v })), ...tFamilles.map(v => ({ type: "famille", valeur: v })), ...tArticles.map(v => ({ type: "article", valeur: v }))].map(o => (
-                        <span key={o.type + o.valeur} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 6px 4px 10px", borderRadius: 20, background: "#eef4f2", border: "1.5px solid #305a55", color: "#1a2e1a", fontSize: 12.5, fontWeight: 700 }}>
-                          {o.type === "client" ? "👤" : o.type === "famille" ? "🗂️" : o.type === "fournisseur" ? "🏭" : emojiProduit(o.valeur)} {o.valeur}
-                          <button type="button" onClick={() => basculerT(o)} aria-label="Retirer" style={{ width: 19, height: 19, borderRadius: "50%", border: "none", background: "#305a55", color: "#fff", fontSize: 10, cursor: "pointer" }}>✕</button>
-                        </span>
-                      ))}
-                      {tClients.length + tArticles.length + tFamilles.length + tFournisseurs.length > 0
-                        ? <button type="button" onClick={() => { setTClients([]); setTArticles([]); setTFamilles([]); setTFournisseurs([]); }} style={{ border: "none", background: "none", color: "#6b7280", fontSize: 12, textDecoration: "underline", cursor: "pointer" }}>Tout effacer</button>
-                        : <span style={{ fontSize: 12, color: "#9ca3af" }}>Rien de coché : tous les clients et tous les produits.</span>}
-                    </div>
+                    {!selection.length && <p style={{ margin: "0 0 10px", fontSize: 12.5, color: "#6b7280" }}>Rien de coché dans « 🎯 Quoi ? » en haut : tous les clients et tous les produits. Cochez par exemple 🏭 Yukon ou une réf pour filtrer.</p>}
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
                       <span style={{ display: "inline-flex", border: "1.5px solid #305a55", borderRadius: 9, overflow: "hidden" }}>
                         {([["articleClient", "🥬 Réf × client"], ["clientArticle", "👤 Client × réf"], ["fournisseurArticle", "🏭 Fournisseur × réf"], ["article", "🥬 Par réf"], ["client", "👤 Par client"]] as const).map(([v, lib]) => (
@@ -673,23 +685,23 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                     <div style={{ overflow: "auto", maxHeight: "70vh", border: "1px solid #eee8dc", borderRadius: 10 }}>
                       <table style={{ borderCollapse: "collapse", fontSize: 12 }}>
                         <thead><tr>
-                          <th style={{ ...th, position: "sticky", left: 0, top: 0, zIndex: 2, minWidth: 280 }}>{lignesPar === "article" ? "Article" : lignesPar === "client" ? "Client" : lignesPar === "fournisseurArticle" ? "Fournisseur › article" : lignesPar === "articleClient" ? "Article › client" : "Client › article"}</th>
+                          <th style={{ ...th, position: "sticky", left: 0, top: 0, zIndex: 2, minWidth: 280 }}>{lignesPar === "article" ? "Article" : lignesPar === "client" ? "Client" : lignesPar === "fournisseurArticle" ? "Fournisseur › article" : lignesPar === "articleClient" ? "Article › client › base" : "Client › article"}</th>
                           {colonnes.map(c => <th key={c.cle} style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>{c.lib}{c.sous && <div style={{ fontSize: 9.5, fontWeight: 500 }}>{c.sous}</div>}</th>)}
                           <th style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>Total</th>
                         </tr></thead>
                         <tbody>
                           {!tableau.length && <tr><td style={{ ...td, color: "#9ca3af" }} colSpan={colonnes.length + 2}>Rien pour cette sélection.</td></tr>}
-                          {tableau.map(({ cle, art, client, titre, r, tq, tm, tlv }) => {
+                          {tableau.map(({ cle, art, client, titre, base, r, tq, tm, tlv }) => {
                             const ferme = titre && clientsFermes[art];
                             const fond = titre ? "#eef4f2" : "#fff";
                             return (
                               <tr key={cle} style={{ background: titre ? fond : undefined }}>
-                                <td style={{ ...td, position: "sticky", left: 0, background: fond, fontWeight: titre ? 900 : 700, maxWidth: 340, cursor: "pointer", paddingLeft: groupe && !titre ? 26 : 8, borderTop: titre ? "2px solid #305a55" : undefined }}
-                                  onClick={() => (titre ? setClientsFermes(f => { const n = { ...f }; if (n[art]) delete n[art]; else n[art] = true; return n; }) : ouvrirType(lignesPar === "client" || lignesPar === "articleClient" ? "client" : "article", art))}
+                                <td style={{ ...td, position: "sticky", left: 0, background: fond, fontWeight: titre ? 900 : base ? 500 : 700, color: base ? "#4b5563" : undefined, fontSize: base ? 12 : undefined, maxWidth: 340, cursor: "pointer", paddingLeft: base ? 46 : groupe && !titre ? 26 : 8, borderTop: titre ? "2px solid #305a55" : undefined }}
+                                  onClick={() => (titre ? setClientsFermes(f => { const n = { ...f }; if (n[art]) delete n[art]; else n[art] = true; return n; }) : ouvrirType(lignesPar === "client" || lignesPar === "articleClient" ? "client" : "article", base || art))}
                                   title={titre ? "Replier / déplier" : lignesPar === "client" || lignesPar === "articleClient" ? "Ouvrir la fiche du client" : "Ouvrir la fiche du produit"}>
-                                  {titre ? <><span style={{ display: "inline-block", width: 14, color: "#305a55" }}>{ferme ? "▸" : "▾"}</span>{iconeGroupe(art)} {art}</> : lignesPar === "client" || lignesPar === "articleClient" ? <>👤 {art}</> : <>{emojiProduit(art)} {art}</>}
+                                  {titre ? <><span style={{ display: "inline-block", width: 14, color: "#305a55" }}>{ferme ? "▸" : "▾"}</span>{iconeGroupe(art)} {art}</> : base ? <>📍 {art}</> : lignesPar === "client" || lignesPar === "articleClient" ? <>👤 {art}</> : <>{emojiProduit(art)} {art}</>}
                                 </td>
-                                {colonnes.map(col => { const x = cellule(r, col); return <td key={col.cle} style={{ ...td, textAlign: "right", fontWeight: titre ? 900 : undefined, borderTop: titre ? "2px solid #305a55" : undefined, color: mesure === "m" ? "#dc2626" : x?.m && mesure === "q" ? "#b91c1c" : "#1f2937" }} title={x ? `Commandé ${x.q} · livré ${x.lv} · manquant ${x.m}` : ""}>{valeur(x)}</td>; })}
+                                {colonnes.map(col => { const x = cellule(r, col); return <td key={col.cle} style={{ ...td, textAlign: "right", fontWeight: titre ? 900 : undefined, fontSize: base ? 11.5 : undefined, borderTop: titre ? "2px solid #305a55" : undefined, color: mesure === "m" ? "#dc2626" : x?.m && mesure === "q" ? "#b91c1c" : "#1f2937" }} title={x ? `Commandé ${x.q} · livré ${x.lv} · manquant ${x.m}` : ""}>{valeur(x)}</td>; })}
                                 <td style={{ ...td, textAlign: "right", fontWeight: 900, borderTop: titre ? "2px solid #305a55" : undefined }}>{valeur({ q: tq, lv: tlv, m: tm })}</td>
                               </tr>
                             );
