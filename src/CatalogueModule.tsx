@@ -4106,8 +4106,10 @@ export default function CatalogueModule({ onClose }: { onClose: () => void }) {
   }
 
   const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  // 16/10/2026 — « ⚪ Non assignés » (_none) traité ici : avant, la liste avait son propre filtre
+  // et « Aucun résultat » / « …et N autres » restaient sur celui-ci, qui ne trouvait rien dans ce mode.
   const filtered = articles.filter(a =>
-    (!filterEquipe || a.equipe === filterEquipe) &&
+    (!filterEquipe || (filterEquipe === '_none' ? !a.equipe : a.equipe === filterEquipe)) &&
     (search.length < 2 || norm(a.libelle).includes(norm(search)) || norm(a.code).includes(norm(search)))
   );
 
@@ -4212,7 +4214,7 @@ export default function CatalogueModule({ onClose }: { onClose: () => void }) {
               </div>
               <div style={{ maxHeight: '70vh', overflowY: 'auto' }}>
                 {filtered.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: '#aaa', fontSize: 13 }}>Aucun résultat</div>}
-                {(filterEquipe === '_none' ? articles.filter(a => !a.equipe) : filtered).slice(0, 500).map(a => (
+                {filtered.slice(0, 500).map(a => (
                   <div key={a.code} className="cat-row" style={{ display: 'grid', padding: '6px 14px', borderBottom: '1px solid #f5f5f5', gap: 10, alignItems: 'center' }}>
                     <span style={{ fontSize: 10, fontFamily: 'monospace', color: '#999', fontWeight: 600 }}>{a.code}</span>
                     <span style={{ fontSize: 12, fontWeight: 500, minWidth: 0, overflowWrap: 'anywhere' }}>{a.libelle}</span>

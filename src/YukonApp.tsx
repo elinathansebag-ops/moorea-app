@@ -216,20 +216,23 @@ export function YukonApp({ onClose }: { onClose: () => void }) {
     await update(ref(db, `yukon/ventes/${weekKey}`), newVentes);
   };
 
-  const calcCommande = (art: any) => {
-    const venteJour = (ventes[art.id] || 0) / 7;
-    const joursCouverture = typeCommande === "mercredi" ? 4 : 5;
-    // Cherche le stock par nom exact moorea-stock
-    const stockQty = art.stockNom && stocks[art.stockNom] != null
-      ? stocks[art.stockNom]
-      : (stocks[art.id] || 0);
-    const stockFinSemaine = Math.max(0, stockQty - venteJour * joursCouverture);
-    const besoin = venteJour * 6;
-    const aCommander = Math.max(0, besoin - stockFinSemaine);
-    const nbColis = art.colisCommande > 1
-      ? Math.ceil(aCommander / art.colisCommande) * art.colisCommande
-      : Math.ceil(aCommander);
-    return { venteJour: venteJour.toFixed(1), stockFinSemaine: stockFinSemaine.toFixed(0), besoin: besoin.toFixed(1), aCommander: nbColis, stockQty };
+  // 16/10/2026 — une seule formule pour Cmd Sam / Cmd Mar, partagée par l'onglet 📊 Calcul,
+  // le tableau du récap et le texte « 📋 Copier la commande » (le récap et la copie
+  // utilisaient avant ventes/jour × 6 − stock, ce qui donnait d'autres quantités que Calcul).
+  const calcCmdYukon = (art: any) => {
+    const stockKey = art.stockNom || art.id;
+    const stockQty = stocks[stockKey] ?? 0;
+    const ventesJours = ventes[art.id] || 0;       // Sales (4j) - saisie
+    const ventesSemaine = ventesHebdo[art.id] || 0; // Weekly Sales - saisie
+    // Back Stock = MAX(0, Stock - Sales)
+    const backStock = Math.max(0, stockQty - ventesJours);
+    // Saturday Order = ROUND(MAX(0, (WeeklySales×1.1) - BackStock) × 60%, 0)
+    const cmdSamRaw = Math.round(Math.max(0, (ventesSemaine * 1.1) - backStock) * 0.6);
+    const cmdSam = art.colisCommande > 1 ? Math.ceil(cmdSamRaw / art.colisCommande) * art.colisCommande : cmdSamRaw;
+    // Tuesday Order = ROUND(MAX(0, WeeklySales - BackStock) × 40%, 0)
+    const cmdMarRaw = Math.round(Math.max(0, ventesSemaine - backStock) * 0.4);
+    const cmdMar = art.colisCommande > 1 ? Math.ceil(cmdMarRaw / art.colisCommande) * art.colisCommande : cmdMarRaw;
+    return { stockKey, stockQty, ventesJours, backStock, cmdSam, cmdMar };
   };
 
   const bg = "#f5f3ee";
@@ -396,19 +399,8 @@ export function YukonApp({ onClose }: { onClose: () => void }) {
                 </thead>
                 <tbody>
                   {articles.map((art, idx) => {
-                    const stockKey = art.stockNom || art.id;
-                    const stockQty = stocks[stockKey] ?? 0;
+                    const { stockKey, ventesJours, backStock, cmdSam, cmdMar } = calcCmdYukon(art);
                     const stockMissing = stockDate && stocks[stockKey] === undefined;
-                    const ventesJours = ventes[art.id] || 0;       // Sales (4j) - saisie
-                    const ventesSemaine = ventesHebdo[art.id] || 0; // Weekly Sales - saisie
-                    // Back Stock = MAX(0, Stock - Sales)
-                    const backStock = Math.max(0, stockQty - ventesJours);
-                    // Saturday Order = ROUND(MAX(0, (WeeklySales×1.1) - BackStock) × 60%, 0)
-                    const cmdSamRaw = Math.round(Math.max(0, (ventesSemaine * 1.1) - backStock) * 0.6);
-                    const cmdSam = art.colisCommande > 1 ? Math.ceil(cmdSamRaw / art.colisCommande) * art.colisCommande : cmdSamRaw;
-                    // Tuesday Order = ROUND(MAX(0, WeeklySales - BackStock) × 40%, 0)
-                    const cmdMarRaw = Math.round(Math.max(0, ventesSemaine - backStock) * 0.4);
-                    const cmdMar = art.colisCommande > 1 ? Math.ceil(cmdMarRaw / art.colisCommande) * art.colisCommande : cmdMarRaw;
                     const dernQty = arrivageQty[stockKey];
                     const rowBg = stockMissing ? "#fff5f5" : idx % 2 === 0 ? "#fff" : "#fafaf9";
                     return (
@@ -585,16 +577,7 @@ export function YukonApp({ onClose }: { onClose: () => void }) {
                 </thead>
                 <tbody>
                   {articles.map((art, idx) => {
-                    const stockKey = art.stockNom || art.id;
-                    const stockQty = stocks[stockKey] ?? 0;
-                    const ventesJours = ventes[art.id] || 0;
-                    const venteJour = joursVentes > 0 ? ventesJours / joursVentes : 0;
-                    const backStockSam = Math.max(0, stockQty - venteJour * 4);
-                    const cmdSam = Math.max(0, Math.ceil(venteJour * 6 - backStockSam));
-                    const cmdSamArrondi = art.colisCommande > 1 ? Math.ceil(cmdSam / art.colisCommande) * art.colisCommande : cmdSam;
-                    const backStockMar = Math.max(0, stockQty - venteJour * 5);
-                    const cmdMar = Math.max(0, Math.ceil(venteJour * 6 - backStockMar));
-                    const cmdMarArrondi = art.colisCommande > 1 ? Math.ceil(cmdMar / art.colisCommande) * art.colisCommande : cmdMar;
+                    const { cmdSam: cmdSamArrondi, cmdMar: cmdMarArrondi } = calcCmdYukon(art);
                     if (cmdSamArrondi === 0 && cmdMarArrondi === 0) return null;
                     return (
                       <tr key={art.id} style={{ background: idx % 2 === 0 ? "#fff" : "#fafaf9", borderBottom: "1px solid #f0f0f0" }}>
@@ -612,11 +595,7 @@ export function YukonApp({ onClose }: { onClose: () => void }) {
             <button onClick={async () => {
               const lignes = articles
                 .map(art => {
-                  const stockKey = art.stockNom || art.id;
-                  const stockQty = stocks[stockKey] ?? 0;
-                  const venteJour = joursVentes > 0 ? (ventes[art.id] || 0) / joursVentes : 0;
-                  const cmdSam = Math.max(0, art.colisCommande > 1 ? Math.ceil(Math.max(0, Math.ceil(venteJour * 6 - Math.max(0, stockQty - venteJour * 4))) / art.colisCommande) * art.colisCommande : Math.max(0, Math.ceil(venteJour * 6 - Math.max(0, stockQty - venteJour * 4))));
-                  const cmdMar = Math.max(0, art.colisCommande > 1 ? Math.ceil(Math.max(0, Math.ceil(venteJour * 6 - Math.max(0, stockQty - venteJour * 5))) / art.colisCommande) * art.colisCommande : Math.max(0, Math.ceil(venteJour * 6 - Math.max(0, stockQty - venteJour * 5))));
+                  const { cmdSam, cmdMar } = calcCmdYukon(art);
                   if (cmdSam === 0 && cmdMar === 0) return null;
                   return `${art.nom} : Sam ${cmdSam > 0 ? cmdSam : "-"} · Mar ${cmdMar > 0 ? cmdMar : "-"}`;
                 })
