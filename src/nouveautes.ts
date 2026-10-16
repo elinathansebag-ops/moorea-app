@@ -8,6 +8,9 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 111, date: "16/10", pages: ["yukon"], texte: "🌿 Yukon : le récap commande et le texte « 📋 Copier la commande » reprennent maintenant exactement les quantités Cmd Sam / Cmd Mar de l'onglet 📊 Calcul (60 % samedi / 40 % mardi) — avant, ils utilisaient une autre formule et pouvaient donner d'autres chiffres." },
+  { id: 110, date: "16/10", pages: ["catalogue"], texte: "📚 Catalogue : avec « ⚪ Non assignés », la recherche s'applique aussi, et « Aucun résultat » / « …et N autres » correspondent bien à la liste affichée." },
+  { id: 110, date: "16/10", pages: ["rapports"], texte: "📋 PDF du rapport qualité : le logo du fournisseur n'est plus dans le bandeau vert (il passait sur le titre, sur un fond gris) — il est sur le blanc, sous le bandeau à droite, sans cadre, avec le nom du fournisseur à gauche." },
   { id: 109, date: "16/10", pages: ["extractions"], texte: "🎄 Noël 2025 : dans une fiche, deux grands onglets 📦 BESOIN (vert, ce qui a été commandé) et ❌ MANQUANTS (rouge, ce qui n'a pas été livré) ; le bandeau de la fiche prend la couleur de l'onglet choisi." },
   { id: 108, date: "16/10", pages: ["extractions"], texte: "🎄 Noël 2025 : dans la fiche d'un jour, le diagramme garde tous les jours (le jour choisi en évidence) — touchez un autre jour pour passer directement à ce jour, retouchez le même pour revenir à la fiche complète." },
   { id: 107, date: "16/10", pages: ["extractions"], texte: "🎄 Noël 2025 : un jour ouvert depuis le diagramme (ou un client / produit ouvert depuis une fiche) a maintenant un bouton « ← Revenir à … » ; le « Retour » du haut revient aussi à la fiche précédente." },

@@ -3067,20 +3067,26 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     }
     doc.setTextColor(217, 231, 225); doc.setFont("helvetica", "normal"); doc.setFontSize(8);
     doc.text(`${r.date} a ${r.heure}`, W - M, 18, { align: "right" });
-    // 16/10/2026 — Logo du fournisseur (s'il a été importé) dans le bandeau, à gauche du n° de rapport.
+    // 16/10/2026 — Logo du fournisseur (s'il a été importé). Plus dans le bandeau vert (il passait sur
+    // le titre, sur un fond gris) : sur le blanc, sous le bandeau, à droite, sans cadre ; le nom du
+    // fournisseur à gauche sur la même ligne.
+    y = 38;
     const urlLogoF = logosFourn[cleLogoFourn(r.fournisseur)];
     if (urlLogoF) {
       try {
         const dataLogo = await chargerImageEnDataUrl(urlLogoF);
         if (dataLogo) {
           const dims = await new Promise<{ w: number; h: number }>(ok => { const im = new Image(); im.onload = () => ok({ w: im.naturalWidth || 1, h: im.naturalHeight || 1 }); im.onerror = () => ok({ w: 1, h: 1 }); im.src = dataLogo; });
-          const hMax = 20, wMax = 44; let lw = wMax, lh = (dims.h / dims.w) * wMax; if (lh > hMax) { lh = hMax; lw = (dims.w / dims.h) * hMax; }
-          doc.setFillColor(82, 101, 93); doc.roundedRect(W - M - 52 - wMax - 4, 4, wMax + 6, 22, 2, 2, "F");
-          doc.addImage(dataLogo, dataLogo.startsWith("data:image/png") ? "PNG" : "JPEG", W - M - 52 - wMax - 1 + (wMax - lw) / 2, 5 + (hMax - lh) / 2, lw, lh);
+          const hMax = 14, wMax = 48; let lw = wMax, lh = (dims.h / dims.w) * wMax; if (lh > hMax) { lh = hMax; lw = (dims.w / dims.h) * hMax; }
+          const haut = 34;
+          doc.addImage(dataLogo, dataLogo.startsWith("data:image/png") ? "PNG" : "JPEG", W - M - lw, haut + (hMax - lh) / 2, lw, lh);
+          doc.setTextColor(...VERT_MOOREA); doc.setFont("helvetica", "bold"); doc.setFontSize(13);
+          doc.text(String(r.fournisseur || ""), M, haut + hMax / 2 + 2, { maxWidth: CW - lw - 8 });
+          doc.setDrawColor(232, 224, 208); doc.setLineWidth(0.3); doc.line(M, haut + hMax + 3, W - M, haut + hMax + 3);
+          y = haut + hMax + 7;
         }
       } catch { /* logo facultatif */ }
     }
-    y = 38;
 
     const dc = decisionColor(r.decision);
     doc.setFillColor(dc[0], dc[1], dc[2]);
