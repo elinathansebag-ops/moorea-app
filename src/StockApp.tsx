@@ -1441,6 +1441,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
                 ${s.cloture ? "" : (canCompter ? `<button class="btn btn-sm btn-gold" onclick="sRecompterDepuis('${sid}','${team}')">📋 Compter</button>` : `<span style="font-size:11px;background:#f5f6f8;border:1px solid #e5e7eb;color:#9ca3af;padding:4px 10px;border-radius:8px;font-weight:600">🔒 Lecture seule</span>`)}
                 ${s.cloture
                   ? `<button class="btn btn-sm" onclick="sPrintPDF('${sid}','${team}')">📄 PDF</button>
+                     <button class="btn btn-sm" style="border-color:#305a55;color:#305a55" onclick="sImprimerStock('${sid}','${team}')">🖨️ Imprimer</button>
                      <button class="btn btn-sm" style="border-color:#c8a84b;color:#8a6f2e" onclick="sEnvoyerStockJordan('${sid}','${team}')">📧 Envoyer</button>
                      <button class="btn btn-sm" style="border-color:#f59e0b;color:#b45309" onclick="sReouvrir('${sid}','${team}')">🔓 Rouvrir</button>`
                   : `<button class="btn btn-sm" style="border-color:#bbf7d0;color:#15803d" onclick="sCloturerStock('${sid}')">🔒 Clôturer</button>
@@ -1544,6 +1545,35 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
       });
       // Comptés d'un comptage, article → nombre (pour repérer les changements après un envoi).
       const comptesDe = (data: any) => { const m: Record<string, number> = {}; Object.entries(data || {}).forEach(([k, v]: [string, any]) => { if (v === null || v === undefined) return; const c = typeof v === "object" ? v.c : v; if (c !== null && c !== undefined) m[k] = Number(c) || 0; }); return m; };
+
+      // 16/10/2026 — PDF de l'inventaire (même rendu que l'envoi à Jordan), pour l'imprimer au choix.
+      const pdfStockBase64 = async (sid: string, team: string): Promise<{ base64: string; filename: string } | null> => {
+        const result = await generateStockPDF(sid, team);
+        if (!result) return null;
+        const container = document.createElement("div");
+        container.innerHTML = result.html;
+        Object.assign(container.style, { position: "fixed", top: "0", left: "-9999px", width: "794px", background: "#ffffff" });
+        document.body.appendChild(container);
+        await new Promise(r => setTimeout(r, 150));
+        const canvas = await html2canvas(container, { scale: 2, useCORS: true, backgroundColor: "#ffffff", windowWidth: 794 });
+        document.body.removeChild(container);
+        const img = canvas.toDataURL("image/jpeg", 0.95);
+        const pdf = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+        const h = (canvas.height * 210) / canvas.width;
+        let reste = h, pos = 0;
+        pdf.addImage(img, "JPEG", 0, pos, 210, h); reste -= 297;
+        while (reste > 0) { pos = reste - h; pdf.addPage(); pdf.addImage(img, "JPEG", 0, pos, 210, h); reste -= 297; }
+        return { base64: pdf.output("datauristring").split(",")[1], filename: result.filename };
+      };
+      (window as any).sImprimerStock = async (sid: string, team: string) => {
+        toast("⏳ Préparation du PDF…");
+        try {
+          const r = await pdfStockBase64(sid, team);
+          if (!r) { toast("Stock introuvable"); return; }
+          const { imprimerPdf } = await import("./ImpressionPdf");
+          imprimerPdf({ titre: `Inventaire ${team === "PRESTIGE" ? "Prestige" : "GMS"}`, nom: r.filename, base64: r.base64 });
+        } catch (e: any) { toast("Erreur PDF : " + (e?.message || e)); }
+      };
 
       (window as any).sEnvoyerStockJordan = async (sid: string, team: string, opts: { corrections?: { article: string; avant: number | null; apres: number | null }[] } = {}) => {
         try {
@@ -3213,7 +3243,7 @@ export function StockApp({ onExit, catalogueArticles, canConfig = true, canCompt
     return () => {
       try { (window as any).__stopComptageDirect?.(); } catch { /* ignore */ }
       // Cleanup global functions
-      ["sShowPage","sStartSession","sRecompterDepuis","sConsulter","sConsulterRender","sConsulterFermer","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sToggleIfco","sSetIfcoF","sSetComptageIfcoF","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sScannerPaletteComplete","sCompterPaletteComplete","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner","sToggleWeekAcc","sHistoEcarts"].forEach(fn => { delete (window as any)[fn]; });
+      ["sShowPage","sStartSession","sRecompterDepuis","sConsulter","sConsulterRender","sConsulterFermer","sSetCount","sAddNextLoc","sAddLoc","sSyncGMSPermanent","sTerminerComptage","sResetCounts","sMoveToOther","sToggleIfco","sSetIfcoF","sSetComptageIfcoF","sChanterFichier","sAddArticleManuel","sSearchAddArticle","sSelectAddArt","sRecupererArticle","sSetEF","sRenderEcarts","sRenderTable","sExportCSV","sExportPDF","sPrintPDF","sCloturerStock","sReouvrir","sDupliquer","sDeleteStock","sCheckPin","sSetCF","sRenderConfig","sToggleEquipe","sToggleFusionMode","sToggleFusionSelect","sConfirmerFusion","sAnnulerFusion","sCalcNum","sCalcOp","sCalcEqual","sCalcClear","sCalcBackspace","sCalcUse","sOptimiserOrdre","sScannerPalette","sScannerPaletteComplete","sCompterPaletteComplete","sVerifierLotDansStock","sVerifierEANDansStock","sAfficherResultatScan","sRescanPalette","sFermerScanner","sToggleWeekAcc","sHistoEcarts","sImprimerStock"].forEach(fn => { delete (window as any)[fn]; });
       document.getElementById("s-consult-overlay")?.remove();
       const styleEl = document.getElementById("stock-app-styles");
       if (styleEl) styleEl.remove();

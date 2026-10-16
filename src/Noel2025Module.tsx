@@ -381,20 +381,21 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     return <a href={u || u2} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} style={{ fontSize: 12, fontWeight: 800, color: "#fff", background: "#305a55", borderRadius: 8, padding: "4px 10px", whiteSpace: "nowrap", textDecoration: "none" }}>📄 Voir le scan{u && l.p ? ` (p. ${l.p})` : ""}</a>;
   };
 
-  const exporter = async (format: "excel" | "pdf", titre: string, ls: Ligne[]) => {
-    const { exporterExcelMoorea, exporterPdfMoorea } = await import("./exportsMoorea");
+  const exporter = async (format: "excel" | "pdf" | "imprimer", titre: string, ls: Ligne[]) => {
+    const { exporterExcelMoorea, exporterPdfMoorea, imprimerPdfMoorea } = await import("./exportsMoorea");
     const e = {
       nomFichier: `Noel 2025 - ${titre}`, titre: `Commandes Noël 2025 — ${titre}`, sousTitre: "Livraisons du 08/12 au 30/12/2025",
       entetes: ["Date", "Client", "Site", "N° commande", "Article", "Colis commandés", "Colis livrés", "Colis manquants", "Statut", "BL"],
       lignes: ls.filter(compte).sort((a, b) => a.d.localeCompare(b.d) || a.c.localeCompare(b.c)).map(l => [jjmm(l.d), l.c, l.s, l.n, l.a || l.l, l.q, l.lv, l.m, l.st, l.bl]),
       total: ["TOTAL", "", "", "", "", ls.filter(compte).reduce((t, l) => t + l.q, 0), ls.filter(compte).reduce((t, l) => t + l.lv, 0), ls.filter(compte).reduce((t, l) => t + l.m, 0), "", ""],
     };
-    if (format === "excel") await exporterExcelMoorea(e); else await exporterPdfMoorea(e);
+    if (format === "excel") await exporterExcelMoorea(e); else if (format === "imprimer") await imprimerPdfMoorea(e); else await exporterPdfMoorea(e);
   };
   const boutonsExport = (titre: string, ls: Ligne[]) => (
     <span style={{ display: "inline-flex", gap: 6 }}>
       <button type="button" onClick={() => exporter("excel", titre, ls)} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #16a34a", background: "#f0fdf4", color: "#15803d", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>📊 Excel</button>
       <button type="button" onClick={() => exporter("pdf", titre, ls)} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #dc2626", background: "#fef2f2", color: "#b91c1c", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>📄 PDF</button>
+      <button type="button" onClick={() => exporter("imprimer", titre, ls)} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #305a55", background: "#fff", color: "#305a55", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>🖨️ Imprimer</button>
     </span>
   );
 
@@ -551,14 +552,14 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       .sort((a, b) => (compPar === "jour" ? a[0].localeCompare(b[0]) : b[1].g + b[1].q - (a[1].g + a[1].q)));
     const statut = (a: Ag) => !a.q ? ["🧾 Geslot seulement", "#1d4ed8"] : !a.g ? ["📄 Scans seulement", "#7c3aed"]
       : compPar !== "jour" && a.jg.size > a.js.size ? [`⚠️ ${a.jg.size - a.js.size} jour${a.jg.size - a.js.size > 1 ? "s" : ""} livré${a.jg.size - a.js.size > 1 ? "s" : ""} sans scan`, "#b45309"] : ["✅ Les deux", "#15803d"];
-    const exporterComp = async (format: "excel" | "pdf") => {
-      const { exporterExcelMoorea, exporterPdfMoorea } = await import("./exportsMoorea");
+    const exporterComp = async (format: "excel" | "pdf" | "imprimer") => {
+      const { exporterExcelMoorea, exporterPdfMoorea, imprimerPdfMoorea } = await import("./exportsMoorea");
       const lib = { client: "Client", jour: "Jour", article: "Article" }[compPar];
       const e = { nomFichier: `Noel 2025 - Geslot vs scans - ${f.valeur}`, titre: `Noël 2025 — Geslot / commandes scannées — ${f.valeur}`, sousTitre: `Livraisons du ${jjmm(jours[0] || "")} au ${jjmm(jours[jours.length - 1] || "")}/2025 · colis`,
         entetes: [lib, "Livré Geslot", "Commandé (scans)", "Livré (scans)", "Écart Geslot − livré scans", ...(compPar !== "jour" ? ["Jours Geslot", "Jours scannés"] : []), "Statut"],
         lignes: lignesT.map(([k, a]) => [compPar === "jour" ? jjmm(k) : k, Math.round(a.g), a.q, a.lv, Math.round(a.g - a.lv), ...(compPar !== "jour" ? [a.jg.size, a.js.size] : []), statut(a)[0].replace(/^\S+\s/, "")]),
         total: ["TOTAL", Math.round(tg), tq, tlv, Math.round(tg - tlv), ...(compPar !== "jour" ? ["", ""] : []), ""] };
-      if (format === "excel") await exporterExcelMoorea(e as any); else await exporterPdfMoorea(e as any);
+      if (format === "excel") await exporterExcelMoorea(e as any); else if (format === "imprimer") await imprimerPdfMoorea(e as any); else await exporterPdfMoorea(e as any);
     };
     return (
       <>
@@ -599,6 +600,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             </span>
             <button type="button" onClick={() => exporterComp("excel")} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #16a34a", background: "#f0fdf4", color: "#15803d", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>📊 Excel</button>
             <button type="button" onClick={() => exporterComp("pdf")} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #dc2626", background: "#fef2f2", color: "#b91c1c", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>📄 PDF</button>
+            <button type="button" onClick={() => exporterComp("imprimer")} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #305a55", background: "#fff", color: "#305a55", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>🖨️ Imprimer</button>
           </div>
           <div style={{ overflow: "auto", maxHeight: "70vh", border: "1px solid #eee8dc", borderRadius: 10 }}>
             <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12.5, minWidth: 720 }}>
@@ -891,8 +893,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     if (o.type === "client") setTClients(bascule); else if (o.type === "famille") setTFamilles(bascule); else if (o.type === "fournisseur") setTFournisseurs(bascule); else setTArticles(bascule);
   };
   const estCocheT = (o: Option) => (o.type === "client" ? tClients : o.type === "famille" ? tFamilles : o.type === "fournisseur" ? tFournisseurs : tArticles).includes(o.valeur);
-  const exporterTableau = async (format: "excel" | "pdf", tableau: LigneTab[], sujet?: string) => {
-    const { exporterExcelMoorea, exporterPdfMoorea } = await import("./exportsMoorea");
+  const exporterTableau = async (format: "excel" | "pdf" | "imprimer", tableau: LigneTab[], sujet?: string) => {
+    const { exporterExcelMoorea, exporterPdfMoorea, imprimerPdfMoorea } = await import("./exportsMoorea");
     const lib = { q: "commandés (besoin)", lv: "livrés", m: "manquants", taux: "taux de service" }[mesure];
     const par = { article: "par produit", articleClient: "par produit et par client", clientArticle: "par client et par produit", fournisseurArticle: "par fournisseur et par produit", client: "par client" }[lignesPar] + (parSemaine ? " et par semaine" : " et par jour");
     const nomG = lignesPar === "fournisseurArticle" ? "Fournisseur" : lignesPar === "articleClient" ? "Article" : "Client";
@@ -924,7 +926,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       entetes: [...(deux ? [nomG] : []), lignesPar === "client" || lignesPar === "articleClient" ? "Client" : "Article", ...(lignesPar === "articleClient" ? ["Base"] : []), ...(avecManq ? ["Détail"] : []),
         ...colonnes.map(c => (c.sous ? `${c.lib} (${c.sous})` : c.lib)), "Total commandé", "Total livré", "Manquant", "Taux de service"],
       lignes, couleurs, fonds, gras, groupes: bandes };
-    if (format === "excel") await exporterExcelMoorea(e); else await exporterPdfMoorea(e);
+    if (format === "excel") await exporterExcelMoorea(e); else if (format === "imprimer") await imprimerPdfMoorea(e); else await exporterPdfMoorea(e);
   };
 
 
@@ -963,6 +965,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                       <span style={{ display: "inline-flex", gap: 6 }}>
                         <button type="button" onClick={() => exporterTableau("excel", tableau, sujet)} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #16a34a", background: "#f0fdf4", color: "#15803d", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>📊 Excel</button>
                         <button type="button" onClick={() => exporterTableau("pdf", tableau, sujet)} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #dc2626", background: "#fef2f2", color: "#b91c1c", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>📄 PDF</button>
+                        <button type="button" onClick={() => exporterTableau("imprimer", tableau, sujet)} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #305a55", background: "#fff", color: "#305a55", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>🖨️ Imprimer</button>
                       </span>
                     </div>
                     <div style={{ overflow: "auto", maxHeight: "70vh", border: "1px solid #eee8dc", borderRadius: 10 }}>

@@ -121,7 +121,9 @@ export async function exporterExcelMoorea(e: ExportMoorea) {
 }
 
 // ── PDF ──
-export async function exporterPdfMoorea(e: ExportMoorea) {
+// 16/10/2026 — imprimerPdfMoorea : même PDF, envoyé à l'imprimante choisie (fenêtre « Où imprimer ? »).
+export async function imprimerPdfMoorea(e: ExportMoorea) { return exporterPdfMoorea(e, "imprimer"); }
+export async function exporterPdfMoorea(e: ExportMoorea, mode: "telecharger" | "imprimer" = "telecharger") {
   const { default: jsPDF } = await import("jspdf");
   const types = e.entetes.map(typeColonne);
   const paysage = e.entetes.length > 6;
@@ -204,5 +206,10 @@ export async function exporterPdfMoorea(e: ExportMoorea) {
   e.lignes.forEach((l, k) => ligne(l, k));
   if (e.total) ligne(e.total, 0, true);
   pied(page);
+  if (mode === "imprimer") {
+    const { imprimerPdf } = await import("./ImpressionPdf");
+    imprimerPdf({ titre: sansEmoji(e.titre), nom: nomPropre(e.nomFichier) + ".pdf", base64: doc.output("datauristring").split(",")[1] });
+    return;
+  }
   telecharger(doc.output("blob"), nomPropre(e.nomFichier) + ".pdf");
 }

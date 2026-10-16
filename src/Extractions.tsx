@@ -87,14 +87,14 @@ const isoArrivage = (fr: string) => fr.split("/").reverse().join("-");
 
 // 14/10/2026 — Exports aux couleurs de Moorea (logo, en-têtes vert Moorea…), en Excel ou en PDF :
 // voir exportsMoorea.ts. Le bouton choisit le format, puis l'écran appelle exporterExcel(...).
-let formatExport: "excel" | "pdf" = "excel";
+let formatExport: "excel" | "pdf" | "imprimer" = "excel";
 let auteurExport = "";
 let filtresExport: string[] = [];
 async function exporterExcel(nomFichier: string, titre: string, entetes: string[], lignes: (string | number)[][], total?: (string | number)[]) {
-  const { exporterExcelMoorea, exporterPdfMoorea } = await import("./exportsMoorea");
+  const { exporterExcelMoorea, exporterPdfMoorea, imprimerPdfMoorea } = await import("./exportsMoorea");
   const [t, ...reste] = titre.split(" — ");
   const e = { nomFichier, titre: t, sousTitre: reste.join(" — ") || undefined, filtres: filtresExport, entetes, lignes, total, auteur: auteurExport };
-  if (formatExport === "pdf") await exporterPdfMoorea(e); else await exporterExcelMoorea(e);
+  if (formatExport === "imprimer") await imprimerPdfMoorea(e); else if (formatExport === "pdf") await exporterPdfMoorea(e); else await exporterExcelMoorea(e);
 }
 
 // ── Recherche intelligente ──
@@ -303,9 +303,10 @@ function Bloc({ titre, c, children, droite }: { titre: string; c: Couleurs; chil
 const puce = (c: Couleurs, actif: boolean) => ({ padding: "7px 12px", borderRadius: 999, border: `1.5px solid ${actif ? c.vert : c.bord}`, background: actif ? c.vert : c.carte, color: actif ? "#fff" : c.texte, fontSize: 12.5, fontWeight: 700, cursor: "pointer" } as const);
 const champDate = (c: Couleurs) => ({ padding: "9px 12px", borderRadius: 10, border: `1.5px solid ${c.bord}`, background: c.carte, color: c.texte, fontSize: 15, fontWeight: 700 });
 const boutonExport = (c: Couleurs, onClick: () => void, filtres: string[] = []) => (
-  <span style={{ display: "inline-flex", gap: 6 }}>
+  <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
     <button type="button" onClick={() => { formatExport = "excel"; filtresExport = filtres; onClick(); }} style={{ padding: "9px 14px", borderRadius: 10, border: "none", background: c.vert, color: "#fff", fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>📊 Excel</button>
     <button type="button" onClick={() => { formatExport = "pdf"; filtresExport = filtres; onClick(); }} style={{ padding: "9px 14px", borderRadius: 10, border: `2px solid ${c.vert}`, background: c.carte, color: c.vert, fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>📄 PDF</button>
+    <button type="button" onClick={() => { formatExport = "imprimer"; filtresExport = filtres; onClick(); }} style={{ padding: "9px 14px", borderRadius: 10, border: `2px solid ${c.vert}`, background: c.carte, color: c.vert, fontSize: 13.5, fontWeight: 800, cursor: "pointer" }}>🖨️ Imprimer</button>
   </span>
 );
 // 14/10/2026 — Liste de choix en tableau (remplace les « bulles », jugées en bazar) : une ligne

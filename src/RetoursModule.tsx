@@ -74,7 +74,7 @@ async function getNextNumero(): Promise<string> {
 }
 
 // ── PDF ──
-function genPDF(fiche: FicheRetour) {
+function genPDF(fiche: FicheRetour, imprimer = false) {
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const W = 210, ml = 14, cw = W - 28;
   let y = 0;
@@ -164,6 +164,8 @@ function genPDF(fiche: FicheRetour) {
   doc.setFillColor(200, 168, 75); doc.rect(0, 282, W, 0.8, "F");
   doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(130, 130, 130);
   doc.text("MOOREA COMMERCIAL FRUITS — 69 rue de Perpignan — 94632 Rungis", W / 2, 290, { align: "center" });
+  // 16/10/2026 — « 🖨️ Imprimer » : même PDF, envoyé à l'imprimante choisie.
+  if (imprimer) { import("./ImpressionPdf").then(m => m.imprimerPdf({ titre: `Fiche retour ${fiche.numero}`, nom: `retour-${fiche.numero}.pdf`, base64: doc.output("datauristring").split(",")[1] })); return; }
   doc.save("retour-" + fiche.numero + ".pdf");
 }
 
@@ -779,6 +781,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
                       📋 {isOpen ? "Fermer" : "Pointer le retour"}
                     </button>
                     <button style={{ ...BTN("#fee2e2", "#dc2626"), padding: "8px 12px" }} onClick={() => genPDF(r)}>📄 PDF</button>
+                    <button style={{ ...BTN("#eef4f2", "#305a55"), padding: "8px 12px" }} onClick={() => genPDF(r, true)}>🖨️</button>
                     <button style={{ ...BTN("#fee2e2", "#dc2626"), padding: "8px 12px" }} onClick={() => { setModal("delete"); setModalData({ type: "ret", id: r.id, numero: r.numero }); }}>🗑</button>
                   </div>
                   {isOpen && <PanneauPointage fiche={r} />}
@@ -841,6 +844,7 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <button style={{ ...BTN("#dbeafe", "#1d4ed8"), padding: "7px 12px", fontSize: 12 }} onClick={() => repointerFiche(r)}>📋 Repointer</button>
                       <button style={{ ...BTN("#fee2e2", "#dc2626"), padding: "7px 12px", fontSize: 12 }} onClick={() => genPDF(r)}>📄 PDF</button>
+                      <button style={{ ...BTN("#eef4f2", "#305a55"), padding: "7px 12px", fontSize: 12 }} onClick={() => genPDF(r, true)}>🖨️</button>
                       <button style={{ ...BTN("#fee2e2", "#dc2626"), padding: "7px 10px", fontSize: 11 }} onClick={() => { setModal("delete"); setModalData({ type: "ret", id: r.id, numero: r.numero }); }}>🗑</button>
                     </div>
                   </div>
@@ -986,7 +990,8 @@ export default function RetoursModule({ onClose, stockArticles }: { onClose: () 
             <div style={{ fontSize: 11, color: "#9ca3af", textTransform: "uppercase" }}>Numéro de fiche</div>
             <div style={{ fontSize: 28, fontWeight: 800, color: "#c8a84b" }}>{modalData.fiche?.numero}</div>
           </div>
-          <button style={{ ...BTN("#fee2e2", "#dc2626"), width: "100%", justifyContent: "center", marginBottom: 14 }} onClick={() => genPDF(modalData.fiche)}>📄 Télécharger le PDF</button>
+          <button style={{ ...BTN("#fee2e2", "#dc2626"), width: "100%", justifyContent: "center", marginBottom: 8 }} onClick={() => genPDF(modalData.fiche)}>📄 Télécharger le PDF</button>
+          <button style={{ ...BTN("#eef4f2", "#305a55"), width: "100%", justifyContent: "center", marginBottom: 14 }} onClick={() => genPDF(modalData.fiche, true)}>🖨️ Imprimer</button>
           <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 12 }}>
             {modalData.source === "commercial" && (
               <button style={{ ...BTN("#dbeafe", "#1d4ed8"), justifyContent: "flex-start" }}

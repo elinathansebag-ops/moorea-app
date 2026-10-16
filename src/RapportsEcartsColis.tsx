@@ -41,7 +41,7 @@ const propre = (s: any) => String(s ?? "").replace(/[   ]/g, " ").replace(/
 const num = (v: any): number | null => { const n = typeof v === "number" ? v : parseFloat(String(v ?? "").replace(",", ".")); return isFinite(n) ? n : null; };
 const tsDate = (fr: string) => { const m = String(fr || "").match(/^(\d{2})\/(\d{2})\/(\d{4})/); return m ? new Date(+m[3], +m[2] - 1, +m[1], 12).getTime() : 0; };
 
-async function pdfEcart(liv: Livraison, langue: Langue, commentaire: string, auteur: string) {
+async function pdfEcart(liv: Livraison, langue: Langue, commentaire: string, auteur: string, imprimer = false) {
   const { default: jsPDF } = await import("jspdf");
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const W = 210, H = 297, M = 14;
@@ -164,7 +164,10 @@ async function pdfEcart(liv: Livraison, langue: Langue, commentaire: string, aut
     doc.text(`${numero} - ${p}/${pages}`, W - M, H - 4, { align: "right" });
   }
   const suffixe = langue === "fr" ? "FR" : langue === "en" ? "EN" : "FR-EN";
-  doc.save(`Ecart colis ${propre(liv.fournisseur).replace(/[\\/:*?"<>|]+/g, "-")} ${liv.date.replace(/\//g, "-")} ${suffixe}.pdf`);
+  const nom = `Ecart colis ${propre(liv.fournisseur).replace(/[\\/:*?"<>|]+/g, "-")} ${liv.date.replace(/\//g, "-")} ${suffixe}.pdf`;
+  // 16/10/2026 — « 🖨️ Imprimer » : même PDF, envoyé à l'imprimante choisie.
+  if (imprimer) { const { imprimerPdf } = await import("./ImpressionPdf"); imprimerPdf({ titre: `Écart de colis — ${liv.fournisseur} (${liv.date})`, nom, base64: doc.output("datauristring").split(",")[1] }); return; }
+  doc.save(nom);
 }
 
 export function RapportsEcartsColis({ arrivages, onClose, auteur }: { arrivages: any[]; onClose: () => void; auteur?: string }) {
@@ -203,11 +206,11 @@ export function RapportsEcartsColis({ arrivages, onClose, auteur }: { arrivages:
     return true;
   });
 
-  const telecharger = async (liv: Livraison, langue: Langue) => {
+  const telecharger = async (liv: Livraison, langue: Langue, imprimer = false) => {
     const lignes = liv.lignes.filter(x => !exclus[x.id]);
     if (!lignes.length) return;
-    setEnCours(`${liv.cle}|${langue}`);
-    try { await pdfEcart({ ...liv, lignes }, langue, commentaires[liv.cle] || "", auteur || ""); }
+    setEnCours(`${liv.cle}|${imprimer ? "imp" : langue}`);
+    try { await pdfEcart({ ...liv, lignes }, langue, commentaires[liv.cle] || "", auteur || "", imprimer); }
     catch (e) { console.error("PDF écart de colis :", e); alert("Le PDF n'a pas pu être créé."); }
     setEnCours("");
   };
@@ -250,6 +253,10 @@ export function RapportsEcartsColis({ arrivages, onClose, auteur }: { arrivages:
                           {enCours === `${liv.cle}|${lg}` ? "⏳…" : lib}
                         </button>
                       ))}
+                      <button type="button" onClick={() => telecharger(liv, "fr", true)} disabled={!!enCours}
+                        style={{ padding: "6px 11px", borderRadius: 8, border: "1.5px solid #305a55", background: "#eef4f2", color: "#305a55", fontWeight: 800, fontSize: 12, cursor: "pointer", whiteSpace: "nowrap" }}>
+                        {enCours === `${liv.cle}|imp` ? "⏳…" : "🖨️ Imprimer"}
+                      </button>
                     </span>
                   </div>
                   {ouvert && (

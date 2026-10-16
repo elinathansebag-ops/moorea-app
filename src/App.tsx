@@ -4857,6 +4857,18 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                 </button>
               ))}
             </div>
+            {/* 16/10/2026 — Imprimer directement (fenêtre « Où imprimer ? »), en français ou en anglais. */}
+            <div style={{ display: "flex", gap: 10, marginTop: 10 }}>
+              {([["fr", "🇫🇷"], ["en", "🇬🇧"]] as const).map(([l, drapeau]) => (
+                <button key={l} type="button" disabled={pdfEnCours} onClick={async () => {
+                  setPdfEnCours(true);
+                  try { const uri = await generatePDFBase64(choixLangueRapport, l); const { imprimerPdf } = await import("./ImpressionPdf"); imprimerPdf({ titre: `Rapport ${choixLangueRapport.numeroRapport || ""} — ${choixLangueRapport.produit || ""}`, nom: `Rapport ${choixLangueRapport.numeroRapport || "qualite"} ${l.toUpperCase()}.pdf`, url: uri }); setChoixLangueRapport(null); }
+                  finally { setPdfEnCours(false); }
+                }} style={{ flex: 1, padding: "10px 0", borderRadius: 12, border: "1.5px solid #305a55", background: "#eef4f2", cursor: pdfEnCours ? "wait" : "pointer", fontSize: 13.5, fontWeight: 800, color: "#305a55" }}>
+                  🖨️ Imprimer {drapeau}
+                </button>
+              ))}
+            </div>
             <div style={{ fontSize: 12, color: "#9ca3af", marginTop: 10, minHeight: 16 }}>{pdfEnCours ? "⏳ Préparation du PDF…" : ""}</div>
           </div>
         </div>
@@ -4875,7 +4887,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
             </button>
             <span style={{ color: "#c8a84b", fontWeight: 700, fontFamily: "'Syne', sans-serif", fontSize: 13 }}>📄 Rapport</span>
             <button
-              onClick={() => { try { pdfApercuIframeRef.current?.contentWindow?.print(); } catch {} }}
+              onClick={async () => { const { imprimerPdf } = await import("./ImpressionPdf"); imprimerPdf({ titre: "Rapport qualité", nom: "Rapport qualite.pdf", url: pdfApercu }); }}
               style={{ padding: "6px 14px", borderRadius: 9, border: "none", background: "#c8a84b", color: "#0a0a0a", fontWeight: 700, fontSize: 12, cursor: "pointer", fontFamily: "'Syne', sans-serif" }}
             >
               🖨️ Imprimer
