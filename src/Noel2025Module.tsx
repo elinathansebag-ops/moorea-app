@@ -543,6 +543,9 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             )}
           </>
         )}
+        {lits.length === 0 && (
+          <div style={{ ...carte, borderColor: "#fde68a", padding: "10px 16px", fontSize: 13.5, color: "#92400e" }}>⚠️ <b>Litiges</b> — aucun litige pour {f.valeur}. <span style={{ color: "#9ca3af" }}>Tous les litiges de Noël : onglet « ⚠️ Litiges » en haut.</span></div>
+        )}
         {lits.length > 0 && (
           <div style={{ ...carte, borderColor: "#fcd34d" }}>
             <div style={{ fontSize: 15, fontWeight: 900, color: "#b45309", marginBottom: 6 }}>⚠️ Litiges ({lits.length})</div>
@@ -818,13 +821,16 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
               </div>
             )}
 
+            {/* 16/10/2026 — « où est litige ? » : les onglets restent visibles même quand une fiche est ouverte
+                (toucher un onglet ferme la fiche). */}
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
+              {([["accueil", "🏠 Résumé"], ["tableau", "📅 Besoin jour par jour"], ["litiges", `⚠️ Litiges (${don.litiges.length})`]] as const).map(([v, lib]) => {
+                const on = !fiche && vue === v;
+                return <button key={v} type="button" onClick={() => { fermerFiche(); setVue(v); window.scrollTo(0, 0); }} style={{ padding: "9px 16px", borderRadius: 10, border: `2px solid ${on ? "#305a55" : "#e8e0d0"}`, background: on ? "#305a55" : "#fff", color: on ? "#fff" : "#374151", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>{lib}</button>;
+              })}
+            </div>
             {fiche ? rendreFiche(fiche) : (
               <>
-                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 12 }}>
-                  {([["accueil", "🏠 Résumé"], ["tableau", "📅 Besoin jour par jour"], ["litiges", "⚠️ Litiges"]] as const).map(([v, lib]) => (
-                    <button key={v} type="button" onClick={() => setVue(v)} style={{ padding: "9px 16px", borderRadius: 10, border: `2px solid ${vue === v ? "#305a55" : "#e8e0d0"}`, background: vue === v ? "#305a55" : "#fff", color: vue === v ? "#fff" : "#374151", fontWeight: 800, fontSize: 13.5, cursor: "pointer" }}>{lib}</button>
-                  ))}
-                </div>
 
                 {vue === "accueil" && (
                   <>
