@@ -287,9 +287,28 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     lignesGeslot.forEach(l => { const k = cle(l), x = ges.get(k); if (x) x.g += l.q; else ges.set(k, { l, g: l.q }); gesJ.set(cj(l), (gesJ.get(cj(l)) || 0) + l.q); });
     const plusParJ = new Map<string, { l: Ligne; plus: number }[]>();
     ges.forEach(({ l, g }, k) => { const plus = g - (scan.get(k) || 0); if (plus > 0) { const j = cj(l); plusParJ.set(j, [...(plusParJ.get(j) || []), { l, plus }]); } });
+    // Date décalée : un scan daté du dimanche 28/12 facturé le lundi 29/12 dans Geslot est la même commande.
+    // Le surplus Geslot d'un jour sans scan est d'abord compensé par les scans non livrés dans Geslot ce
+    // client à J-1, J+1, J-2, J+2 (dans cet ordre).
+    const decaler = (d: string, n: number) => { const t = new Date(d + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
+    const resteScan = new Map<string, number>(), plafondJ = new Map<string, number>();
+    new Set([...scanJ.keys(), ...gesJ.keys()]).forEach(j => {
+      resteScan.set(j, Math.max(0, (scanJ.get(j) || 0) - (gesJ.get(j) || 0)));
+      plafondJ.set(j, Math.max(0, (gesJ.get(j) || 0) - (scanJ.get(j) || 0)));
+    });
+    [...plafondJ.keys()].sort().forEach(j => {
+      let p = plafondJ.get(j) || 0; if (!p) return;
+      const [c, d] = j.split("\u0001");
+      for (const n of [-1, 1, -2, 2]) {
+        const j2 = `${c}\u0001${decaler(d, n)}`, r = resteScan.get(j2) || 0, t = Math.min(p, r);
+        if (t > 0) { p -= t; resteScan.set(j2, r - t); }
+        if (!p) break;
+      }
+      plafondJ.set(j, p);
+    });
     const out: Ligne[] = [];
     plusParJ.forEach((items, j) => {
-      const somme = items.reduce((t, x) => t + x.plus, 0), plafond = Math.max(0, (gesJ.get(j) || 0) - (scanJ.get(j) || 0));
+      const somme = items.reduce((t, x) => t + x.plus, 0), plafond = plafondJ.get(j) || 0;
       const ratio = somme > plafond ? plafond / somme : 1;
       items.forEach(({ l, plus }) => { const q = Math.round(plus * ratio); if (q > 0) out.push({ ...l, i: `h${out.length}`, q, lv: q, m: 0, s: "📞 Hors scan (Geslot)", st: "hors scan" }); });
     });
