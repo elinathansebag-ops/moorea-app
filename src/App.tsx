@@ -220,6 +220,15 @@ export default function App() {
   const [photos, setPhotos] = useState<{ name: string; url: string; arrivageId?: string }[]>([]);
   const [poidsStatut, setPoidsStatut] = useState("");
   const [poidsEcart, setPoidsEcart] = useState("");
+  // 16/10/2026 — Demande d'Elinathan : dans le rapport, des pesées comme au contrôle poids (en g),
+  // enregistrées dans le rapport et affichées avec les autres pesées (🧪 Récap qualité › ⚖️ Poids).
+  const [pesees, setPesees] = useState<{ valeur: string; at: number }[]>([]);
+  const [peseeSaisie, setPeseeSaisie] = useState("");
+  const ajouterPesee = () => {
+    const v = peseeSaisie.trim().replace(",", ".");
+    if (!v || isNaN(parseFloat(v))) return;
+    setPesees(p => [...p, { valeur: v, at: Date.now() }]); setPeseeSaisie("");
+  };
   const [etiquetteAbsente, setEtiquetteAbsente] = useState(false);
   const [etiquette, setEtiquette] = useState(initialEtiquette);
   const [observations, setObservations] = useState("");
@@ -2485,7 +2494,7 @@ export default function App() {
     setProduit(""); setConditionnement(""); setCalibre(""); setPoids("");
     setOrigine(""); setLotMoorea(""); setLotFournisseur(""); setDlc(""); setNumeroTracabilite(""); setTemperature("");
     setNotes(initialNotes); setConformite(""); setDecision(""); setPourcentage(""); setNbColisTotal(""); setNbColisAEcarter("");
-    setPhotos([]); setPoidsStatut(""); setPoidsEcart(""); setRapportGroupe(null);
+    setPhotos([]); setPoidsStatut(""); setPoidsEcart(""); setPesees([]); setPeseeSaisie(""); setRapportGroupe(null);
     setEtiquetteAbsente(false); setEtiquette(initialEtiquette); setObservations("");
     setControles({ temperature: "C", fraicheur: "C", maturite: "C", coloration: "C", sanitaire: "C" });
   };
@@ -2617,7 +2626,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         nbColisRefuses: nbColisRefuses !== null ? nbColisRefuses : null,
         nbPhotos: photos.length,
         photoUrls: [],
-        poidsStatut, poidsEcart, etiquetteAbsente, etiquette, controles,
+        poidsStatut, poidsEcart, pesees, etiquetteAbsente, etiquette, controles,
         observations, score,
         date, heure,
         timestamp: Date.now(),
@@ -2708,6 +2717,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     setNbColisAEcarter(r.nbColisAEcarter || r.nbColisRefuses?.toString() || "");
     setPoidsStatut(r.poidsStatut || "");
     setPoidsEcart(r.poidsEcart || "");
+    setPesees(lireMesures(r.pesees)); setPeseeSaisie("");
     setEtiquetteAbsente(r.etiquetteAbsente || false);
     setEtiquette(r.etiquette || initialEtiquette);
     setObservations(r.observations || "");
@@ -2744,7 +2754,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
         pourcentage: pourcentageCalc !== null ? pourcentageCalc.toString() : "",
         nbColisTotal: totalColis,
         nbColisRefuses: nbColisRefuses !== null ? nbColisRefuses : null,
-        poidsStatut, poidsEcart, etiquetteAbsente, etiquette, controles,
+        poidsStatut, poidsEcart, pesees, etiquetteAbsente, etiquette, controles,
         observations, score,
         photoUrls,
         nbPhotos: photoUrls.length,
@@ -2821,6 +2831,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       : r.poidsStatut === "ecart"
       ? `<span style="background:#fffbeb;color:#d97706;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:600;border:1px solid #fcd34d;">⚠ Écart${r.poidsEcart ? " : " + r.poidsEcart : ""}</span>`
       : `<span style="color:#9ca3af;font-size:13px;">Non renseigné</span>`;
+    const peseesR = lireMesures(r.pesees).map(m => parseFloat(m.valeur.replace(",", "."))).filter(v => !isNaN(v));
+    const peseesHTML = peseesR.length ? `<div style="margin-top:8px;font-size:13px;color:#374151">⚖️ Pesées (g) : <b>${peseesR.join(" · ")}</b> — moyenne <b>${Math.round(peseesR.reduce((a, b) => a + b, 0) / peseesR.length)} g</b> (min ${Math.min(...peseesR)}, max ${Math.max(...peseesR)})</div>` : "";
 
     const colisHTML = r.nbColisRecu || r.nbColisAttendu ? `
     <tr>
@@ -2953,7 +2965,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   <div style="background:#f8f6f2;padding:10px 28px;font-size:10px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1.5px;border-left:4px solid #c8a84b;">Conformité étiquette</div>
   <div style="padding:14px 28px;">${etiqHTML}</div>
   <div style="background:#f8f6f2;padding:10px 28px;font-size:10px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1.5px;border-left:4px solid #c8a84b;">Contrôle poids</div>
-  <div style="padding:14px 28px;">${poidsHTML}</div>
+  <div style="padding:14px 28px;">${poidsHTML}${peseesHTML}</div>
   ${reserveHTML}
   <div style="background:#f8f6f2;padding:10px 28px;font-size:10px;font-weight:700;color:#8a6f2e;text-transform:uppercase;letter-spacing:1.5px;border-left:4px solid #c8a84b;">Commentaire</div>
   <div style="padding:16px 28px;">
@@ -3221,6 +3233,13 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
       doc.text(`Ecart${ecartVal ? " : " + ecartVal + " g" : ""}`,M+6,y+4.5);
     }
     y+=12;
+    const peseesPdf = lireMesures(r.pesees).map(m => parseFloat(m.valeur.replace(",", "."))).filter(v => !isNaN(v));
+    if (peseesPdf.length) {
+      doc.setTextColor(55,65,81); doc.setFont("helvetica","normal"); doc.setFontSize(8.5);
+      const moy = Math.round(peseesPdf.reduce((a, b) => a + b, 0) / peseesPdf.length);
+      const lignesP = doc.splitTextToSize(`Pesees (g) : ${peseesPdf.join(" - ")}   |   moyenne ${moy} g (min ${Math.min(...peseesPdf)}, max ${Math.max(...peseesPdf)})`, CW - 8);
+      doc.text(lignesP, M+4, y); y += lignesP.length * 4 + 4;
+    }
 
     section("CONFORMITE ETIQUETTE");
     if (r.etiquetteAbsente) {
@@ -6289,6 +6308,30 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     <input type="number" min="0" value={poidsEcart} onChange={e => setPoidsEcart(e.target.value)} placeholder="Ex: 120" style={{ border: "1.5px solid #fcd34d" }} />
                   </div>
                 )}
+                <div style={{ marginTop: 12, background: "#faf8f3", border: "1.5px solid #e8e0d0", borderRadius: 10, padding: "12px 14px" }}>
+                  <label style={{ fontSize: 12, color: "#305a55", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.5px", display: "block", marginBottom: 6 }}>⚖️ Pesées (g) — contrôle poids</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <input type="number" inputMode="decimal" min="0" value={peseeSaisie} onChange={e => setPeseeSaisie(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); ajouterPesee(); } }} placeholder="Ex : 512" style={{ flex: 1 }} />
+                    <button type="button" onClick={ajouterPesee} style={{ padding: "0 16px", borderRadius: 10, border: "none", background: "#305a55", color: "#fff", fontWeight: 800, fontSize: 14, cursor: "pointer", whiteSpace: "nowrap" }}>＋ Ajouter</button>
+                  </div>
+                  {pesees.length > 0 && (() => {
+                    const vals = pesees.map(p => parseFloat(p.valeur)).filter(v => !isNaN(v));
+                    return (
+                      <>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 10 }}>
+                          {pesees.map((p, i) => (
+                            <span key={i} style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "4px 6px 4px 10px", borderRadius: 16, background: "#fff", border: "1.5px solid #cfdcd7", fontSize: 13, fontWeight: 700 }}>
+                              {p.valeur} g
+                              <button type="button" aria-label="Retirer" onClick={() => setPesees(x => x.filter((_, j) => j !== i))} style={{ width: 18, height: 18, borderRadius: "50%", border: "none", background: "#e5e7eb", fontSize: 10, cursor: "pointer" }}>✕</button>
+                            </span>
+                          ))}
+                        </div>
+                        {vals.length > 0 && <div style={{ fontSize: 12.5, color: "#374151", marginTop: 8 }}>{vals.length} pesée{vals.length > 1 ? "s" : ""} · moyenne <b>{Math.round(vals.reduce((a, b) => a + b, 0) / vals.length)} g</b> · min {Math.min(...vals)} · max {Math.max(...vals)}</div>}
+                      </>
+                    );
+                  })()}
+                  <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 6 }}>Enregistrées avec le rapport et visibles dans 🧪 Récap qualité › ⚖️ Poids, avec les pesées du pointage.</div>
+                </div>
               </div>
               <div style={{ marginBottom: 20, paddingBottom: 20, borderBottom: "1px solid #f0f0f0" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
