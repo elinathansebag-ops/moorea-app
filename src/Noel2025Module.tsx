@@ -690,7 +690,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const optsD = ([
       // 18/10/2026 — « je comprends pas ces onglets » : 3 noms qui disent ce qu'on voit.
       ...(besoin ? [["tableau", "📅 Jour par jour"]] : []),
-      ...(f.type !== "bl" ? [["listes", besoin ? "📋 Total par client et produit" : "❌ Produits & clients touchés"]] : []),
+      // « Total par client et produit » : doublon de la colonne Total du tableau → seulement en vue complète.
+      ...(f.type !== "bl" && (vueCompleteNoel || !besoin) ? [["listes", besoin ? "📋 Total par client et produit" : "❌ Produits & clients touchés"]] : []),
       ...(!global ? [["commandes", `🧾 Bons de commande (${listeCmds.length})`]] : []),
     ] as [typeof detailNoel, string][]);
     const dEff = optsD.some(([k]) => k === detailNoel) ? detailNoel : optsD[0]?.[0];
