@@ -1112,8 +1112,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                                   title={titre || aSous ? "Déplier / replier" : ficheType === "client" ? "Ouvrir la fiche du client" : "Ouvrir la fiche du produit"}>
                                   {titre ? <><span style={{ display: "inline-block", width: 14, color: "#305a55" }}>{ferme ? "▸" : "▾"}</span>{iconeGroupe(art)} {art}</>
                                     : base ? <>📍 {art}</>
-                                    : <>{aSous && <span style={{ display: "inline-block", width: 14, color: "#305a55" }}>{ferme ? "▸" : "▾"}</span>}{ficheType === "client" ? "👤" : emojiProduit(art)} {art}
-                                      {aSous && <span onClick={e => { e.stopPropagation(); ouvrirType(ficheType, art, undefined, "besoin"); }} style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: "#305a55", textDecoration: "underline" }}>fiche ›</span>}</>}
+                                    : <>{aSous && <span style={{ display: "inline-block", width: 14, color: "#305a55" }}>{ferme ? "▸" : "▾"}</span>}{ficheType === "client" ? "👤" : emojiProduit(art)} {art}</>}
                                 </td>
                                 {colonnes.map(col => { const x = cellule(r, col); return <td key={col.cle} style={{ ...td, textAlign: "right", fontWeight: titre ? 900 : undefined, fontSize: base ? 11.5 : undefined, borderTop: titre ? "2px solid #305a55" : undefined, color: "#1f2937" }} title={x ? `Commandé ${x.q} · livré ${x.lv} · manquant ${x.m}` : ""}>{valeur(x)}</td>; })}
                                 <td style={{ ...td, textAlign: "right", fontWeight: 900, borderTop: titre ? "2px solid #305a55" : undefined, }}>{valeur({ q: tq, lv: tlv, m: tm })}</td>
