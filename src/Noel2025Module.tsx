@@ -207,8 +207,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   // et sous le graphique un seul détail à la fois (clients & produits / tableau / commandes / litiges).
   // « Vue complète » remet tout à la suite comme avant.
   const [explications, setExplications] = useState(false);
-  const [detailNoel, setDetailNoelEtat] = useState<"listes" | "tableau" | "commandes" | "litiges">("tableau");
-  const setDetailNoel = (v: "listes" | "tableau" | "commandes" | "litiges") => demarrer(() => setDetailNoelEtat(v));
+  const [detailNoel, setDetailNoelEtat] = useState<"listes" | "tableau" | "manques" | "commandes" | "litiges">("tableau");
+  const setDetailNoel = (v: "listes" | "tableau" | "manques" | "commandes" | "litiges") => demarrer(() => setDetailNoelEtat(v));
   const [vueCompleteNoel, setVueCompleteNoelEtat] = useState(() => { try { return localStorage.getItem("noel-vue") === "complete"; } catch { return false; } });
   const setVueCompleteNoel = (v: boolean) => { setVueCompleteNoelEtat(v); try { localStorage.setItem("noel-vue", v ? "complete" : "simple"); } catch { /* */ } };
   const [ventesGeslot, setVentesGeslot] = useState<VenteGeslot[] | null>(null);
@@ -262,15 +262,19 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   // vient la marchandise. Chaque réf est rattachée au fournisseur qui en a fourni le plus en
   // décembre 2025 dans 📊 Stats (à défaut, sur toute la base des ventes). Noms Geslot identiques.
   const [fournisseurDe, setFournisseurDe] = useState<Record<string, string>>({});
-  const [clientsFermes, setClientsFermes] = useState<Record<string, boolean>>({});
+  // 18/10/2026 — Tableau qu'on déplie en cliquant (produit ▸ clients ▸ bases), tout replié au départ.
+  const [ouverts, setOuverts] = useState<Record<string, boolean>>({});
+  const basculerOuvert = (k: string) => setOuverts(o => { const n = { ...o }; if (n[k]) delete n[k]; else n[k] = true; return n; });
   // Une seule recherche (en haut) : ce qui y est coché filtre le tableau « Besoin » et la fiche « sélection ».
   const selection: Option[] = [...tFournisseurs.map(valeur => ({ type: "fournisseur", valeur })), ...tClients.map(valeur => ({ type: "client", valeur })),
     ...tFamilles.map(valeur => ({ type: "famille", valeur })), ...tArticles.map(valeur => ({ type: "article", valeur }))];
   // 18/10/2026 — « un tableau : combien on a livré et combien on nous a demandé, et juste cocher si je veux
   // voir les demandes ou non. Simplifier au max » : le tableau montre le LIVRÉ (en rouge s'il a manqué) ;
   // la case « voir aussi la demande » ajoute « sur 120 » sous chaque chiffre (et la ligne Demandé aux exports).
-  const [voirDemande, setVoirDemandeEtat] = useState(() => { try { return localStorage.getItem("noel-voir-demande") === "oui"; } catch { return false; } });
-  const setVoirDemande = (v: boolean) => { setVoirDemandeEtat(v); try { localStorage.setItem("noel-voir-demande", v ? "oui" : "non"); } catch { /* */ } };
+  // Puis (même jour) : « voir les manquants » plutôt que la demande — « −50 » en rouge seulement là où il a
+  // vraiment manqué (manquants relevés sur les BL / ruptures), rien ailleurs.
+  const [voirDemande, setVoirDemandeEtat] = useState(() => { try { return localStorage.getItem("noel-voir-manquants") === "oui"; } catch { return false; } });
+  const setVoirDemande = (v: boolean) => { setVoirDemandeEtat(v); try { localStorage.setItem("noel-voir-manquants", v ? "oui" : "non"); } catch { /* */ } };
   const [cmdOuverte, setCmdOuverte] = useState<string | null>(null);
   // Les commandes d'une fiche : rangées par client puis par base (par défaut), ou l'ancienne liste par date.
   const [vueCmds, setVueCmdsEtat] = useState<"base" | "date">(() => { try { return localStorage.getItem("noel-vue-cmds") === "date" ? "date" : "base"; } catch { return "base"; } });
@@ -657,7 +661,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   };
 
   const rendreFiche = (f: Fiche) => {
-    const avecCompl = avecGeslot && (vue === "besoin" || vue === "manque");
+    const avecCompl = (vueCompleteNoel ? avecGeslot : true) && (vue === "besoin" || vue === "manque");
     const source = avecCompl && lignesScanGeslot.length ? sourceGeslot : (don?.lignes || []);
     const ls = source.filter(f.filtre), lc = ls.filter(compte);
     const tot = lc.reduce((t, l) => ({ q: t.q + l.q, lv: t.lv + l.lv, m: t.m + l.m }), { q: 0, lv: 0, m: 0 });
@@ -681,6 +685,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const lsGraph = f.base ? source.filter(f.base.filtre) : ls;
     const optsD = ([
       ...(besoin ? [["tableau", "📅 Jour par jour"]] : []),
+      ...(besoin && !vueCompleteNoel && f.type !== "bl" ? [["manques", `❌ Ce qui a manqué${tot.m ? ` (${ent(tot.m)})` : ""}`]] : []),
       ...(f.type !== "bl" ? [["listes", besoin ? "👥 Clients & produits" : "❌ Produits & clients touchés"]] : []),
       ...(!global ? [["commandes", `🧾 Commandes (${listeCmds.length})`]] : []),
     ] as [typeof detailNoel, string][]);
@@ -718,7 +723,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
           </div>
         )}
         {!vueGeslot && chiffres(tot, lits.length)}
-        {!vueGeslot && !vueLitiges && lignesGeslot.length > 0 && (() => {
+        {vueCompleteNoel && !vueGeslot && !vueLitiges && lignesGeslot.length > 0 && (() => {
           // 17/10/2026 — « qu'on comprenne bien quels chiffres on prend en compte, avec leur fiabilité » puis
           // « 2 boutons, commande client / commande Geslot, fais simple » ; retour de Jennifer : en mode Geslot,
           // les livrés doivent être ceux de Geslot (voir lignesScanGeslot).
@@ -803,6 +808,12 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             </div>
             {barreDetail}
             {voirD("tableau") && tableBesoin()}
+            {f.type !== "bl" && !vueCompleteNoel && dEff === "manques" && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap: 14, marginTop: 14 }}>
+                {f.type !== "article" && listeTop("❌ Produits qui ont manqué", topManques(ls, "a"), "article")}
+                {f.type !== "client" && listeTop("👤 Clients touchés", topManques(ls, "c"), "client")}
+              </div>
+            )}
             {f.type !== "bl" && voirD("listes") && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap: 14, marginTop: 14 }}>
                 {f.type !== "client" && listeTop("👤 Clients qui commandent le plus", topCommandes(ls, "c"), "client", true)}
@@ -935,7 +946,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       return { c, arts, tot, ...totaliser(tot) };
     }).sort((a, b) => b.tq - a.tq).forEach(g => {
       out.push({ cle: `#${g.c}`, art: g.c, client: g.c, titre: true, r: g.tot, tq: g.tq, tlv: g.tlv, tm: g.tm });
-      if (!clientsFermes[g.c]) [...g.arts].map(([a, r]) => ({ a, r, ...totaliser(r) })).sort((x, y) => y.tq - x.tq)
+      [...g.arts].map(([a, r]) => ({ a, r, ...totaliser(r) })).sort((x, y) => y.tq - x.tq)
         .forEach(x => {
           // Un seul client (fiche client, vue Réf × base) : pas de ligne client répétée sous chaque réf.
           if (!(lignesPar === "articleClient" && unSeulClient)) out.push({ cle: `${g.c}|${x.a}`, art: x.a, client: g.c, r: x.r, tq: x.tq, tlv: x.tlv, tm: x.tm });
@@ -944,7 +955,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             .forEach(y => out.push({ cle: `${g.c}|${x.a}|${y.b}`, art: y.b, client: g.c, base: x.a, r: y.r, tq: y.tq, tlv: y.tlv, tm: y.tm }));
         });
     });
-    return out.slice(0, 2500);
+    return out.slice(0, 30000); // l'écran n'affiche que les lignes dépliées (150 d'abord), les exports tout
   };
   const joursT = useMemo(() => jours.filter(j => (!periode.du || j >= periode.du) && (!periode.au || j <= periode.au)), [jours, periode]);
   const groupe = lignesPar === "clientArticle" || lignesPar === "fournisseurArticle" || lignesPar === "articleClient";
@@ -961,7 +972,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     return x;
   };
   const valeur = (x?: { q: number; lv: number; m: number }) => !x || (!x.q && !x.lv) ? "" : (
-    <>{ent(x.lv)}{voirDemande && <div style={{ fontSize: 10.5, fontWeight: 500, color: "#6b7280", whiteSpace: "nowrap" }}>sur {ent(x.q)}</div>}</>
+    <>{ent(x.lv)}{voirDemande && x.m > 0 && <div style={{ fontSize: 10.5, fontWeight: 800, color: "#dc2626", whiteSpace: "nowrap" }}>−{ent(x.m)}</div>}</>
   );
   const basculerT = (o: Option) => {
     const bascule = (s: string[]) => (s.includes(o.valeur) ? s.filter(x => x !== o.valeur) : [...s, o.valeur]);
@@ -970,7 +981,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const estCocheT = (o: Option) => (o.type === "client" ? tClients : o.type === "famille" ? tFamilles : o.type === "fournisseur" ? tFournisseurs : tArticles).includes(o.valeur);
   const exporterTableau = async (format: "excel" | "pdf" | "imprimer", tableau: LigneTab[], sujet?: string) => {
     const { exporterExcelMoorea, exporterPdfMoorea, imprimerPdfMoorea } = await import("./exportsMoorea");
-    const lib = voirDemande ? "livrés et demandés" : "livrés";
+    const lib = voirDemande ? "livrés et manquants" : "livrés";
     const par = { article: "par produit", articleClient: "par produit et par client", clientArticle: "par client et par produit", fournisseurArticle: "par fournisseur et par produit", client: "par client" }[lignesPar] + (parSemaine ? " et par semaine" : " et par jour");
     const nomG = lignesPar === "fournisseurArticle" ? "Fournisseur" : lignesPar === "articleClient" ? "Article" : "Client";
     // 16/10/2026 — Une seule valeur de regroupement (ex. un seul fournisseur) : pas de colonne inutile,
@@ -988,14 +999,10 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const lignes: (string | number)[][] = [], couleurs: (string | null)[] = [], fonds: (string | null)[] = [], gras: boolean[] = [], bandes: number[] = [];
     tableau.forEach(({ art, client, titre, base, r, tq, tlv, tm }, k) => {
       const debut = [...(deux ? [client || ""] : []), titre && groupe ? (deux ? `TOTAL ${nomG.toUpperCase()}` : `TOTAL ${art}`) : base ? base : art, ...(lignesPar === "articleClient" ? [base ? art : titre ? "" : "TOUTES BASES"] : [])];
-      lignes.push([...debut, ...(avecManq ? ["Livré"] : []), ...colonnes.map(c => vx(cellule(r, c))), ...(avecManq ? [Math.round(tq)] : []), Math.round(tlv), ...(avecManq ? [tm ? Math.round(tm) : ""] : [])]);
+      lignes.push([...debut, ...(avecManq ? ["Livré"] : []), ...colonnes.map(c => vx(cellule(r, c))), Math.round(tlv), ...(avecManq ? [tm ? Math.round(tm) : ""] : [])]);
       couleurs.push(null); fonds.push(null); gras.push(!!titre); bandes.push(k);
-      if (avecManq) {
-        lignes.push([...debut.map(() => ""), "Demandé", ...colonnes.map(c => vx(cellule(r, c), "q")), "", "", ""]);
-        couleurs.push("#4B5563"); fonds.push(null); gras.push(false); bandes.push(k);
-      }
       if (avecManq && tm > 0) {
-        lignes.push([...debut.map(() => ""), "dont manquants", ...colonnes.map(c => { const x = cellule(r, c); return x?.m ? Math.round(x.m) : ""; }), "", "", Math.round(tm)]);
+        lignes.push([...debut.map(() => ""), "Manquants", ...colonnes.map(c => { const x = cellule(r, c); return x?.m ? Math.round(x.m) : ""; }), "", Math.round(tm)]);
         couleurs.push("#B91C1C"); fonds.push("#FEF2F2"); gras.push(true); bandes.push(k);
       }
     });
@@ -1003,24 +1010,41 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       sousTitre: periodeTxt(joursT[0], joursT[joursT.length - 1]),
       filtres,
       entetes: [...(deux ? [nomG] : []), lignesPar === "client" || lignesPar === "articleClient" ? "Client" : "Article", ...(lignesPar === "articleClient" ? ["Base"] : []), ...(avecManq ? ["Détail"] : []),
-        ...colonnes.map(c => (c.sous ? `${c.lib} (${c.sous})` : c.lib)), ...(avecManq ? ["Total demandé"] : []), "Total livré", ...(avecManq ? ["Manquant"] : [])],
+        ...colonnes.map(c => (c.sous ? `${c.lib} (${c.sous})` : c.lib)), "Total livré", ...(avecManq ? ["Manquant"] : [])],
       lignes, couleurs, fonds, gras, groupes: bandes };
     if (format === "excel") await exporterExcelMoorea(e); else if (format === "imprimer") await imprimerPdfMoorea(e); else await exporterPdfMoorea(e);
   };
 
 
   // Carte « besoin » (réglages + tableau) — onglet Besoin et fiches.
-  const carteBesoin = (tableau: LigneTab[], entete?: any, sujet?: string) => (
+  const carteBesoin = (tableau: LigneTab[], entete?: any, sujet?: string) => {
+    // Dépliage : un groupe (produit ou client) s'ouvre au clic ; s'il n'y en a qu'un, il est ouvert d'office.
+    const nbGroupes = tableau.filter(t => t.titre).length;
+    const estOuvert = (g: string) => !groupe || nbGroupes === 1 || !!ouverts[g];
+    const aDesBases = new Set(tableau.filter(t => t.base).map(t => `${t.client}|${t.base}`));
+    const sousLignes = new Set(tableau.filter(t => !t.titre && !t.base).map(t => t.cle));
+    const visibles = !groupe ? tableau : tableau.filter(t => t.titre || (estOuvert(t.client || "") && (!t.base || !sousLignes.has(`${t.client}|${t.base}`) || !!ouverts[`${t.client}|${t.base}`])));
+    const deuxDebuts = vuesUtiles.includes("articleClient") && vuesUtiles.includes("clientArticle") && typeSujet !== "article" && typeSujet !== "client";
+    return (
                   <div style={carte}>
                     {entete}
                     {/* 18/10/2026 — « trop de trucs dans tous les sens » : les 5 groupes de boutons deviennent une
                         phrase de menus déroulants (Voir … rangé … par … du … au …), exports à droite. */}
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10, fontSize: 13.5, fontWeight: 800, color: "#374151" }}>
                       ✅ Livré
+                      {vueCompleteNoel ? <>
                       rangé
                       <select value={lignesPar} onChange={e => setLignesPar(e.target.value as any)} style={{ ...sel, fontWeight: 800 }}>
                         {([["articleClient", typeSujet === "article" ? "par client › base" : typeSujet === "client" ? "par réf › base" : "par réf › client"], ["clientArticle", "par client › réf"], ["fournisseurArticle", "par fournisseur › réf"], ["article", "par réf"], ["client", "par client"]] as const).filter(([v]) => vuesUtiles.includes(v)).map(([v, lib]) => <option key={v} value={v}>{lib}</option>)}
                       </select>
+                      </> : deuxDebuts ? <>
+                        · commencer par
+                        <span style={{ display: "inline-flex", border: "1.5px solid #305a55", borderRadius: 9, overflow: "hidden" }}>
+                          {([["articleClient", "🥬 Produits"], ["clientArticle", "👤 Clients"]] as const).map(([v, lib]) => (
+                            <button key={v} type="button" onClick={() => demarrer(() => setLignesPar(v))} style={{ padding: "7px 12px", border: "none", background: lignesPar === v ? "#305a55" : "#fff", color: lignesPar === v ? "#fff" : "#305a55", fontWeight: 800, fontSize: 13, cursor: "pointer" }}>{lib}</button>
+                          ))}
+                        </span>
+                      </> : null}
                       <select value={parSemaine ? "s" : "j"} onChange={e => setParSemaine(e.target.value === "s")} style={{ ...sel, fontWeight: 800 }}>
                         <option value="j">jour par jour</option><option value="s">semaine par semaine</option>
                       </select>
@@ -1030,7 +1054,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                       <select value={periode.au || jours[jours.length - 1]} onChange={e => setPeriode(p => ({ au: e.target.value, du: p.du && p.du > e.target.value ? e.target.value : p.du }))} style={{ ...sel, fontWeight: 800 }}>{jours.map(j => <option key={j} value={j}>{jjmm(j)}</option>)}</select>
                       {(periode.du || periode.au) && <button type="button" onClick={() => setPeriode({ du: "", au: "" })} style={{ border: "none", background: "none", color: "#6b7280", fontSize: 12, textDecoration: "underline", cursor: "pointer" }}>tout Noël</button>}
                       <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 11px", borderRadius: 9, border: `1.5px solid ${voirDemande ? "#305a55" : "#e8e0d0"}`, background: voirDemande ? "#eef4f2" : "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
-                        <input type="checkbox" checked={voirDemande} onChange={e => setVoirDemande(e.target.checked)} style={{ width: 16, height: 16 }} /> voir aussi la demande
+                        <input type="checkbox" checked={voirDemande} onChange={e => setVoirDemande(e.target.checked)} style={{ width: 16, height: 16 }} /> voir les manquants
                       </label>
                       {tArticles.length > 1 && (
                         <label style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
@@ -1048,22 +1072,27 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                       <table style={{ borderCollapse: "collapse", fontSize: 12 }}>
                         <thead><tr>
                           <th style={{ ...th, position: "sticky", left: 0, top: 0, zIndex: 2, minWidth: 280 }}>{lignesPar === "article" ? "Article" : lignesPar === "client" ? "Client" : lignesPar === "fournisseurArticle" ? "Fournisseur › article" : lignesPar === "articleClient" ? "Article › client › base" : "Client › article"}
-                            {groupe && <button type="button" onClick={() => setClientsFermes(f => (Object.keys(f).length ? {} : Object.fromEntries(tableau.filter(x => x.titre).map(x => [x.art, true]))))} style={{ marginLeft: 10, border: "none", background: "none", color: "#305a55", fontSize: 11, fontWeight: 800, textDecoration: "underline", cursor: "pointer" }}>{Object.keys(clientsFermes).length ? "▾ tout déplier" : "▸ tout replier"}</button>}
+                            {groupe && <button type="button" onClick={() => setOuverts(o => (Object.keys(o).length ? {} : Object.fromEntries(tableau.filter(x => !x.base).map(x => [x.titre ? x.art : x.cle, true]))))} style={{ marginLeft: 10, border: "none", background: "none", color: "#305a55", fontSize: 11, fontWeight: 800, textDecoration: "underline", cursor: "pointer" }}>{Object.keys(ouverts).length ? "▸ tout replier" : "▾ tout déplier"}</button>}
                           </th>
                           {colonnes.map(c => <th key={c.cle} style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>{c.lib}{c.sous && <div style={{ fontSize: 9.5, fontWeight: 500 }}>{c.sous}</div>}</th>)}
                           <th style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>Total</th>
                         </tr></thead>
                         <tbody>
                           {!tableau.length && <tr><td style={{ ...td, color: "#9ca3af" }} colSpan={colonnes.length + 2}>Rien pour cette sélection.</td></tr>}
-                          {tableau.slice(0, nbLignesTab).map(({ cle, art, client, titre, base, r, tq, tm, tlv }) => {
-                            const ferme = titre && clientsFermes[art];
+                          {visibles.slice(0, nbLignesTab).map(({ cle, art, client, titre, base, r, tq, tm, tlv }) => {
+                            const aSous = !titre && !base && aDesBases.has(cle), ouvert = titre ? estOuvert(art) : !!ouverts[cle];
+                            const ferme = !ouvert;
                             const fond = titre ? "#eef4f2" : "#fff";
+                            const ficheType = lignesPar === "client" || lignesPar === "articleClient" ? "client" : "article";
                             return (
                               <tr key={cle} style={{ background: titre ? fond : undefined }}>
                                 <td style={{ ...td, position: "sticky", left: 0, background: fond, fontWeight: titre ? 900 : base ? 500 : 700, color: base ? "#4b5563" : undefined, fontSize: base ? 12 : undefined, maxWidth: 340, cursor: "pointer", paddingLeft: base ? 46 : groupe && !titre ? 26 : 8, borderTop: titre ? "2px solid #305a55" : undefined }}
-                                  onClick={() => (titre ? setClientsFermes(f => { const n = { ...f }; if (n[art]) delete n[art]; else n[art] = true; return n; }) : ouvrirType(lignesPar === "client" || lignesPar === "articleClient" ? "client" : "article", base || art, undefined, "besoin"))}
-                                  title={titre ? "Replier / déplier" : lignesPar === "client" || lignesPar === "articleClient" ? "Ouvrir la fiche du client" : "Ouvrir la fiche du produit"}>
-                                  {titre ? <><span style={{ display: "inline-block", width: 14, color: "#305a55" }}>{ferme ? "▸" : "▾"}</span>{iconeGroupe(art)} {art}</> : base ? <>📍 {art}</> : lignesPar === "client" || lignesPar === "articleClient" ? <>👤 {art}</> : <>{emojiProduit(art)} {art}</>}
+                                  onClick={() => (titre ? basculerOuvert(art) : aSous ? basculerOuvert(cle) : ouvrirType(ficheType, base || art, undefined, "besoin"))}
+                                  title={titre || aSous ? "Déplier / replier" : ficheType === "client" ? "Ouvrir la fiche du client" : "Ouvrir la fiche du produit"}>
+                                  {titre ? <><span style={{ display: "inline-block", width: 14, color: "#305a55" }}>{ferme ? "▸" : "▾"}</span>{iconeGroupe(art)} {art}</>
+                                    : base ? <>📍 {art}</>
+                                    : <>{aSous && <span style={{ display: "inline-block", width: 14, color: "#305a55" }}>{ferme ? "▸" : "▾"}</span>}{ficheType === "client" ? "👤" : emojiProduit(art)} {art}
+                                      {aSous && <span onClick={e => { e.stopPropagation(); ouvrirType(ficheType, art, undefined, "besoin"); }} style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: "#305a55", textDecoration: "underline" }}>fiche ›</span>}</>}
                                 </td>
                                 {colonnes.map(col => { const x = cellule(r, col); return <td key={col.cle} style={{ ...td, textAlign: "right", fontWeight: titre ? 900 : undefined, fontSize: base ? 11.5 : undefined, borderTop: titre ? "2px solid #305a55" : undefined, color: x?.m ? "#b91c1c" : "#1f2937" }} title={x ? `Commandé ${x.q} · livré ${x.lv} · manquant ${x.m}` : ""}>{valeur(x)}</td>; })}
                                 <td style={{ ...td, textAlign: "right", fontWeight: 900, borderTop: titre ? "2px solid #305a55" : undefined, color: tm ? "#b91c1c" : undefined }}>{valeur({ q: tq, lv: tlv, m: tm })}</td>
@@ -1073,17 +1102,18 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                         </tbody>
                       </table>
                     </div>
-                    {tableau.length > nbLignesTab && (
+                    {visibles.length > nbLignesTab && (
                       <div style={{ display: "flex", gap: 8, justifyContent: "center", alignItems: "center", flexWrap: "wrap", marginTop: 8, fontSize: 12.5, color: "#6b7280" }}>
-                        {ent(nbLignesTab)} lignes sur {ent(tableau.length)}
+                        {ent(nbLignesTab)} lignes sur {ent(visibles.length)}
                         <button type="button" onClick={() => demarrer(() => setNbLignesTab(n => n + 300))} style={{ padding: "6px 12px", borderRadius: 9, border: "1.5px solid #305a55", background: "#fff", color: "#305a55", fontWeight: 800, cursor: "pointer" }}>Afficher 300 de plus</button>
-                        <button type="button" onClick={() => demarrer(() => setNbLignesTab(tableau.length))} style={{ border: "none", background: "none", color: "#305a55", fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}>Tout afficher</button>
+                        <button type="button" onClick={() => demarrer(() => setNbLignesTab(visibles.length))} style={{ border: "none", background: "none", color: "#305a55", fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}>Tout afficher</button>
                         <span>· l'export Excel / PDF contient tout</span>
                       </div>
                     )}
-                    <p style={{ fontSize: 11, color: "#9ca3af", margin: "8px 0 0" }}>Chiffres = colis livrés ; en rouge, il a manqué ce jour-là (cochez « voir aussi la demande » pour voir combien avait été demandé). Touchez une ligne verte (réf, client ou fournisseur) pour la replier, un article pour sa fiche. Fournisseur = celui qui a le plus fourni la réf en décembre 2025 (📊 Stats). Hors lignes « pas de commande » et doublons.</p>
+                    <p style={{ fontSize: 11, color: "#9ca3af", margin: "8px 0 0" }}>Chiffres = colis livrés (Geslot) ; en rouge, il a manqué ce jour-là (cochez « voir les manquants » pour voir combien). Touchez ▸ pour déplier. Touchez une ligne verte (réf, client ou fournisseur) pour la replier, un article pour sa fiche. Fournisseur = celui qui a le plus fourni la réf en décembre 2025 (📊 Stats). Hors lignes « pas de commande » et doublons.</p>
                   </div>
-  );
+    );
+  };
 
   const vide = don && !don.lignes.length;
   const nbScans = Object.keys(don?.scans || {}).length;
@@ -1128,12 +1158,15 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
               } : null;
               const sujet: Fiche = fiche || sujetSel || { type: "global", valeur: "Tout Noël 2025", filtre: () => true, filtreR: () => true, filtreL: () => true };
               const nbLit = don.litiges.filter(sujet.filtreL).length;
-              const onglets = [
+              const onglets = (vueCompleteNoel ? [
                 ["besoin", "📦", "Besoin", "Ce qui a été commandé", "#305a55", "#eef4f2"],
                 ["manque", "❌", "Manquants", "Ce qui n'a pas été livré", "#b91c1c", "#fef2f2"],
+              ] as const : [
+                ["besoin", "📦", "Commandes", "Livré, demandé, ce qui a manqué", "#305a55", "#eef4f2"],
+              ] as const).concat([
                 ["litiges", "⚠️", `Litiges (${nbLit})`, "Refus et litiges clients", "#ca8a04", "#fefce8"],
                 ["geslot", "🧾", "Geslot / scans", "Ventes Geslot vs commandes scannées", "#1d4ed8", "#eff6ff"],
-              ] as const;
+              ] as any) as readonly (readonly ["besoin" | "manque" | "litiges" | "geslot", string, string, string, string, string])[];
               return (
                 <>
                   <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(200px, 100%), 1fr))", gap: 8, marginBottom: 6 }}>

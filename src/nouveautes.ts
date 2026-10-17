@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 143, date: "18/10", pages: ["extractions"], texte: "🧹 Noël 2025 simplifié : 3 onglets (📦 Commandes, ⚠️ Litiges, 🧾 Geslot / scans) ; plus de « Compter » (toujours les livrés Geslot) ; le tableau se déplie en cliquant (produit ▸ clients ▸ bases, « commencer par Produits / Clients ») ; la case « voir les manquants » ajoute « −50 » en rouge là où il a manqué. « Vue complète » garde l'ancienne page." },
   { id: 142, date: "18/10", pages: ["extractions"], texte: "🧹 Noël 2025 › tableau jour par jour : il montre ce qui a été livré (en rouge s'il a manqué) ; cochez « voir aussi la demande » pour avoir « sur 120 » sous chaque chiffre. Plus de menu « Voir »." },
   { id: 141, date: "18/10", pages: ["extractions"], texte: "✂️ Noël 2025 : le « taux de service » est retiré partout (chiffres du haut, menu « Voir » du tableau, colonne des exports Excel / PDF)." },
   { id: 140, date: "18/10", pages: ["extractions"], texte: "🧹 Noël 2025 › tableau du besoin : les réglages tiennent sur une ligne qui se lit comme une phrase — « Voir [le besoin] rangé [par réf › client] [jour par jour] du [01/12] au [06/01] » — exports à droite, « tout replier » dans l'en-tête du tableau." },
