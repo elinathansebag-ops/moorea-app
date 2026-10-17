@@ -475,38 +475,42 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     );
   };
   const topManques = (ls: Ligne[], par: "a" | "c", n = 12) => {
-    const m = new Map<string, { q: number; m: number }>(); ls.filter(compte).forEach(l => { const k = (par === "a" ? l.a : l.c) || "—"; const x = m.get(k) || { q: 0, m: 0 }; x.q += l.q; x.m += l.m; m.set(k, x); });
+    const m = new Map<string, { q: number; lv: number; m: number }>(); ls.filter(compte).forEach(l => { const k = (par === "a" ? l.a : l.c) || "—"; const x = m.get(k) || { q: 0, lv: 0, m: 0 }; x.q += l.q; x.lv += l.lv; x.m += l.m; m.set(k, x); });
     return [...m].filter(([, x]) => x.m > 0).sort((a, b) => b[1].m - a[1].m).slice(0, n);
   };
   const topCommandes = (ls: Ligne[], par: "a" | "c", n = 15) => {
-    const m = new Map<string, { q: number; m: number }>(); ls.filter(compte).forEach(l => { const k = (par === "a" ? l.a : l.c) || "—"; const x = m.get(k) || { q: 0, m: 0 }; x.q += l.q; x.m += l.m; m.set(k, x); });
+    const m = new Map<string, { q: number; lv: number; m: number }>(); ls.filter(compte).forEach(l => { const k = (par === "a" ? l.a : l.c) || "—"; const x = m.get(k) || { q: 0, lv: 0, m: 0 }; x.q += l.q; x.lv += l.lv; x.m += l.m; m.set(k, x); });
     return [...m].filter(([, x]) => x.q > 0).sort((a, b) => b[1].q - a[1].q).slice(0, n);
   };
-  const listeTop = (titre: string, items: [string, { q: number; m: number }][], type: "article" | "client", besoin?: boolean) => (
+  // 18/10/2026 — « mets des colonnes : ce qu'ils ont commandé, ce qu'on a livré, ce qui a manqué ; un truc
+  // simple qu'un enfant pourrait comprendre » : un petit tableau à 3 colonnes. Touchez une ligne = sa fiche.
+  const listeTop = (titre: string, items: [string, { q: number; lv: number; m: number }][], type: "article" | "client", besoin?: boolean) => (
     <div style={carte}>
       <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 10 }}>{titre}</div>
-      {!items.length && <div style={{ fontSize: 13, color: "#15803d", fontWeight: 700 }}>{besoin ? "Aucune commande" : "✅ Rien n'a manqué"}</div>}
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        {items.map(([k, x]) => besoin ? (
-          <button key={k} type="button" onClick={() => ouvrirType(type, k, undefined, "besoin")} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 10px", borderRadius: 10, border: "1px solid #e5ece9", background: "#fff", cursor: "pointer", textAlign: "left" }}>
-            <span style={{ fontSize: 18 }}>{type === "article" ? emojiProduit(k) : "👤"}</span>
-            <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: "#1a2e1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={k}>{k}</span>
-            <span style={{ fontSize: 13.5, fontWeight: 900, color: "#305a55", whiteSpace: "nowrap" }}>{ent(x.q)} colis</span>
-            {x.m > 0 && <span style={{ fontSize: 11, color: "#dc2626", whiteSpace: "nowrap" }}>dont −{ent(x.m)}</span>}
-          </button>
-        ) : (
-          <button key={k} type="button" onClick={() => ouvrirType(type, k)} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 10px", borderRadius: 10, border: "1px solid #f3e8e8", background: "#fff", cursor: "pointer", textAlign: "left" }}>
-            <span style={{ fontSize: 18 }}>{type === "article" ? emojiProduit(k) : "👤"}</span>
-            <span style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: "#1a2e1a", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={k}>{k}</span>
-            <span style={{ fontSize: 13.5, fontWeight: 900, color: "#dc2626", whiteSpace: "nowrap" }}>−{ent(x.m)}</span>
-            <span style={{ fontSize: 11, color: "#9ca3af", whiteSpace: "nowrap" }}>sur {ent(x.q)}</span>
-          </button>
-        ))}
-      </div>
+      {!items.length ? <div style={{ fontSize: 13, color: "#15803d", fontWeight: 700 }}>{besoin ? "Aucune commande" : "✅ Rien n'a manqué"}</div> : (
+        <div style={{ overflowX: "auto" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13.5 }}>
+            <thead><tr>
+              <th style={{ ...th, fontSize: 12 }}>{type === "article" ? "Produit" : "Client"}</th>
+              <th style={{ ...th, fontSize: 12, textAlign: "right" }}>📦 Commandé</th>
+              <th style={{ ...th, fontSize: 12, textAlign: "right", color: "#15803d" }}>✅ Livré</th>
+              <th style={{ ...th, fontSize: 12, textAlign: "right", color: "#dc2626" }}>❌ Manqué</th>
+            </tr></thead>
+            <tbody>
+              {items.map(([k, x]) => (
+                <tr key={k} onClick={() => ouvrirType(type, k, undefined, "besoin")} style={{ cursor: "pointer" }} title="Ouvrir la fiche">
+                  <td style={{ ...td, fontWeight: 700, maxWidth: 320, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{type === "article" ? emojiProduit(k) : "👤"} {k}</td>
+                  <td style={{ ...td, textAlign: "right", fontWeight: 800 }}>{ent(x.q)}</td>
+                  <td style={{ ...td, textAlign: "right", fontWeight: 800, color: "#15803d" }}>{ent(x.lv)}</td>
+                  <td style={{ ...td, textAlign: "right", fontWeight: 900, color: "#dc2626" }}>{x.m ? ent(x.m) : ""}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
-
-  // ── Fiche (client, article, famille, jour, BL / commande) ──
   const ligneCmd = (k: string, g: Ligne[], dansBase: boolean) => {
     const l0 = g[0], t = g.filter(compte).reduce((a, l) => ({ q: a.q + l.q, m: a.m + l.m }), { q: 0, m: 0 }), ouvert = cmdOuverte === k;
     return (
@@ -684,10 +688,10 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     };
     const lsGraph = f.base ? source.filter(f.base.filtre) : ls;
     const optsD = ([
+      // 18/10/2026 — « je comprends pas ces onglets » : 3 noms qui disent ce qu'on voit.
       ...(besoin ? [["tableau", "📅 Jour par jour"]] : []),
-      ...(besoin && !vueCompleteNoel && f.type !== "bl" ? [["manques", `❌ Ce qui a manqué${tot.m ? ` (${ent(tot.m)})` : ""}`]] : []),
-      ...(f.type !== "bl" ? [["listes", besoin ? "👥 Clients & produits" : "❌ Produits & clients touchés"]] : []),
-      ...(!global ? [["commandes", `🧾 Commandes (${listeCmds.length})`]] : []),
+      ...(f.type !== "bl" ? [["listes", besoin ? "📋 Total par client et produit" : "❌ Produits & clients touchés"]] : []),
+      ...(!global ? [["commandes", `🧾 Bons de commande (${listeCmds.length})`]] : []),
     ] as [typeof detailNoel, string][]);
     const dEff = optsD.some(([k]) => k === detailNoel) ? detailNoel : optsD[0]?.[0];
     const voirD = (k: typeof detailNoel) => vueCompleteNoel || dEff === k;
@@ -816,8 +820,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             )}
             {f.type !== "bl" && voirD("listes") && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap: 14, marginTop: 14 }}>
-                {f.type !== "client" && listeTop("👤 Clients qui commandent le plus", topCommandes(ls, "c"), "client", true)}
-                {f.type !== "article" && listeTop("📦 Produits les plus commandés", topCommandes(ls, "a"), "article", true)}
+                {f.type !== "client" && listeTop("👤 Par client", topCommandes(ls, "c", 40), "client", true)}
+                {f.type !== "article" && listeTop("🥬 Par produit", topCommandes(ls, "a", 40), "article", true)}
               </div>
             )}
           </>
@@ -854,7 +858,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
         {!global && !vueLitiges && !vueGeslot && voirD("commandes") && (
         <div style={{ ...carte, marginTop: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
-            <div style={{ fontSize: 15, fontWeight: 900, flex: 1 }}>🧾 Les commandes ({listeCmds.length})</div>
+            <div style={{ fontSize: 15, fontWeight: 900, flex: 1 }}>🧾 Bons de commande reçus ({listeCmds.length}) <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— les commandes mail / papier des clients, avec le scan</span></div>
             <div style={{ display: "flex", border: "1.5px solid #305a55", borderRadius: 9, overflow: "hidden" }}>
               {([["base", "📍 Par base"], ["date", "📅 Par date"]] as const).map(([v, t]) => (
                 <button key={v} type="button" onClick={() => setVueCmds(v)} style={{ padding: "5px 11px", border: "none", fontSize: 12.5, fontWeight: 800, cursor: "pointer", background: vueCmds === v ? "#305a55" : "#fff", color: vueCmds === v ? "#fff" : "#305a55" }}>{t}</button>
