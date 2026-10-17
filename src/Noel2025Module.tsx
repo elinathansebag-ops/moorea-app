@@ -31,6 +31,17 @@ const compte = (l: Ligne) => !/^pas de commande/i.test(l.st) && !/^doublon/i.tes
 const dIso = (fr: string) => { const m = fr.match(/^(\d{2})\/(\d{2})\/(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : fr; };
 const jjmm = (iso: string) => (iso.length >= 10 ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : iso);
 const ent = (n: number) => Math.round(n).toLocaleString("fr-FR");
+// 18/10/2026 — Demande d'Elinathan : « Noël, augmente les dates du 01/12 au 06/01/26 ». Les scans ne couvrent
+// que le 08/12 → 30/12 ; avant / après, seules les ventes Geslot existent (mode « Commandes Geslot »).
+const DEBUT_NOEL = "2025-12-01", FIN_NOEL = "2026-01-06";
+const jjmmaaaa = (iso: string) => (iso.length >= 10 ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}/${iso.slice(0, 4)}` : iso);
+// 18/10/2026 — « nomme les fichiers téléchargés par le nom de la recherche » : le fichier commence par ce
+// qui a été cherché (client, réf, sélection…), puis ce qu'il contient.
+const nomFichierNoel = (recherche: string | undefined, contenu: string) => {
+  const r = String(recherche || "").replace(/^Tout Noël 2025$/, "").trim();
+  return `${r ? `${r.length > 85 ? r.slice(0, 84) + "…" : r} - ` : ""}Noel 2025 - ${contenu}`;
+};
+const periodeTxt = (a?: string, b?: string) => `Livraisons du ${jjmmaaaa(a || DEBUT_NOEL)} au ${jjmmaaaa(b || FIN_NOEL)}`;
 // Semaine ISO d'un jour « AAAA-MM-JJ » → « 2025-51 » (triable).
 const semaineIso = (iso: string) => {
   const d = new Date(iso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
@@ -46,8 +57,8 @@ let cache: Promise<Donnees> | null = null;
 type VenteGeslot = { a: string; c: string; d: string; colis: number; mtVente?: number };
 let cacheGeslot: Promise<VenteGeslot[]> | null = null;
 function chargerGeslot(): Promise<VenteGeslot[]> {
-  if (!cacheGeslot) cacheGeslot = fetch("/api/reference-ventes").then(r => { if (!r.ok) throw new Error(`ventes Geslot indisponibles (HTTP ${r.status})`); return r.json(); })
-    .then((v: any) => (Array.isArray(v) ? v : []).filter((x: any) => x && x.d >= "2025-12-01" && x.d <= "2026-01-10"))
+  if (!cacheGeslot) cacheGeslot = fetch("/api/reference-ventes?periode=noel").then(r => { if (!r.ok) throw new Error(`ventes Geslot indisponibles (HTTP ${r.status})`); return r.json(); })
+    .then((v: any) => (Array.isArray(v) ? v : []).filter((x: any) => x && x.d >= DEBUT_NOEL && x.d <= FIN_NOEL))
     .catch(e => { cacheGeslot = null; throw e; });
   return cacheGeslot;
 }
@@ -217,6 +228,10 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const [tFamilles, setTFamilles] = useState<string[]>([]);
   const [tFournisseurs, setTFournisseurs] = useState<string[]>([]);
   const [periode, setPeriode] = useState<{ du: string; au: string }>({ du: "", au: "" });
+  // 18/10/2026 — « quand je fais une extraction avec 2 réfs, je veux que les réfs soient cumulées » :
+  // plusieurs articles cochés = une seule ligne « réf A + réf B » (bascule pour les revoir séparées).
+  const [cumulRefs, setCumulRefsEtat] = useState(() => { try { return localStorage.getItem("noel-cumul") !== "non"; } catch { return true; } });
+  const setCumulRefs = (v: boolean) => { setCumulRefsEtat(v); try { localStorage.setItem("noel-cumul", v ? "oui" : "non"); } catch { /* */ } };
   const [lignesPar, setLignesPar] = useState<"article" | "articleClient" | "clientArticle" | "fournisseurArticle" | "client">("articleClient");
   // 16/10/2026 — « dans la page fournisseur, Fournisseur × réf ne sert à rien » : seules les vues utiles
   // pour le sujet ouvert sont proposées (un seul fournisseur / article / client → pas de regroupement par lui).
@@ -265,7 +280,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     return () => { fini = true; };
   }, [don]);
   const lignes = useMemo(() => (don?.lignes || []).filter(compte), [don]);
-  const jours = useMemo(() => [...new Set(lignes.map(l => l.d).filter(Boolean))].sort(), [lignes]);
+  const jours = useMemo(() => [...new Set([...lignes.map(l => l.d), ...(ventesGeslot || []).filter(v => (Number(v.colis) || 0) > 0).map(v => v.d)].filter(d => d && d >= DEBUT_NOEL && d <= FIN_NOEL))].sort(), [lignes, ventesGeslot]);
 
   useEffect(() => {
     if (!don || ventesGeslot || erreurGeslot) return; // chargées dès l'ouverture (commandes prises au téléphone : pas de scan)
@@ -278,7 +293,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const vote = new Map<string, Map<string, number>>(), fam = new Map<string, string>();
     don.lignes.forEach(l => { const k = nomGeslot(l.cf); if (l.a && l.f) fam.set(l.a, l.f); if (!k || !l.c) return; const m = vote.get(k) || new Map<string, number>(); m.set(l.c, (m.get(l.c) || 0) + 1); vote.set(k, m); });
     const enseigne = new Map([...vote].map(([k, m]) => [k, [...m].sort((a, b) => b[1] - a[1])[0][0]]));
-    const d0 = jours[0], d1 = jours[jours.length - 1];
+    const d0 = DEBUT_NOEL, d1 = FIN_NOEL;
     return ventesGeslot.filter(v => v.d >= d0 && v.d <= d1 && (Number(v.colis) || 0) > 0).map((v, k) => {
       const c = enseigne.get(nomGeslot(v.c)) || nomGeslot(v.c), q = Number(v.colis) || 0;
       return { i: `g${k}`, d: v.d, c, cf: v.c, s: "", n: "", cc: "", l: v.a, o: "", q, u: "", lv: q, m: 0, st: "geslot", an: "", rq: "", f: fam.get(v.a) || "", ca: "", a: v.a, src: "geslot", bl: "", v: "", pdf: "", scan: "", p: "" };
@@ -330,7 +345,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const extra = (q: string): Option[] => {
     const t = q.trim(); const out: Option[] = [];
     const j = t.match(/^(\d{1,2})[/.-](\d{1,2})/);
-    if (j) { const iso = `2025-${j[2].padStart(2, "0")}-${j[1].padStart(2, "0")}`; if (jours.includes(iso)) out.push({ type: "jour", valeur: `Livraisons du ${jjmm(iso)}/2025`, detail: "Tout ce qui a été commandé, livré et manqué ce jour-là", cle: iso } as any); }
+    if (j) { const iso = `${+j[2] === 1 ? 2026 : 2025}-${j[2].padStart(2, "0")}-${j[1].padStart(2, "0")}`; if (jours.includes(iso)) out.push({ type: "jour", valeur: `Livraisons du ${jjmmaaaa(iso)}`, detail: "Tout ce qui a été commandé, livré et manqué ce jour-là", cle: iso } as any); }
     const ch = t.replace(/\D/g, "");
     if (ch.length >= 5 && don) {
       const bls = new Set<string>();
@@ -372,7 +387,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const exporter = async (format: "excel" | "pdf" | "imprimer", titre: string, ls: Ligne[]) => {
     const { exporterExcelMoorea, exporterPdfMoorea, imprimerPdfMoorea } = await import("./exportsMoorea");
     const e = {
-      nomFichier: `Noel 2025 - ${titre}`, titre: `Commandes Noël 2025 — ${titre}`, sousTitre: "Livraisons du 08/12 au 30/12/2025",
+      nomFichier: nomFichierNoel(titre, "commandes"), titre: `Commandes Noël 2025 — ${titre}`, sousTitre: periodeTxt(jours[0], jours[jours.length - 1]),
       entetes: ["Date", "Client", "Site", "N° commande", "Article", "Colis commandés", "Colis livrés", "Colis manquants", "Statut", "BL"],
       lignes: ls.filter(compte).sort((a, b) => a.d.localeCompare(b.d) || a.c.localeCompare(b.c)).map(l => [jjmm(l.d), l.c, l.s, l.n, l.a || l.l, l.q, l.lv, l.m, l.st, l.bl]),
       total: ["TOTAL", "", "", "", "", ls.filter(compte).reduce((t, l) => t + l.q, 0), ls.filter(compte).reduce((t, l) => t + l.lv, 0), ls.filter(compte).reduce((t, l) => t + l.m, 0), "", ""],
@@ -520,7 +535,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   // ── 🧾 Geslot / scans : les deux sources côte à côte, jamais additionnées ──
   const rendreComparaison = (f: Fiche) => {
     if (erreurGeslot) return <div style={{ ...carte, color: "#b91c1c", fontWeight: 700 }}>Ventes Geslot indisponibles : {erreurGeslot}</div>;
-    if (!ventesGeslot) return <p style={{ textAlign: "center", color: "#9ca3af", padding: 30 }}>🧾 Chargement des ventes Geslot de décembre 2025…</p>;
+    if (!ventesGeslot) return <p style={{ textAlign: "center", color: "#9ca3af", padding: 30 }}>🧾 Chargement des ventes Geslot du 01/12/2025 au 06/01/2026…</p>;
     const gs = lignesGeslot.filter(f.filtre), sc = (don?.lignes || []).filter(f.filtre).filter(compte);
     const tg = gs.reduce((t, l) => t + l.q, 0), tq = sc.reduce((t, l) => t + l.q, 0), tlv = sc.reduce((t, l) => t + l.lv, 0);
     const cleCJ = (l: Ligne) => `${l.c}|${l.d}`, scannes = new Set(sc.map(cleCJ));
@@ -543,7 +558,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const exporterComp = async (format: "excel" | "pdf" | "imprimer") => {
       const { exporterExcelMoorea, exporterPdfMoorea, imprimerPdfMoorea } = await import("./exportsMoorea");
       const lib = { client: "Client", jour: "Jour", article: "Article" }[compPar];
-      const e = { nomFichier: `Noel 2025 - Geslot vs scans - ${f.valeur}`, titre: `Noël 2025 — Geslot / commandes scannées — ${f.valeur}`, sousTitre: `Livraisons du ${jjmm(jours[0] || "")} au ${jjmm(jours[jours.length - 1] || "")}/2025 · colis`,
+      const e = { nomFichier: nomFichierNoel(f.valeur, "Geslot vs scans"), titre: `Noël 2025 — Geslot / commandes scannées — ${f.valeur}`, sousTitre: `${periodeTxt(jours[0], jours[jours.length - 1])} · colis`,
         entetes: [lib, "Livré Geslot", "Commandé (scans)", "Livré (scans)", "Écart Geslot − livré scans", ...(compPar !== "jour" ? ["Jours Geslot", "Jours scannés"] : []), "Statut"],
         lignes: lignesT.map(([k, a]) => [compPar === "jour" ? jjmm(k) : k, Math.round(a.g), a.q, a.lv, Math.round(a.g - a.lv), ...(compPar !== "jour" ? [a.jg.size, a.js.size] : []), statut(a)[0].replace(/^\S+\s/, "")]),
         total: ["TOTAL", Math.round(tg), tq, tlv, Math.round(tg - tlv), ...(compPar !== "jour" ? ["", ""] : []), ""] };
@@ -856,7 +871,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const construireTableau = (filtrees: Ligne[]): LigneTab[] => {
     const ajouter = (r: Cellules, l: Ligne) => { const x = r[l.d] || { q: 0, lv: 0, m: 0 }; x.q += l.q; x.lv += l.lv; x.m += l.m; r[l.d] = x; };
     const totaliser = (r: Cellules) => Object.values(r).reduce((t, x) => ({ tq: t.tq + x.q, tlv: t.tlv + x.lv, tm: t.tm + x.m }), { tq: 0, tlv: 0, tm: 0 });
-    const nomArt = (l: Ligne) => l.a || `(${l.l})`;
+    const refsCumulees = cumulRefs && tArticles.length > 1 ? tArticles.join(" + ") : "";
+    const nomArt = (l: Ligne) => (refsCumulees && tArticles.includes(l.a) ? refsCumulees : l.a || `(${l.l})`);
     const groupeDe = (l: Ligne) => (lignesPar === "fournisseurArticle" ? fournisseurDe[l.a] || "Fournisseur inconnu" : lignesPar === "articleClient" ? nomArt(l) : l.c || "—");
     const sousCle = (l: Ligne) => (lignesPar === "articleClient" ? l.c || "—" : nomArt(l));
     if (lignesPar !== "clientArticle" && lignesPar !== "fournisseurArticle" && lignesPar !== "articleClient") {
@@ -944,8 +960,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
         couleurs.push("#B91C1C"); fonds.push("#FEF2F2"); gras.push(true); bandes.push(k);
       }
     });
-    const e = { nomFichier: `Noel 2025 - ${lib} ${par}${seul ? ` - ${seul}` : ""}`, titre: `Noël 2025 — colis ${lib} ${par}`,
-      sousTitre: `Livraisons du ${jjmm(joursT[0] || "")} au ${jjmm(joursT[joursT.length - 1] || "")}/2025`,
+    const e = { nomFichier: nomFichierNoel(sujet || seul, `${lib} ${par}`), titre: `Noël 2025 — colis ${lib} ${par}`,
+      sousTitre: periodeTxt(joursT[0], joursT[joursT.length - 1]),
       filtres,
       entetes: [...(deux ? [nomG] : []), lignesPar === "client" || lignesPar === "articleClient" ? "Client" : "Article", ...(lignesPar === "articleClient" ? ["Base"] : []), ...(avecManq ? ["Détail"] : []),
         ...colonnes.map(c => (c.sous ? `${c.lib} (${c.sous})` : c.lib)), "Total commandé", "Total livré", "Manquant", "Taux de service"],
@@ -964,6 +980,13 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                           <button key={v} type="button" onClick={() => setLignesPar(v)} style={{ padding: "7px 11px", border: "none", background: lignesPar === v ? "#305a55" : "#fff", color: lignesPar === v ? "#fff" : "#305a55", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>{lib}</button>
                         ))}
                       </span>
+                      {tArticles.length > 1 && (
+                        <span style={{ display: "inline-flex", border: "1.5px solid #305a55", borderRadius: 9, overflow: "hidden" }}>
+                          {([[true, "➕ Réfs cumulées"], [false, "↔️ Réfs séparées"]] as const).map(([v, lib]) => (
+                            <button key={lib} type="button" onClick={() => setCumulRefs(v)} style={{ padding: "7px 11px", border: "none", background: cumulRefs === v ? "#305a55" : "#fff", color: cumulRefs === v ? "#fff" : "#305a55", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>{lib}</button>
+                          ))}
+                        </span>
+                      )}
                       {groupe && (
                         <button type="button" onClick={() => setClientsFermes(f => (Object.keys(f).length ? {} : Object.fromEntries(tableau.filter(x => x.titre).map(x => [x.art, true]))))}
                           style={{ padding: "7px 11px", borderRadius: 9, border: "1.5px solid #e8e0d0", background: "#fff", color: "#374151", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>{Object.keys(clientsFermes).length ? "▾ Tout déplier" : "▸ Tout replier"}</button>

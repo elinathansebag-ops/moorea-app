@@ -155,6 +155,14 @@ export async function exporterPdfMoorea(e: ExportMoorea, mode: "telecharger" | "
       // Place restante : d'abord aux colonnes de texte (jusqu'à leur largeur utile), puis à tout le monde.
       let reste = dispo - largeurs.reduce((a, b) => a + b, 0);
       if (reste > 0) largeurs = largeurs.map((l, i) => { if (types[i] !== "texte" || reste <= 0) return l; const plus = Math.min(reste, Math.max(0, Math.min(besoins[i], 90) - l)); reste -= plus; return l + plus; });
+      // 18/10/2026 — « Comm-andés » coupé en deux : une colonne de texte plus étroite que son mot le plus long
+      // reprend la place sur les autres colonnes de texte qui en ont de trop.
+      const manque = largeurs.reduce((t, l, i) => t + (types[i] === "texte" ? Math.max(0, motMax[i] - l) : 0), 0);
+      if (manque > 0) {
+        const surplus = largeurs.reduce((t, l, i) => t + (types[i] === "texte" ? Math.max(0, l - motMax[i]) : 0), 0);
+        const part = surplus > 0 ? Math.min(1, manque / surplus) : 0;
+        largeurs = largeurs.map((l, i) => types[i] !== "texte" ? l : l < motMax[i] ? motMax[i] : l - (l - motMax[i]) * part);
+      }
       const tot = largeurs.reduce((a, b) => a + b, 0);
       if (tot !== dispo) largeurs = largeurs.map(l => l * dispo / tot);
       break;
