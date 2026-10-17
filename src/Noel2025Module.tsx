@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { db, ref, get, update, set, stockage } from "./firebase";
 import { PageHeader } from "./shared";
 import { RechercheIntelligente, emojiProduit, type Option, type Couleurs } from "./Extractions";
@@ -197,12 +197,19 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const [erreur, setErreur] = useState("");
   // 16/10/2026 — « les onglets doivent être des onglets de la recherche » : ce qui est dans la recherche
   // (fiche ouverte, ou cases cochées, ou rien = tout Noël) est le SUJET ; les onglets en sont trois vues.
-  const [vue, setVue] = useState<"besoin" | "manque" | "litiges" | "geslot">("besoin"); // 18/10/2026 : Besoin par défaut
+  const [vue, setVueEtat] = useState<"besoin" | "manque" | "litiges" | "geslot">("besoin"); // 18/10/2026 : Besoin par défaut
+  // 18/10/2026 — « passer d'un bloc à un autre, ça lague » : les changements d'onglet / de fiche sont des
+  // transitions (le bouton répond tout de suite, le calcul suit) et le tableau du besoin n'affiche que
+  // ses 150 premières lignes (bouton pour en voir plus ; les exports gardent tout).
+  const [calculEnCours, demarrer] = useTransition();
+  const setVue = (v: "besoin" | "manque" | "litiges" | "geslot") => demarrer(() => setVueEtat(v));
+  const [nbLignesTab, setNbLignesTab] = useState(150);
   // 18/10/2026 — « les pages sont très compliquées, trop d'infos dans tous les sens » : explications repliées,
   // et sous le graphique un seul détail à la fois (clients & produits / tableau / commandes / litiges).
   // « Vue complète » remet tout à la suite comme avant.
   const [explications, setExplications] = useState(false);
-  const [detailNoel, setDetailNoel] = useState<"listes" | "tableau" | "commandes" | "litiges">("tableau");
+  const [detailNoel, setDetailNoelEtat] = useState<"listes" | "tableau" | "commandes" | "litiges">("tableau");
+  const setDetailNoel = (v: "listes" | "tableau" | "commandes" | "litiges") => demarrer(() => setDetailNoelEtat(v));
   const [vueCompleteNoel, setVueCompleteNoelEtat] = useState(() => { try { return localStorage.getItem("noel-vue") === "complete"; } catch { return false; } });
   const setVueCompleteNoel = (v: boolean) => { setVueCompleteNoelEtat(v); try { localStorage.setItem("noel-vue", v ? "complete" : "simple"); } catch { /* */ } };
   const [ventesGeslot, setVentesGeslot] = useState<VenteGeslot[] | null>(null);
@@ -211,12 +218,13 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   // 16/10/2026 — « 5 colis en mail ou appel et 5 colis Geslot = 5, pas 10 » : Besoin / Manquants peuvent
   // compter les scans + le complément Geslot SANS DOUBLON (voir lignesComplement).
   const [avecGeslot, setAvecGeslotEtat] = useState(() => { try { return localStorage.getItem("noel-source") !== "scans"; } catch { return true; } });
-  const setAvecGeslot = (v: boolean) => { setAvecGeslotEtat(v); try { localStorage.setItem("noel-source", v ? "total" : "scans"); } catch { /* */ } };
+  const setAvecGeslot = (v: boolean) => { demarrer(() => setAvecGeslotEtat(v)); try { localStorage.setItem("noel-source", v ? "total" : "scans"); } catch { /* */ } };
   const [fiche, setFiche] = useState<Fiche | null>(null);
   // 16/10/2026 — « je clique sur un jour du diagramme, je ne peux pas revenir en arrière » : les fiches
   // ouvertes depuis une fiche s'empilent ; « ← Retour » revient à la précédente.
   const [historique, setHistorique] = useState<Fiche[]>([]);
-  const allerA = (nf: Fiche) => { if (fiche) setHistorique(h => [...h, fiche]); setFiche(nf); window.scrollTo(0, 0); };
+  const allerA = (nf: Fiche) => { demarrer(() => { if (fiche) setHistorique(h => [...h, fiche]); setFiche(nf); }); window.scrollTo(0, 0); };
+  useEffect(() => { setNbLignesTab(150); }, [fiche, vue]);
   const fermerFiche = () => { setHistorique([]); setFiche(null); };
   const revenir = () => {
     if (!historique.length) { fermerFiche(); return; }
@@ -335,6 +343,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     return { lignesScanGeslot, lignesComplement };
   }, [lignesGeslot, don]);
 
+  const sourceGeslot = useMemo(() => [...lignesScanGeslot, ...lignesComplement], [lignesScanGeslot, lignesComplement]);
   // Options de la recherche intelligente.
   const options = useMemo(() => {
     const m = new Map<string, Option>();
@@ -646,7 +655,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
 
   const rendreFiche = (f: Fiche) => {
     const avecCompl = avecGeslot && (vue === "besoin" || vue === "manque");
-    const source = avecCompl && lignesScanGeslot.length ? [...lignesScanGeslot, ...lignesComplement] : (don?.lignes || []);
+    const source = avecCompl && lignesScanGeslot.length ? sourceGeslot : (don?.lignes || []);
     const ls = source.filter(f.filtre), lc = ls.filter(compte);
     const tot = lc.reduce((t, l) => ({ q: t.q + l.q, lv: t.lv + l.lv, m: t.m + l.m }), { q: 0, lv: 0, m: 0 });
     const lits = (don?.litiges || []).filter(f.filtreL);
@@ -655,7 +664,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const icone = f.type === "article" ? emojiProduit(f.valeur) : TITRES[f.type] || "🔎";
     const besoin = vue === "besoin", vueLitiges = vue === "litiges", vueGeslot = vue === "geslot", global = f.type === "global";
     const nbClients = new Set(lc.map(l => l.c)).size;
-    const tableBesoin = <div style={{ marginTop: 14 }}>{carteBesoin(construireTableau(lc.filter(l => (!periode.du || l.d >= periode.du) && (!periode.au || l.d <= periode.au))),
+    const tableBesoin = () => <div style={{ marginTop: 14 }}>{carteBesoin(construireTableau(lc.filter(l => (!periode.du || l.d >= periode.du) && (!periode.au || l.d <= periode.au))),
       <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 10 }}>📅 Besoin jour par jour <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— {f.valeur}</span></div>, f.valeur)}</div>;
     // Fiche d'un jour : le graphique garde tous les jours de la fiche d'origine (jour choisi en évidence) ;
     // toucher un autre jour change de jour, retoucher le même revient à la fiche complète.
@@ -790,7 +799,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
               {barresBesoin(lsGraph, surJour, jours, f.jourChoisi)}
             </div>
             {barreDetail}
-            {voirD("tableau") && tableBesoin}
+            {voirD("tableau") && tableBesoin()}
             {f.type !== "bl" && voirD("listes") && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap: 14, marginTop: 14 }}>
                 {f.type !== "client" && listeTop("👤 Clients qui commandent le plus", topCommandes(ls, "c"), "client", true)}
@@ -1049,7 +1058,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                         </tr></thead>
                         <tbody>
                           {!tableau.length && <tr><td style={{ ...td, color: "#9ca3af" }} colSpan={colonnes.length + 2}>Rien pour cette sélection.</td></tr>}
-                          {tableau.map(({ cle, art, client, titre, base, r, tq, tm, tlv }) => {
+                          {tableau.slice(0, nbLignesTab).map(({ cle, art, client, titre, base, r, tq, tm, tlv }) => {
                             const ferme = titre && clientsFermes[art];
                             const fond = titre ? "#eef4f2" : "#fff";
                             return (
@@ -1067,6 +1076,14 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                         </tbody>
                       </table>
                     </div>
+                    {tableau.length > nbLignesTab && (
+                      <div style={{ display: "flex", gap: 8, justifyContent: "center", alignItems: "center", flexWrap: "wrap", marginTop: 8, fontSize: 12.5, color: "#6b7280" }}>
+                        {ent(nbLignesTab)} lignes sur {ent(tableau.length)}
+                        <button type="button" onClick={() => demarrer(() => setNbLignesTab(n => n + 300))} style={{ padding: "6px 12px", borderRadius: 9, border: "1.5px solid #305a55", background: "#fff", color: "#305a55", fontWeight: 800, cursor: "pointer" }}>Afficher 300 de plus</button>
+                        <button type="button" onClick={() => demarrer(() => setNbLignesTab(tableau.length))} style={{ border: "none", background: "none", color: "#305a55", fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}>Tout afficher</button>
+                        <span>· l'export Excel / PDF contient tout</span>
+                      </div>
+                    )}
                     <p style={{ fontSize: 11, color: "#9ca3af", margin: "8px 0 0" }}>Besoin = colis commandés par le client. Rouge = il a manqué ce jour-là. Touchez une ligne verte (réf, client ou fournisseur) pour la replier, un article pour sa fiche. Fournisseur = celui qui a le plus fourni la réf en décembre 2025 (📊 Stats). Hors lignes « pas de commande » et doublons.</p>
                   </div>
   );
@@ -1078,6 +1095,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     // 18/10/2026 — « changer le fond de l'appli en fonction de l'onglet » : vert Besoin, rouge Manquants,
     // jaune Litiges, bleu Geslot / scans (teintes pâles, les cartes restent blanches).
     <div style={{ minHeight: "100vh", background: { besoin: "#e3f0e8", manque: "#fbe5e5", litiges: "#fbf1c7", geslot: "#e2eafb" }[vue], transition: "background .25s" }}>
+      {calculEnCours && <div style={{ position: "fixed", top: 76, left: "50%", transform: "translateX(-50%)", zIndex: 50, padding: "6px 14px", borderRadius: 99, background: "#305a55", color: "#fff", fontSize: 13, fontWeight: 800, boxShadow: "0 4px 14px rgba(0,0,0,.2)" }}>⏳ Calcul…</div>}
       <PageHeader titre="🎄 Commandes Noël 2025" couleur="#305a55" onBack={fiche ? revenir : onClose} onHome={onClose} />
       <div style={{ maxWidth: 1250, margin: "0 auto", padding: "16px 16px 60px", boxSizing: "border-box" }}>
         {erreur && <div style={{ ...carte, color: "#b91c1c", fontWeight: 700 }}>Lecture impossible : {erreur}</div>}
