@@ -700,7 +700,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
           // apporte, combien de colis, et sa fiabilité mesurée (scans retrouvés dans les factures Geslot).
           const scanL = lc.filter(l => l.st !== "hors scan");
           const sc = scanL.reduce((t, l) => ({ q: t.q + l.q, lv: t.lv + l.lv, m: t.m + l.m }), { q: 0, lv: 0, m: 0 });
-          const compl = avecCompl ? lc.filter(l => l.st === "hors scan").reduce((t, l) => t + l.q, 0) : lignesComplement.filter(f.filtre).reduce((t, l) => t + l.q, 0);
+          const compl = lignesComplement.filter(f.filtre).reduce((t, l) => t + l.q, 0);
           // Geslot du sujet ; un sujet que Geslot ne connaît pas (BL, base…) est vérifié sur les factures des mêmes clients.
           let gesSujet = lignesGeslot.filter(f.filtre), estime = false;
           if (!gesSujet.length && scanL.length) { const cl = new Set(scanL.map(l => l.c)); gesSujet = lignesGeslot.filter(l => cl.has(l.c)); estime = true; }
@@ -714,18 +714,37 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             <div style={{ ...carte, marginTop: 12, marginBottom: 0, padding: "12px 14px", borderColor: "#93c5fd", background: "#eff6ff", color: "#1e3a8a", fontSize: 13 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
                 <span style={{ fontWeight: 900, fontSize: 14 }}>🔢 Quels chiffres sont comptés ?</span>
-                <span style={{ display: "inline-flex", border: "1.5px solid #1d4ed8", borderRadius: 9, overflow: "hidden" }}>
-                  {([[false, "📄 Scans seulement"], [true, "🟰 Scans + Geslot (sans doublon)"]] as const).map(([v, lib]) => (
-                    <button key={lib} type="button" onClick={() => setAvecGeslot(v)} style={{ padding: "6px 10px", border: "none", background: avecGeslot === v ? "#1d4ed8" : "#fff", color: avecGeslot === v ? "#fff" : "#1d4ed8", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>{lib}</button>
-                  ))}
-                </span>
                 <span style={{ flex: 1 }} />
                 <span style={{ fontWeight: 800 }}>✔️ Livrés affichés confirmés par une facture Geslot : {badge(fTotal, "")}</span>
               </div>
+              {/* 17/10/2026 — « rends le plus compréhensible » : deux grands choix explicites (ce qu'on compte, et le total
+                  qu'on obtient) au lieu de la petite bascule « Scans seulement / Scans + Geslot ». */}
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))", gap: 10, marginBottom: 12 }}>
+                {([
+                  [false, "📄 Seulement les commandes écrites", "Les commandes reçues par mail / PDF et scannées. Les commandes passées au téléphone ne sont pas comptées.", `${ent(sc.q)} colis commandés`],
+                  [true, "📄 + 📞 Commandes écrites + téléphone", "En plus, ce qui a été facturé dans Geslot sans commande écrite (téléphone, rajouts). Une même commande n'est jamais comptée deux fois.", `${ent(sc.q)} + ${ent(compl)} = ${ent(sc.q + compl)} colis commandés`],
+                ] as const).map(([v, titre, texte, total]) => {
+                  const on = avecGeslot === v;
+                  return (
+                    <button key={titre} type="button" onClick={() => setAvecGeslot(v)} style={{ display: "flex", gap: 10, alignItems: "flex-start", textAlign: "left", padding: "10px 12px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
+                      border: `2.5px solid ${on ? "#1d4ed8" : "#cbd5e1"}`, background: on ? "#fff" : "#f8fafc", color: "#1e3a8a", boxShadow: on ? "0 2px 8px rgba(29,78,216,.18)" : "none" }}>
+                      <span style={{ flex: "0 0 auto", width: 20, height: 20, marginTop: 1, borderRadius: 99, border: `2.5px solid ${on ? "#1d4ed8" : "#94a3b8"}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                        {on && <span style={{ width: 10, height: 10, borderRadius: 99, background: "#1d4ed8" }} />}
+                      </span>
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ display: "block", fontWeight: 900, fontSize: 14 }}>{titre}{on && <span style={{ marginLeft: 8, fontSize: 11, padding: "2px 7px", borderRadius: 99, background: "#1d4ed8", color: "#fff", verticalAlign: "middle" }}>affiché</span>}</span>
+                        <span style={{ display: "block", fontSize: 12, color: "#475569", margin: "3px 0 5px" }}>{texte}</span>
+                        <span style={{ display: "block", fontSize: 13, fontWeight: 800 }}>= {total}</span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", marginBottom: 6 }}>D'où viennent ces chiffres et à quel point sont-ils sûrs ?</div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <div style={source(true)}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <b style={{ fontSize: 14, flex: 1 }}>📄 Commandes scannées</b>{badge(fScan)}
+                    <b style={{ fontSize: 14, flex: 1 }}>📄 Commandes écrites (scannées)</b>{badge(fScan)}
                   </div>
                   <div style={{ fontSize: 12, color: "#475569", margin: "3px 0 6px" }}>Mails et PDF des clients lus par l'appli. Seule source qui connaît <b>ce qui a été commandé</b>, donc <b>les manquants</b>.</div>
                   <div style={{ fontSize: 12.5 }}><b>{ent(sc.q)}</b> commandés · <b style={{ color: "#15803d" }}>{ent(sc.lv)}</b> livrés · <b style={{ color: "#dc2626" }}>{ent(sc.m)}</b> manquants</div>
@@ -734,7 +753,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                 <div style={{ fontSize: 22, fontWeight: 900, alignSelf: "center", color: avecCompl ? "#1d4ed8" : "#9ca3af" }}>{avecCompl ? "+" : "≠"}</div>
                 <div style={source(avecCompl)}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <b style={{ fontSize: 14, flex: 1 }}>🧾 Ajouts Geslot sans scan</b>{badge(100)}
+                    <b style={{ fontSize: 14, flex: 1 }}>📞 Téléphone / rajouts (Geslot)</b>{badge(100)}
                   </div>
                   <div style={{ fontSize: 12, color: "#475569", margin: "3px 0 6px" }}>Factures Geslot sans commande scannée : <b>téléphone, rajouts</b>. Sûr à 100 % sur ce qui est parti, mais Geslot ne sait pas ce qui avait été demandé : <b>commandé = livré, 0 manquant</b>.</div>
                   <div style={{ fontSize: 12.5 }}>{avecCompl ? <><b>+{ent(compl)}</b> colis ajoutés aux commandés et aux livrés</> : <><b>{ent(compl)}</b> colis <b>non comptés</b> dans ce mode</>}</div>
@@ -742,7 +761,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                 </div>
               </div>
               <div style={{ fontSize: 12, marginTop: 8, color: "#1e3a8a" }}>
-                {avecCompl ? <>Les chiffres ci-dessus = <b>scans + ajouts Geslot</b>. Les <b>manquants ne viennent que des scans</b> : un manque sur une commande au téléphone n'est pas visible.</> : <>Les chiffres ci-dessus = <b>scans seulement</b>{compl ? <> ; il manque {ent(compl)} colis livrés sans scan (téléphone)</> : null}.</>}
+                {avecCompl ? <>Les chiffres en haut = <b>commandes écrites + téléphone</b>. Les <b>manquants ne viennent que des commandes écrites</b> : un manque sur une commande au téléphone n'est pas visible.</> : <>Les chiffres en haut = <b>commandes écrites seulement</b>{compl ? <> ; {ent(compl)} colis passés au téléphone ne sont pas comptés</> : null}.</>}
                 {" "}<u style={{ cursor: "pointer", fontWeight: 700 }} onClick={() => setVue("geslot")}>Comparer les deux sources ›</u>
               </div>
             </div>
