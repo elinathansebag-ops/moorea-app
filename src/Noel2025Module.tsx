@@ -717,25 +717,15 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                 <span style={{ flex: 1 }} />
                 <span style={{ fontWeight: 800 }}>✔️ Livrés affichés confirmés par une facture Geslot : {badge(fTotal, "")}</span>
               </div>
-              {/* 17/10/2026 — « rends le plus compréhensible » : deux grands choix explicites (ce qu'on compte, et le total
-                  qu'on obtient) au lieu de la petite bascule « Scans seulement / Scans + Geslot ». */}
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(280px, 100%), 1fr))", gap: 10, marginBottom: 12 }}>
-                {([
-                  [false, "📄 Seulement les commandes écrites", "Les commandes reçues par mail / PDF et scannées. Les commandes passées au téléphone ne sont pas comptées.", `${ent(sc.q)} colis commandés`],
-                  [true, "📄 + 📞 Commandes écrites + téléphone", "En plus, ce qui a été facturé dans Geslot sans commande écrite (téléphone, rajouts). Une même commande n'est jamais comptée deux fois.", `${ent(sc.q)} + ${ent(compl)} = ${ent(sc.q + compl)} colis commandés`],
-                ] as const).map(([v, titre, texte, total]) => {
+              {/* 17/10/2026 — « mets 2 boutons, commande client / commande Geslot, fais simple ». */}
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
+                {([[false, "📄 Commandes client", `mails scannés · ${ent(sc.q)} colis`], [true, "🧾 Commandes Geslot", `+ téléphone, sans doublon · ${ent(sc.q + compl)} colis`]] as const).map(([v, titre, sous]) => {
                   const on = avecGeslot === v;
                   return (
-                    <button key={titre} type="button" onClick={() => setAvecGeslot(v)} style={{ display: "flex", gap: 10, alignItems: "flex-start", textAlign: "left", padding: "10px 12px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
-                      border: `2.5px solid ${on ? "#1d4ed8" : "#cbd5e1"}`, background: on ? "#fff" : "#f8fafc", color: "#1e3a8a", boxShadow: on ? "0 2px 8px rgba(29,78,216,.18)" : "none" }}>
-                      <span style={{ flex: "0 0 auto", width: 20, height: 20, marginTop: 1, borderRadius: 99, border: `2.5px solid ${on ? "#1d4ed8" : "#94a3b8"}`, display: "flex", alignItems: "center", justifyContent: "center" }}>
-                        {on && <span style={{ width: 10, height: 10, borderRadius: 99, background: "#1d4ed8" }} />}
-                      </span>
-                      <span style={{ minWidth: 0 }}>
-                        <span style={{ display: "block", fontWeight: 900, fontSize: 14 }}>{titre}{on && <span style={{ marginLeft: 8, fontSize: 11, padding: "2px 7px", borderRadius: 99, background: "#1d4ed8", color: "#fff", verticalAlign: "middle" }}>affiché</span>}</span>
-                        <span style={{ display: "block", fontSize: 12, color: "#475569", margin: "3px 0 5px" }}>{texte}</span>
-                        <span style={{ display: "block", fontSize: 13, fontWeight: 800 }}>= {total}</span>
-                      </span>
+                    <button key={titre} type="button" onClick={() => setAvecGeslot(v)} style={{ flex: "1 1 220px", padding: "10px 14px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
+                      border: `2.5px solid #1d4ed8`, background: on ? "#1d4ed8" : "#fff", color: on ? "#fff" : "#1d4ed8" }}>
+                      <span style={{ display: "block", fontWeight: 900, fontSize: 15 }}>{on ? "✓ " : ""}{titre}</span>
+                      <span style={{ display: "block", fontSize: 12, fontWeight: 600, opacity: 0.85, marginTop: 2 }}>{sous}</span>
                     </button>
                   );
                 })}
@@ -761,7 +751,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                 </div>
               </div>
               <div style={{ fontSize: 12, marginTop: 8, color: "#1e3a8a" }}>
-                {avecCompl ? <>Les chiffres en haut = <b>commandes écrites + téléphone</b>. Les <b>manquants ne viennent que des commandes écrites</b> : un manque sur une commande au téléphone n'est pas visible.</> : <>Les chiffres en haut = <b>commandes écrites seulement</b>{compl ? <> ; {ent(compl)} colis passés au téléphone ne sont pas comptés</> : null}.</>}
+                {avecCompl ? <>Les chiffres en haut = <b>commandes client + Geslot</b>. Les <b>manquants ne viennent que des commandes écrites</b> : un manque sur une commande au téléphone n'est pas visible.</> : <>Les chiffres en haut = <b>commandes client seulement</b>{compl ? <> ; {ent(compl)} colis passés au téléphone ne sont pas comptés</> : null}.</>}
                 {" "}<u style={{ cursor: "pointer", fontWeight: 700 }} onClick={() => setVue("geslot")}>Comparer les deux sources ›</u>
               </div>
             </div>
