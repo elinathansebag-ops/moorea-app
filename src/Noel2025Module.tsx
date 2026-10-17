@@ -972,7 +972,12 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     return x;
   };
   const valeur = (x?: { q: number; lv: number; m: number }) => !x || (!x.q && !x.lv) ? "" : (
-    <>{ent(x.lv)}{voirDemande && x.m > 0 && <div style={{ fontSize: 10.5, fontWeight: 800, color: "#dc2626", whiteSpace: "nowrap" }}>−{ent(x.m)}</div>}</>
+    // 18/10/2026 — « ne mets pas le livré en rouge, mets-le en vert, une légende, et il manque le 44 » :
+    // livré en vert ; avec « voir les manquants » : −manquant en rouge et la demande (livré + manquant) en gris.
+    <><span style={{ color: voirDemande && x.m > 0 ? "#15803d" : undefined }}>{ent(x.lv)}</span>{voirDemande && x.m > 0 && <>
+      <div style={{ fontSize: 10.5, fontWeight: 800, color: "#dc2626", whiteSpace: "nowrap" }}>−{ent(x.m)}</div>
+      <div style={{ fontSize: 10.5, fontWeight: 600, color: "#6b7280", whiteSpace: "nowrap" }}>= {ent(x.q)}</div>
+    </>}</>
   );
   const basculerT = (o: Option) => {
     const bascule = (s: string[]) => (s.includes(o.valeur) ? s.filter(x => x !== o.valeur) : [...s, o.valeur]);
@@ -999,18 +1004,20 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const lignes: (string | number)[][] = [], couleurs: (string | null)[] = [], fonds: (string | null)[] = [], gras: boolean[] = [], bandes: number[] = [];
     tableau.forEach(({ art, client, titre, base, r, tq, tlv, tm }, k) => {
       const debut = [...(deux ? [client || ""] : []), titre && groupe ? (deux ? `TOTAL ${nomG.toUpperCase()}` : `TOTAL ${art}`) : base ? base : art, ...(lignesPar === "articleClient" ? [base ? art : titre ? "" : "TOUTES BASES"] : [])];
-      lignes.push([...debut, ...(avecManq ? ["Livré"] : []), ...colonnes.map(c => vx(cellule(r, c))), Math.round(tlv), ...(avecManq ? [tm ? Math.round(tm) : ""] : [])]);
-      couleurs.push(null); fonds.push(null); gras.push(!!titre); bandes.push(k);
+      lignes.push([...debut, ...(avecManq ? ["Livré"] : []), ...colonnes.map(c => vx(cellule(r, c))), Math.round(tlv), ...(avecManq ? [tm ? Math.round(tm) : "", Math.round(tq)] : [])]);
+      couleurs.push(avecManq && tm > 0 ? "#15803D" : null); fonds.push(null); gras.push(!!titre); bandes.push(k);
       if (avecManq && tm > 0) {
-        lignes.push([...debut.map(() => ""), "Manquants", ...colonnes.map(c => { const x = cellule(r, c); return x?.m ? Math.round(x.m) : ""; }), "", Math.round(tm)]);
+        lignes.push([...debut.map(() => ""), "Manquants", ...colonnes.map(c => { const x = cellule(r, c); return x?.m ? Math.round(x.m) : ""; }), "", Math.round(tm), ""]);
         couleurs.push("#B91C1C"); fonds.push("#FEF2F2"); gras.push(true); bandes.push(k);
+        lignes.push([...debut.map(() => ""), "Demandé", ...colonnes.map(c => { const x = cellule(r, c); return x?.m ? Math.round(x.q) : ""; }), "", "", Math.round(tq)]);
+        couleurs.push("#4B5563"); fonds.push(null); gras.push(false); bandes.push(k);
       }
     });
     const e = { nomFichier: nomFichierNoel(sujet || seul, `${lib} ${par}`), titre: `Noël 2025 — colis ${lib} ${par}`,
       sousTitre: periodeTxt(joursT[0], joursT[joursT.length - 1]),
       filtres,
       entetes: [...(deux ? [nomG] : []), lignesPar === "client" || lignesPar === "articleClient" ? "Client" : "Article", ...(lignesPar === "articleClient" ? ["Base"] : []), ...(avecManq ? ["Détail"] : []),
-        ...colonnes.map(c => (c.sous ? `${c.lib} (${c.sous})` : c.lib)), "Total livré", ...(avecManq ? ["Manquant"] : [])],
+        ...colonnes.map(c => (c.sous ? `${c.lib} (${c.sous})` : c.lib)), "Total livré", ...(avecManq ? ["Manquant", "Total demandé"] : [])],
       lignes, couleurs, fonds, gras, groupes: bandes };
     if (format === "excel") await exporterExcelMoorea(e); else if (format === "imprimer") await imprimerPdfMoorea(e); else await exporterPdfMoorea(e);
   };
@@ -1068,6 +1075,15 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                         <button type="button" onClick={() => exporterTableau("imprimer", tableau, sujet)} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #305a55", background: "#fff", color: "#305a55", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>🖨️</button>
                       </span>
                     </div>
+                    <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", fontSize: 12.5, fontWeight: 700, color: "#374151", margin: "0 0 8px" }}>
+                      <span>Légende :</span>
+                      <span><b style={{ color: voirDemande ? "#15803d" : "#1f2937" }}>19</b> = livré (Geslot)</span>
+                      {voirDemande ? <>
+                        <span><b style={{ color: "#dc2626" }}>−25</b> = manquant</span>
+                        <span><b style={{ color: "#6b7280" }}>= 44</b> = demandé (livré + manquant)</span>
+                        <span style={{ color: "#9ca3af", fontWeight: 500 }}>· seulement les jours où il a manqué</span>
+                      </> : <span style={{ color: "#9ca3af", fontWeight: 500 }}>· cochez « voir les manquants » pour voir ce qui a manqué et ce qui était demandé</span>}
+                    </div>
                     <div style={{ overflow: "auto", maxHeight: "70vh", border: "1px solid #eee8dc", borderRadius: 10 }}>
                       <table style={{ borderCollapse: "collapse", fontSize: 12 }}>
                         <thead><tr>
@@ -1094,8 +1110,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                                     : <>{aSous && <span style={{ display: "inline-block", width: 14, color: "#305a55" }}>{ferme ? "▸" : "▾"}</span>}{ficheType === "client" ? "👤" : emojiProduit(art)} {art}
                                       {aSous && <span onClick={e => { e.stopPropagation(); ouvrirType(ficheType, art, undefined, "besoin"); }} style={{ marginLeft: 8, fontSize: 11, fontWeight: 700, color: "#305a55", textDecoration: "underline" }}>fiche ›</span>}</>}
                                 </td>
-                                {colonnes.map(col => { const x = cellule(r, col); return <td key={col.cle} style={{ ...td, textAlign: "right", fontWeight: titre ? 900 : undefined, fontSize: base ? 11.5 : undefined, borderTop: titre ? "2px solid #305a55" : undefined, color: x?.m ? "#b91c1c" : "#1f2937" }} title={x ? `Commandé ${x.q} · livré ${x.lv} · manquant ${x.m}` : ""}>{valeur(x)}</td>; })}
-                                <td style={{ ...td, textAlign: "right", fontWeight: 900, borderTop: titre ? "2px solid #305a55" : undefined, color: tm ? "#b91c1c" : undefined }}>{valeur({ q: tq, lv: tlv, m: tm })}</td>
+                                {colonnes.map(col => { const x = cellule(r, col); return <td key={col.cle} style={{ ...td, textAlign: "right", fontWeight: titre ? 900 : undefined, fontSize: base ? 11.5 : undefined, borderTop: titre ? "2px solid #305a55" : undefined, color: "#1f2937" }} title={x ? `Commandé ${x.q} · livré ${x.lv} · manquant ${x.m}` : ""}>{valeur(x)}</td>; })}
+                                <td style={{ ...td, textAlign: "right", fontWeight: 900, borderTop: titre ? "2px solid #305a55" : undefined, }}>{valeur({ q: tq, lv: tlv, m: tm })}</td>
                               </tr>
                             );
                           })}
@@ -1110,7 +1126,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                         <span>· l'export Excel / PDF contient tout</span>
                       </div>
                     )}
-                    <p style={{ fontSize: 11, color: "#9ca3af", margin: "8px 0 0" }}>Chiffres = colis livrés (Geslot) ; en rouge, il a manqué ce jour-là (cochez « voir les manquants » pour voir combien). Touchez ▸ pour déplier. Touchez une ligne verte (réf, client ou fournisseur) pour la replier, un article pour sa fiche. Fournisseur = celui qui a le plus fourni la réf en décembre 2025 (📊 Stats). Hors lignes « pas de commande » et doublons.</p>
+                    <p style={{ fontSize: 11, color: "#9ca3af", margin: "8px 0 0" }}>Touchez ▸ pour déplier (produit ▸ clients ▸ bases). Touchez une ligne verte (réf, client ou fournisseur) pour la replier, un article pour sa fiche. Fournisseur = celui qui a le plus fourni la réf en décembre 2025 (📊 Stats). Hors lignes « pas de commande » et doublons.</p>
                   </div>
     );
   };
