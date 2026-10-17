@@ -31,20 +31,6 @@ const compte = (l: Ligne) => !/^pas de commande/i.test(l.st) && !/^doublon/i.tes
 const dIso = (fr: string) => { const m = fr.match(/^(\d{2})\/(\d{2})\/(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : fr; };
 const jjmm = (iso: string) => (iso.length >= 10 ? `${iso.slice(8, 10)}/${iso.slice(5, 7)}` : iso);
 const ent = (n: number) => Math.round(n).toLocaleString("fr-FR");
-// Colis livrés d'après les scans qu'on retrouve dans les factures Geslot : par client × jour, d'abord le même
-// jour puis à J-1, J+1, J-2, J+2 (scan du dimanche facturé le lundi). Sert de « fiabilité » des scans.
-const confirmeParGeslot = (scan: Ligne[], ges: Ligne[]) => {
-  const parCJ = (ls: Ligne[], v: (l: Ligne) => number) => { const m = new Map<string, number>(); ls.forEach(l => { const k = `${l.c}\u0001${l.d}`; m.set(k, (m.get(k) || 0) + v(l)); }); return m; };
-  const s = parCJ(scan, l => l.lv), g = parCJ(ges, l => l.q);
-  const decaler = (d: string, n: number) => { const t = new Date(d + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
-  let ok = 0;
-  for (const n of [0, -1, 1, -2, 2]) s.forEach((r, k) => {
-    if (r <= 0) return;
-    const [c, d] = k.split("\u0001"), k2 = `${c}\u0001${decaler(d, n)}`, dispo = g.get(k2) || 0, t = Math.min(r, dispo);
-    if (t > 0) { ok += t; s.set(k, r - t); g.set(k2, dispo - t); }
-  });
-  return ok;
-};
 // Semaine ISO d'un jour « AAAA-MM-JJ » → « 2025-51 » (triable).
 const semaineIso = (iso: string) => {
   const d = new Date(iso + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
@@ -298,45 +284,33 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       return { i: `g${k}`, d: v.d, c, cf: v.c, s: "", n: "", cc: "", l: v.a, o: "", q, u: "", lv: q, m: 0, st: "geslot", an: "", rq: "", f: fam.get(v.a) || "", ca: "", a: v.a, src: "geslot", bl: "", v: "", pdf: "", scan: "", p: "" };
     });
   }, [ventesGeslot, don, jours]);
-  // Complément Geslot sans doublon : par client × jour × article, Geslot ne s'ajoute que pour ce qu'il a
-  // livré EN PLUS de ce que les scans ont commandé (rajout / commande au téléphone). Scan 5 + Geslot 5 = 5.
-  const lignesComplement = useMemo((): Ligne[] => {
-    if (!lignesGeslot.length || !don) return [];
-    // La réf lue sur un scan n'est pas toujours exactement celle facturée dans Geslot : le complément d'un
-    // client un jour donné est plafonné à (livré Geslot ce jour − commandé scans ce jour) chez ce client.
-    const cj = (l: Ligne) => `${l.c}\u0001${l.d}`, cle = (l: Ligne) => `${cj(l)}\u0001${l.a}`;
-    const scan = new Map<string, number>(), scanJ = new Map<string, number>();
-    don.lignes.filter(compte).forEach(l => { scan.set(cle(l), (scan.get(cle(l)) || 0) + l.q); scanJ.set(cj(l), (scanJ.get(cj(l)) || 0) + l.q); });
-    const ges = new Map<string, { l: Ligne; g: number }>(), gesJ = new Map<string, number>();
-    lignesGeslot.forEach(l => { const k = cle(l), x = ges.get(k); if (x) x.g += l.q; else ges.set(k, { l, g: l.q }); gesJ.set(cj(l), (gesJ.get(cj(l)) || 0) + l.q); });
-    const plusParJ = new Map<string, { l: Ligne; plus: number }[]>();
-    ges.forEach(({ l, g }, k) => { const plus = g - (scan.get(k) || 0); if (plus > 0) { const j = cj(l); plusParJ.set(j, [...(plusParJ.get(j) || []), { l, plus }]); } });
-    // Date décalée : un scan daté du dimanche 28/12 facturé le lundi 29/12 dans Geslot est la même commande.
-    // Le surplus Geslot d'un jour sans scan est d'abord compensé par les scans non livrés dans Geslot ce
-    // client à J-1, J+1, J-2, J+2 (dans cet ordre).
+  // Mode « Commandes Geslot » (17/10/2026, retour de Jennifer : « ça ne correspond pas avec les ventes Geslot ») :
+  // les LIVRÉS sont exactement ceux de Geslot, article par article. Chaque ligne scannée reçoit la part de Geslot
+  // qui lui correspond (même client, même article, même jour puis J-1, J+1, J-2, J+2 : scan du dimanche facturé
+  // le lundi) ; ses manquants restent ceux relevés sur les commandes, et commandé = livré Geslot + manquants.
+  // Ce que Geslot a livré en plus (téléphone, rajouts, réf différente de celle lue sur le scan) devient une
+  // ligne « 📞 Hors scan (Geslot) ». Une même commande n'est donc jamais comptée deux fois.
+  const { lignesScanGeslot, lignesComplement } = useMemo((): { lignesScanGeslot: Ligne[]; lignesComplement: Ligne[] } => {
+    if (!lignesGeslot.length || !don) return { lignesScanGeslot: [], lignesComplement: [] };
+    const cle = (c: string, d: string, a: string) => `${c}\u0001${d}\u0001${a}`;
+    const reste = new Map<string, { l: Ligne; g: number }>();
+    lignesGeslot.forEach(l => { const k = cle(l.c, l.d, l.a), x = reste.get(k); if (x) x.g += l.q; else reste.set(k, { l, g: l.q }); });
     const decaler = (d: string, n: number) => { const t = new Date(d + "T12:00:00Z"); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
-    const resteScan = new Map<string, number>(), plafondJ = new Map<string, number>();
-    new Set([...scanJ.keys(), ...gesJ.keys()]).forEach(j => {
-      resteScan.set(j, Math.max(0, (scanJ.get(j) || 0) - (gesJ.get(j) || 0)));
-      plafondJ.set(j, Math.max(0, (gesJ.get(j) || 0) - (scanJ.get(j) || 0)));
+    const recu = new Map<Ligne, number>();
+    const aServir = don.lignes.filter(l => compte(l) && l.lv > 0);
+    for (const n of [0, -1, 1, -2, 2]) aServir.forEach(l => {
+      const deja = recu.get(l) || 0, besoin = l.lv - deja; if (besoin <= 0) return;
+      const x = reste.get(cle(l.c, decaler(l.d, n), l.a)); if (!x || x.g <= 0) return;
+      const t = Math.min(besoin, x.g); x.g -= t; recu.set(l, deja + t);
     });
-    [...plafondJ.keys()].sort().forEach(j => {
-      let p = plafondJ.get(j) || 0; if (!p) return;
-      const [c, d] = j.split("\u0001");
-      for (const n of [-1, 1, -2, 2]) {
-        const j2 = `${c}\u0001${decaler(d, n)}`, r = resteScan.get(j2) || 0, t = Math.min(p, r);
-        if (t > 0) { p -= t; resteScan.set(j2, r - t); }
-        if (!p) break;
-      }
-      plafondJ.set(j, p);
+    const lignesScanGeslot = don.lignes.map(l => {
+      if (!compte(l)) return l;
+      const lv = recu.get(l) || 0;
+      return lv === l.lv ? l : { ...l, lv, q: lv + l.m };
     });
-    const out: Ligne[] = [];
-    plusParJ.forEach((items, j) => {
-      const somme = items.reduce((t, x) => t + x.plus, 0), plafond = plafondJ.get(j) || 0;
-      const ratio = somme > plafond ? plafond / somme : 1;
-      items.forEach(({ l, plus }) => { const q = Math.round(plus * ratio); if (q > 0) out.push({ ...l, i: `h${out.length}`, q, lv: q, m: 0, s: "📞 Hors scan (Geslot)", st: "hors scan" }); });
-    });
-    return out;
+    const lignesComplement: Ligne[] = [];
+    reste.forEach(({ l, g }) => { if (g > 0.0001) lignesComplement.push({ ...l, i: `h${lignesComplement.length}`, q: g, lv: g, m: 0, s: "📞 Hors scan (Geslot)", st: "hors scan" }); });
+    return { lignesScanGeslot, lignesComplement };
   }, [lignesGeslot, don]);
 
   // Options de la recherche intelligente.
@@ -650,11 +624,11 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
 
   const rendreFiche = (f: Fiche) => {
     const avecCompl = avecGeslot && (vue === "besoin" || vue === "manque");
-    const source = avecCompl ? [...(don?.lignes || []), ...lignesComplement] : (don?.lignes || []);
+    const source = avecCompl && lignesScanGeslot.length ? [...lignesScanGeslot, ...lignesComplement] : (don?.lignes || []);
     const ls = source.filter(f.filtre), lc = ls.filter(compte);
     const tot = lc.reduce((t, l) => ({ q: t.q + l.q, lv: t.lv + l.lv, m: t.m + l.m }), { q: 0, lv: 0, m: 0 });
     const lits = (don?.litiges || []).filter(f.filtreL);
-    const cmds = new Map<string, Ligne[]>(); ls.filter(l => l.st !== "hors scan").forEach(l => { const k = `${l.d}|${l.c}|${l.n}|${l.s}`; cmds.set(k, [...(cmds.get(k) || []), l]); });
+    const cmds = new Map<string, Ligne[]>(); (don?.lignes || []).filter(f.filtre).forEach(l => { const k = `${l.d}|${l.c}|${l.n}|${l.s}`; cmds.set(k, [...(cmds.get(k) || []), l]); });
     const listeCmds = [...cmds].sort((a, b) => a[1][0].d.localeCompare(b[1][0].d) || a[1][0].c.localeCompare(b[1][0].c));
     const icone = f.type === "article" ? emojiProduit(f.valeur) : TITRES[f.type] || "🔎";
     const besoin = vue === "besoin", vueLitiges = vue === "litiges", vueGeslot = vue === "geslot", global = f.type === "global";
@@ -695,31 +669,26 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
         )}
         {!vueGeslot && chiffres(tot, lits.length)}
         {!vueGeslot && !vueLitiges && lignesGeslot.length > 0 && (() => {
-          // 17/10/2026 — Demande d'Elinathan : « qu'on comprenne bien quels chiffres on prend en compte, avec
-          // leur pourcentage de sûreté (Geslot 100 %, scans seuls…) ». Chaque source a sa carte : ce qu'elle
-          // apporte, combien de colis, et sa fiabilité mesurée (scans retrouvés dans les factures Geslot).
-          const scanL = lc.filter(l => l.st !== "hors scan");
+          // 17/10/2026 — « qu'on comprenne bien quels chiffres on prend en compte, avec leur fiabilité » puis
+          // « 2 boutons, commande client / commande Geslot, fais simple » ; retour de Jennifer : en mode Geslot,
+          // les livrés doivent être ceux de Geslot (voir lignesScanGeslot).
+          const scanL = (don?.lignes || []).filter(f.filtre).filter(compte);
           const sc = scanL.reduce((t, l) => ({ q: t.q + l.q, lv: t.lv + l.lv, m: t.m + l.m }), { q: 0, lv: 0, m: 0 });
+          const confirme = lignesScanGeslot.filter(f.filtre).filter(compte).reduce((t, l) => t + l.lv, 0);
           const compl = lignesComplement.filter(f.filtre).reduce((t, l) => t + l.q, 0);
-          // Geslot du sujet ; un sujet que Geslot ne connaît pas (BL, base…) est vérifié sur les factures des mêmes clients.
-          let gesSujet = lignesGeslot.filter(f.filtre), estime = false;
-          if (!gesSujet.length && scanL.length) { const cl = new Set(scanL.map(l => l.c)); gesSujet = lignesGeslot.filter(l => cl.has(l.c)); estime = true; }
-          const confirme = confirmeParGeslot(scanL, gesSujet);
-          const fScan = sc.lv ? Math.round(confirme / sc.lv * 100) : 0;
-          const totLv = sc.lv + (avecCompl ? compl : 0), fTotal = totLv ? Math.round((confirme + (avecCompl ? compl : 0)) / totLv * 100) : 0;
+          const lvGeslot = confirme + compl, fScan = sc.lv ? Math.round(confirme / sc.lv * 100) : 100;
           const couleur = (x: number) => x >= 90 ? "#15803d" : x >= 70 ? "#b45309" : "#dc2626";
-          const badge = (x: number, lib = "fiable") => <span style={{ display: "inline-block", padding: "3px 9px", borderRadius: 99, background: couleur(x), color: "#fff", fontWeight: 900, fontSize: 13, whiteSpace: "nowrap" }}>{x} % {lib}</span>;
-          const source = (on: boolean) => ({ flex: "1 1 260px", minWidth: 0, background: "#fff", borderRadius: 12, padding: "10px 12px", border: `1.5px solid ${on ? "#93c5fd" : "#e5e7eb"}`, opacity: on ? 1 : 0.6 });
+          const badge = (x: number, lib = "fiable") => <span style={{ display: "inline-block", padding: "3px 9px", borderRadius: 99, background: couleur(x), color: "#fff", fontWeight: 900, fontSize: 13, whiteSpace: "nowrap" }}>{x} %{lib ? ` ${lib}` : ""}</span>;
+          const carteSource = (on: boolean) => ({ flex: "1 1 260px", minWidth: 0, background: "#fff", borderRadius: 12, padding: "10px 12px", border: `1.5px solid ${on ? "#93c5fd" : "#e5e7eb"}` });
           return (
             <div style={{ ...carte, marginTop: 12, marginBottom: 0, padding: "12px 14px", borderColor: "#93c5fd", background: "#eff6ff", color: "#1e3a8a", fontSize: 13 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
                 <span style={{ fontWeight: 900, fontSize: 14 }}>🔢 Quels chiffres sont comptés ?</span>
                 <span style={{ flex: 1 }} />
-                <span style={{ fontWeight: 800 }}>✔️ Livrés affichés confirmés par une facture Geslot : {badge(fTotal, "")}</span>
+                <span style={{ fontWeight: 800 }}>{avecGeslot ? <>✔️ Livrés = factures Geslot : {badge(100, "")}</> : <>✔️ Livrés retrouvés dans Geslot : {badge(fScan, "")}</>}</span>
               </div>
-              {/* 17/10/2026 — « mets 2 boutons, commande client / commande Geslot, fais simple ». */}
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-                {([[false, "📄 Commandes client", `mails scannés · ${ent(sc.q)} colis`], [true, "🧾 Commandes Geslot", `+ téléphone, sans doublon · ${ent(sc.q + compl)} colis`]] as const).map(([v, titre, sous]) => {
+                {([[false, "📄 Commandes client", `ce qui est écrit sur les commandes · ${ent(sc.lv)} livrés`], [true, "🧾 Commandes Geslot", `livrés = Geslot, sans doublon · ${ent(lvGeslot)} livrés`]] as const).map(([v, titre, sous]) => {
                   const on = avecGeslot === v;
                   return (
                     <button key={titre} type="button" onClick={() => setAvecGeslot(v)} style={{ flex: "1 1 220px", padding: "10px 14px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
@@ -730,28 +699,26 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                   );
                 })}
               </div>
-              <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", marginBottom: 6 }}>D'où viennent ces chiffres et à quel point sont-ils sûrs ?</div>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-                <div style={source(true)}>
+                <div style={carteSource(!avecGeslot)}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <b style={{ fontSize: 14, flex: 1 }}>📄 Commandes écrites (scannées)</b>{badge(fScan)}
+                    <b style={{ fontSize: 14, flex: 1 }}>📄 Commandes client (scannées)</b>{badge(fScan)}
                   </div>
-                  <div style={{ fontSize: 12, color: "#475569", margin: "3px 0 6px" }}>Mails et PDF des clients lus par l'appli. Seule source qui connaît <b>ce qui a été commandé</b>, donc <b>les manquants</b>.</div>
+                  <div style={{ fontSize: 12, color: "#475569", margin: "3px 0 6px" }}>Mails et PDF des clients. Seule source qui connaît <b>ce qui a été commandé</b>, donc <b>les manquants</b>.</div>
                   <div style={{ fontSize: 12.5 }}><b>{ent(sc.q)}</b> commandés · <b style={{ color: "#15803d" }}>{ent(sc.lv)}</b> livrés · <b style={{ color: "#dc2626" }}>{ent(sc.m)}</b> manquants</div>
-                  <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 4 }}>{fScan} % = {ent(confirme)} colis livrés sur {ent(sc.lv)} retrouvés dans Geslot (même client, même jour à ±2 j){estime ? " — estimé sur les factures de ces clients" : ""}. Le reste : erreur de lecture du scan, ou livré mais facturé autrement.</div>
+                  <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 4 }}>{fScan} % = {ent(confirme)} des {ent(sc.lv)} colis livrés d'après les commandes retrouvés dans Geslot (même client, même article, à ±2 jours). Le reste : article mal reconnu sur le scan, produit remplacé, ou facturé autrement.</div>
                 </div>
-                <div style={{ fontSize: 22, fontWeight: 900, alignSelf: "center", color: avecCompl ? "#1d4ed8" : "#9ca3af" }}>{avecCompl ? "+" : "≠"}</div>
-                <div style={source(avecCompl)}>
+                <div style={carteSource(avecGeslot)}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <b style={{ fontSize: 14, flex: 1 }}>📞 Téléphone / rajouts (Geslot)</b>{badge(100)}
+                    <b style={{ fontSize: 14, flex: 1 }}>🧾 Factures Geslot</b>{badge(100)}
                   </div>
-                  <div style={{ fontSize: 12, color: "#475569", margin: "3px 0 6px" }}>Factures Geslot sans commande scannée : <b>téléphone, rajouts</b>. Sûr à 100 % sur ce qui est parti, mais Geslot ne sait pas ce qui avait été demandé : <b>commandé = livré, 0 manquant</b>.</div>
-                  <div style={{ fontSize: 12.5 }}>{avecCompl ? <><b>+{ent(compl)}</b> colis ajoutés aux commandés et aux livrés</> : <><b>{ent(compl)}</b> colis <b>non comptés</b> dans ce mode</>}</div>
-                  <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 4 }}>Une commande scannée ET facturée n'est comptée qu'une fois (scan 5 + Geslot 5 = 5).</div>
+                  <div style={{ fontSize: 12, color: "#475569", margin: "3px 0 6px" }}>Ce qui est vraiment parti. Geslot ne sait pas ce qui avait été demandé : les <b>manquants</b> viennent des commandes client.</div>
+                  <div style={{ fontSize: 12.5 }}><b style={{ color: "#15803d" }}>{ent(lvGeslot)}</b> livrés, dont <b>{ent(compl)}</b> sans commande écrite (téléphone, rajouts, autre réf.)</div>
+                  <div style={{ fontSize: 11.5, color: "#64748b", marginTop: 4 }}>Commandés en mode Geslot = livrés Geslot + manquants des commandes client ({ent(lvGeslot)} + {ent(sc.m)} = {ent(lvGeslot + sc.m)}).</div>
                 </div>
               </div>
               <div style={{ fontSize: 12, marginTop: 8, color: "#1e3a8a" }}>
-                {avecCompl ? <>Les chiffres en haut = <b>commandes client + Geslot</b>. Les <b>manquants ne viennent que des commandes écrites</b> : un manque sur une commande au téléphone n'est pas visible.</> : <>Les chiffres en haut = <b>commandes client seulement</b>{compl ? <> ; {ent(compl)} colis passés au téléphone ne sont pas comptés</> : null}.</>}
+                {avecGeslot ? <>Les chiffres en haut : <b>livrés = Geslot</b>, <b>manquants = commandes client</b>. Un manque sur une commande prise au téléphone n'est pas visible.</> : <>Les chiffres en haut = <b>ce qui est écrit sur les commandes client</b> : les livrés peuvent différer de Geslot ({ent(lvGeslot)}).</>}
                 {" "}<u style={{ cursor: "pointer", fontWeight: 700 }} onClick={() => setVue("geslot")}>Comparer les deux sources ›</u>
               </div>
             </div>

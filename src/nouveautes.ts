@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 132, date: "17/10", pages: ["extractions"], texte: "🎄 Noël 2025 › « 🧾 Commandes Geslot » : les livrés sont maintenant exactement ceux de Geslot, article par article (ex. mini choux-fleurs 1 632 comme dans Geslot) ; commandés = livrés Geslot + manquants relevés sur les commandes client." },
   { id: 131, date: "17/10", pages: ["extractions"], texte: "🎄 Noël 2025 › « Quels chiffres sont comptés ? » : deux boutons simples — « 📄 Commandes client » (mails scannés) ou « 🧾 Commandes Geslot » (+ téléphone, sans doublon) — avec le nombre de colis de chacun." },
   { id: 130, date: "17/10", pages: ["extractions"], texte: "🎄 Noël 2025 › « Quels chiffres sont comptés ? » : une carte par source avec sa fiabilité — 📄 commandes scannées (% de colis livrés retrouvés dans les factures Geslot) et 🧾 ajouts Geslot sans scan (100 % sûrs, mais sans manquants) — plus le % des livrés affichés confirmés par Geslot." },
   { id: 129, date: "16/10", texte: "🖨️ Nouveau module « Imprimer un PDF » sur l'accueil : choisir un PDF sur l'ordinateur (ou l'iPad), puis l'imprimante du bureau dans la liste — l'appli indique quand c'est imprimé." },
