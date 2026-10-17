@@ -197,7 +197,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const [erreur, setErreur] = useState("");
   // 16/10/2026 — « les onglets doivent être des onglets de la recherche » : ce qui est dans la recherche
   // (fiche ouverte, ou cases cochées, ou rien = tout Noël) est le SUJET ; les onglets en sont trois vues.
-  const [vue, setVue] = useState<"besoin" | "manque" | "litiges" | "geslot">("manque");
+  const [vue, setVue] = useState<"besoin" | "manque" | "litiges" | "geslot">("besoin"); // 18/10/2026 : Besoin par défaut
   // 18/10/2026 — « les pages sont très compliquées, trop d'infos dans tous les sens » : explications repliées,
   // et sous le graphique un seul détail à la fois (clients & produits / tableau / commandes / litiges).
   // « Vue complète » remet tout à la suite comme avant.
@@ -1075,7 +1075,9 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const nbScans = Object.keys(don?.scans || {}).length;
 
   return (
-    <div style={{ minHeight: "100vh", background: "#f5f3ee" }}>
+    // 18/10/2026 — « changer le fond de l'appli en fonction de l'onglet » : vert Besoin, rouge Manquants,
+    // jaune Litiges, bleu Geslot / scans (teintes pâles, les cartes restent blanches).
+    <div style={{ minHeight: "100vh", background: { besoin: "#e3f0e8", manque: "#fbe5e5", litiges: "#fbf1c7", geslot: "#e2eafb" }[vue], transition: "background .25s" }}>
       <PageHeader titre="🎄 Commandes Noël 2025" couleur="#305a55" onBack={fiche ? revenir : onClose} onHome={onClose} />
       <div style={{ maxWidth: 1250, margin: "0 auto", padding: "16px 16px 60px", boxSizing: "border-box" }}>
         {erreur && <div style={{ ...carte, color: "#b91c1c", fontWeight: 700 }}>Lecture impossible : {erreur}</div>}
