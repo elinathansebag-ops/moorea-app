@@ -1285,7 +1285,20 @@ function lundiSemaine(annee: number, n: number) {
   return iso(l);
 }
 const plusJours = (j: string, n: number) => { const d = new Date(j + "T12:00:00"); d.setDate(d.getDate() + n); return iso(d); };
-function ChoixPeriode({ c, debut, fin, min, max, onChange }: { c: Couleurs; debut: string; fin: string; min: string; max: string; onChange: (d: string, f: string) => void }) {
+// 18/10/2026 — Demande d'Elinathan : « enregistre les anciennes dates sélectionnées, que je puisse les
+// resélectionner facilement ». Les 8 dernières périodes choisies au calendrier (sur cet appareil).
+const CLE_PERIODES = "moorea-periodes-recentes";
+const lirePeriodes = (): { d: string; f: string }[] => { try { const v = JSON.parse(localStorage.getItem(CLE_PERIODES) || "[]"); return Array.isArray(v) ? v.filter(x => x && x.d && x.f) : []; } catch { return []; } };
+function ChoixPeriode({ c, debut, fin, min, max, onChange: changer }: { c: Couleurs; debut: string; fin: string; min: string; max: string; onChange: (d: string, f: string) => void }) {
+  const [recentes, setRecentes] = useState(lirePeriodes);
+  const onChange = (a: string, b: string) => {
+    changer(a, b);
+    if (a && b && !(a === min && b === max)) {
+      const l = [{ d: a, f: b }, ...lirePeriodes().filter(x => !(x.d === a && x.f === b))].slice(0, 8);
+      setRecentes(l); try { localStorage.setItem(CLE_PERIODES, JSON.stringify(l)); } catch { /* */ }
+    }
+  };
+  const oublier = (x: { d: string; f: string }) => { const l = lirePeriodes().filter(y => !(y.d === x.d && y.f === x.f)); setRecentes(l); try { localStorage.setItem(CLE_PERIODES, JSON.stringify(l)); } catch { /* */ } };
   const [ouvert, setOuvert] = useState(false);
   const [mode, setMode] = useState<"jours" | "semaines">("jours");
   const [mois, setMois] = useState(() => (fin || iso(new Date())).slice(0, 7));
@@ -1348,6 +1361,20 @@ function ChoixPeriode({ c, debut, fin, min, max, onChange }: { c: Couleurs; debu
         <span style={{ flex: 1 }}><span style={{ display: "block", fontSize: 15, fontWeight: 900, textTransform: "capitalize" }}>{resume}</span><span style={{ fontSize: 12, color: c.gris }}>{debut && fin ? `${Math.round((new Date(fin + "T12:00:00").getTime() - new Date(debut + "T12:00:00").getTime()) / 86400000) + 1} jours${semLib}` : ""} · touche pour changer</span></span>
         <span style={{ fontSize: 18, transform: ouvert ? "rotate(90deg)" : "none", transition: "transform .2s" }}>›</span>
       </button>
+      {recentes.length > 0 && (
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 8 }}>
+          <span style={{ fontSize: 12, fontWeight: 800, color: c.gris }}>🕘 Déjà choisies :</span>
+          {recentes.map(x => {
+            const actif = x.d === debut && x.f === fin;
+            return (
+              <span key={x.d + x.f} style={{ ...puce(c, actif), display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 6px 5px 11px" }}>
+                <button type="button" onClick={() => changer(x.d, x.f)} style={{ border: "none", background: "none", color: "inherit", font: "inherit", fontWeight: 800, cursor: "pointer", padding: 0 }}>{dateFr(x.d).slice(0, 5)} → {dateFr(x.f)}</button>
+                <button type="button" onClick={() => oublier(x)} aria-label="Retirer cette période" title="Retirer" style={{ border: "none", background: "none", color: "inherit", opacity: 0.6, cursor: "pointer", fontSize: 12, padding: "0 2px" }}>✕</button>
+              </span>
+            );
+          })}
+        </div>
+      )}
       {ouvert && (
         <div style={{ border: `1px solid ${c.bord}`, borderTop: "none", borderRadius: "0 0 12px 12px", padding: "12px 14px", background: c.carte }}>
           <div style={{ display: "flex", gap: 6, marginBottom: 10, alignItems: "center", flexWrap: "wrap" }}>
@@ -1426,6 +1453,12 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
   const [q, setQ] = useState<{ rapports: any[]; retours: any[] } | null>(null);
   const [rapportOuvert, setRapportOuvert] = useState<any>(null);
   const [exportPar, setExportPar] = useState<"croise" | "article" | "autre" | "jour">("croise");
+  // 18/10/2026 — « les pages sont très compliquées, trop d'infos dans tous les sens » : sous les chiffres,
+  // des onglets au lieu de tout empiler ; « Vue complète » remet l'ancienne page (tout à la suite).
+  const [ongletFiche, setOngletFiche] = useState<"articles" | "autres" | "livraisons" | "qualite" | "export">("articles");
+  const [vueComplete, setVueCompleteEtat] = useState(() => { try { return localStorage.getItem("stats-fiche-vue") === "complete"; } catch { return false; } });
+  const setVueComplete = (v: boolean) => { setVueCompleteEtat(v); try { localStorage.setItem("stats-fiche-vue", v ? "complete" : "onglets"); } catch { /* */ } };
+  const voir = (k: typeof ongletFiche) => vueComplete || ongletFiche === k;
   useEffect(() => { if (fiche) chargerQualite().then(setQ); }, [fiche?.nom]);
   const estClient = fiche?.type === "client", nom = fiche?.nom || "";
   const lignesTout = useMemo(() => (ventes || []).filter(l => fiche && (estClient ? l.c === nom : l.f === nom)), [ventes, fiche]);
@@ -1552,15 +1585,6 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
         </div>
         <ChoixPeriode c={c} debut={debut || minBase} fin={fin || maxBase} min={minBase} max={maxBase} onChange={(a, b) => { setDebut(a); setFin(b); setRapide(""); }} />
       </Bloc>
-      <Bloc titre="📊 Exporter les stats de la période" c={c}>
-        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
-          {([["croise", estClient ? "🥬 Par réf › fournisseur" : "👤 Par client › réf"], ["article", "🥬 Par réf"], ["autre", estClient ? "🏭 Par fournisseur" : "👤 Par client"], ["jour", "📅 Par jour"]] as const).map(([k, lib]) => (
-            <button key={k} type="button" onClick={() => setExportPar(k)} style={puce(c, exportPar === k)}>{lib}</button>
-          ))}
-        </div>
-        {boutonExport(c, exporterFiche, [`${estClient ? "Client" : "Fournisseur"} : ${nom}`])}
-        <div style={{ fontSize: 11.5, color: c.gris, marginTop: 6 }}>Sur la période choisie au-dessus ({d.jours.length ? `${dateFr(debut || minBase)} → ${dateFr(fin || maxBase)}` : "aucune vente"}) : colis{voirEuros ? ", ventes" : ""}{voirMarge ? ", marge" : ""}, jours livrés, première et dernière livraison.</div>
-      </Bloc>
       {alerte && <p style={{ margin: "0 0 12px", padding: "10px 14px", borderRadius: 12, background: "#fef3c7", color: "#92400e", fontWeight: 800, fontSize: 13.5 }}>⚠️ Pas de commande depuis {depuis} jours (d'habitude tous les {Math.round(d.freqTout!)} jours environ).</p>}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
         {voirEuros && tuile(estClient ? "Chiffre d'affaires" : "Ventes de ses produits", eur0(d.t.ven), `${ent(d.t.col)} colis`, "#2563eb")}
@@ -1584,18 +1608,27 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
           </div>
         </Bloc>
       )}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))", gap: 12 }}>
-        <div>{liste(`🥬 ${estClient ? "Ce qu'il achète" : "Ses articles vendus"}`, d.articles, a => ouvrir("produits", { articles: [a] }))}</div>
-        <div>{liste(estClient ? "🏭 Ses fournisseurs" : "👤 Ses clients", d.autres, k => choisir({ type: estClient ? "fournisseur" : "client", nom: k }))}</div>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", margin: "4px 0 12px" }}>
+        {!vueComplete && ([["articles", `🥬 Articles (${d.articles.length})`], ["autres", estClient ? `🏭 Fournisseurs (${d.autres.length})` : `👤 Clients (${d.autres.length})`], ["livraisons", estClient ? "🧾 Livraisons" : "🚚 Arrivages"], ["qualite", estClient ? "⛔ Litiges & retours" : "🧪 Qualité"], ["export", "📊 Exporter"]] as const).map(([k, lib]) => (
+          <button key={k} type="button" onClick={() => setOngletFiche(k)} style={{ ...puce(c, ongletFiche === k), fontSize: 13.5, padding: "9px 14px" }}>{lib}</button>
+        ))}
+        <span style={{ flex: 1 }} />
+        <button type="button" onClick={() => setVueComplete(!vueComplete)} style={{ border: "none", background: "none", color: c.gris, fontSize: 12.5, fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}>{vueComplete ? "Vue en onglets" : "Vue complète (tout afficher)"}</button>
       </div>
+      {(voir("articles") || voir("autres")) && (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))", gap: 12 }}>
+          {voir("articles") && <div>{liste(`🥬 ${estClient ? "Ce qu'il achète" : "Ses articles vendus"}`, d.articles, a => ouvrir("produits", { articles: [a] }))}</div>}
+          {voir("autres") && <div>{liste(estClient ? "🏭 Ses fournisseurs" : "👤 Ses clients", d.autres, k => choisir({ type: estClient ? "fournisseur" : "client", nom: k }))}</div>}
+        </div>
+      )}
       {estClient ? (
         <>
-          <Bloc titre="🧾 Dernières livraisons" c={c} droite={<button type="button" onClick={() => ouvrir("client", { client: nom })} style={puce(c, false)}>Toutes ses commandes →</button>}>
+          {voir("livraisons") && <Bloc titre="🧾 Dernières livraisons" c={c} droite={<button type="button" onClick={() => ouvrir("client", { client: nom })} style={puce(c, false)}>Toutes ses commandes →</button>}>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {d.derniers.map(([j, x]) => <button key={j} type="button" onClick={() => ouvrir("client", { client: nom, date: j })} style={puce(c, false)}>{dateLongue(j)} · {val(x)}</button>)}
             </div>
-          </Bloc>
-          <Bloc titre={`⛔ Litiges clients (refus, manquants, avoirs) — ${litigesC ? `${litigesFiche.length} · ${ent(litigesFiche.reduce((t, x) => t + (Number(x.colisRefuses) || 0), 0))} colis` : "…"}`} c={c}>
+          </Bloc>}
+          {voir("qualite") && <Bloc titre={`⛔ Litiges clients (refus, manquants, avoirs) — ${litigesC ? `${litigesFiche.length} · ${ent(litigesFiche.reduce((t, x) => t + (Number(x.colisRefuses) || 0), 0))} colis` : "…"}`} c={c}>
             {litigesC && !litigesFiche.length && <p style={{ margin: 0, fontSize: 13, color: c.gris }}>Aucun litige client importé pour ce client.</p>}
             {litigesFiche.slice(0, 60).map(x => (
               <div key={x.id} style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center", padding: "7px 0", borderTop: `1px solid ${c.bord}`, fontSize: 13 }}>
@@ -1604,19 +1637,19 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
                 <BadgeLitigeClient litige={x} />
               </div>
             ))}
-          </Bloc>
-          <Bloc titre={`🔁 Retours clients — ${q ? retoursC.length : "…"}`} c={c}>
+          </Bloc>}
+          {voir("qualite") && <Bloc titre={`🔁 Retours clients — ${q ? retoursC.length : "…"}`} c={c}>
             {q && !retoursC.length && <p style={{ margin: 0, fontSize: 13, color: c.gris }}>Aucun retour enregistré pour ce client.</p>}
             {retoursC.slice(0, 20).map(r => (
               <div key={r.id} style={{ padding: "7px 0", borderTop: `1px solid ${c.bord}`, fontSize: 13 }}>
                 <b>{r.date || ""}</b>{r.numero ? ` · n° ${r.numero}` : ""} · {(r.products || []).length} article{(r.products || []).length > 1 ? "s" : ""} · <span style={{ color: c.gris }}>{(r.products || []).map((p: any) => `${p.nom}${p.motif ? ` (${p.motif})` : ""}`).join(", ").slice(0, 180)}</span>
               </div>
             ))}
-          </Bloc>
+          </Bloc>}
         </>
       ) : (
         <>
-          <Bloc titre={`🚚 Derniers arrivages — ${ent(nbArr)}`} c={c} droite={<button type="button" onClick={() => ouvrir("arrivage", { fournisseur: arrF[0]?.fournisseur || nom })} style={puce(c, false)}>Tous ses arrivages →</button>}>
+          {voir("livraisons") && <Bloc titre={`🚚 Derniers arrivages — ${ent(nbArr)}`} c={c} droite={<button type="button" onClick={() => ouvrir("arrivage", { fournisseur: arrF[0]?.fournisseur || nom })} style={puce(c, false)}>Tous ses arrivages →</button>}>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {[...arrF.reduce((m, a) => { const j = isoArrivage(a.date); const x = m.get(j) || { n: 0, pb: 0 }; x.n++; if (a.statut === "refusé" || a.statut === "sous réserve") x.pb++; m.set(j, x); return m; }, new Map<string, { n: number; pb: number }>())]
                 .sort((a, b) => b[0].localeCompare(a[0])).slice(0, 14).map(([j, x]) => (
@@ -1624,8 +1657,8 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
                 ))}
               {!nbArr && <span style={{ fontSize: 13, color: c.gris }}>Aucun arrivage pointé dans l'appli pour ce nom.</span>}
             </div>
-          </Bloc>
-          <Bloc titre={`🧪 Qualité & litiges — ${q ? `${rapportsF.length} rapport${rapportsF.length > 1 ? "s" : ""}` : "…"}`} c={c}>
+          </Bloc>}
+          {voir("qualite") && <Bloc titre={`🧪 Qualité & litiges — ${q ? `${rapportsF.length} rapport${rapportsF.length > 1 ? "s" : ""}` : "…"}`} c={c}>
             {q && !rapportsF.length && <p style={{ margin: 0, fontSize: 13, color: c.gris }}>Aucun rapport qualité pour ce fournisseur.</p>}
             {rapportsF.slice(0, 25).map(r => {
               const dec = String(r.decision || "");
@@ -1642,13 +1675,22 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
                 </div>
               );
             })}
-          </Bloc>
+          </Bloc>}
         </>
       )}
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+      {voir("export") && <Bloc titre="📊 Exporter les stats de la période" c={c}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+          {([["croise", estClient ? "🥬 Par réf › fournisseur" : "👤 Par client › réf"], ["article", "🥬 Par réf"], ["autre", estClient ? "🏭 Par fournisseur" : "👤 Par client"], ["jour", "📅 Par jour"]] as const).map(([k, lib]) => (
+            <button key={k} type="button" onClick={() => setExportPar(k)} style={puce(c, exportPar === k)}>{lib}</button>
+          ))}
+        </div>
+        {boutonExport(c, exporterFiche, [`${estClient ? "Client" : "Fournisseur"} : ${nom}`])}
+        <div style={{ fontSize: 11.5, color: c.gris, marginTop: 6 }}>Sur la période choisie au-dessus ({d.jours.length ? `${dateFr(debut || minBase)} → ${dateFr(fin || maxBase)}` : "aucune vente"}) : colis{voirEuros ? ", ventes" : ""}{voirMarge ? ", marge" : ""}, jours livrés, première et dernière livraison.</div>
+      </Bloc>}
+      {voir("export") && <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button type="button" onClick={() => ouvrir("produits", { rapport: { id: "fiche", nom: `Fiche ${nom}`, auteurEmail: "", creeLe: 0, partage: "moi", config: { periode: { type: "glissant", cle: "tout" }, articles: [], familles: [], clients: estClient ? [nom] : [], fournisseurs: estClient ? [] : [nom], compte: "tous", vue: "mois" } } })}
           style={{ padding: "11px 16px", borderRadius: 12, border: "none", background: c.vert, color: "#fff", fontSize: 14, fontWeight: 800, cursor: "pointer" }}>📈 Toutes ses ventes en détail (et export)</button>
-      </div>
+      </div>}
     </>
   );
 }

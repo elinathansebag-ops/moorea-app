@@ -198,6 +198,13 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   // 16/10/2026 — « les onglets doivent être des onglets de la recherche » : ce qui est dans la recherche
   // (fiche ouverte, ou cases cochées, ou rien = tout Noël) est le SUJET ; les onglets en sont trois vues.
   const [vue, setVue] = useState<"besoin" | "manque" | "litiges" | "geslot">("manque");
+  // 18/10/2026 — « les pages sont très compliquées, trop d'infos dans tous les sens » : explications repliées,
+  // et sous le graphique un seul détail à la fois (clients & produits / tableau / commandes / litiges).
+  // « Vue complète » remet tout à la suite comme avant.
+  const [explications, setExplications] = useState(false);
+  const [detailNoel, setDetailNoel] = useState<"listes" | "tableau" | "commandes" | "litiges">("tableau");
+  const [vueCompleteNoel, setVueCompleteNoelEtat] = useState(() => { try { return localStorage.getItem("noel-vue") === "complete"; } catch { return false; } });
+  const setVueCompleteNoel = (v: boolean) => { setVueCompleteNoelEtat(v); try { localStorage.setItem("noel-vue", v ? "complete" : "simple"); } catch { /* */ } };
   const [ventesGeslot, setVentesGeslot] = useState<VenteGeslot[] | null>(null);
   const [erreurGeslot, setErreurGeslot] = useState("");
   const [compPar, setCompPar] = useState<"client" | "jour" | "article">("client");
@@ -660,6 +667,22 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       else { setFiche(ficheJour(iso)); }
     };
     const lsGraph = f.base ? source.filter(f.base.filtre) : ls;
+    const optsD = ([
+      ...(besoin ? [["tableau", "📅 Besoin jour par jour"]] : []),
+      ...(f.type !== "bl" ? [["listes", besoin ? "👥 Clients & produits" : "❌ Produits & clients touchés"]] : []),
+      ...(!global ? [["commandes", `🧾 Commandes (${listeCmds.length})`]] : []),
+    ] as [typeof detailNoel, string][]);
+    const dEff = optsD.some(([k]) => k === detailNoel) ? detailNoel : optsD[0]?.[0];
+    const voirD = (k: typeof detailNoel) => vueCompleteNoel || dEff === k;
+    const barreDetail = (
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", margin: "14px 0 0" }}>
+        {!vueCompleteNoel && optsD.length > 1 && optsD.map(([k, lib]) => (
+          <button key={k} type="button" onClick={() => setDetailNoel(k)} style={{ padding: "9px 14px", borderRadius: 99, cursor: "pointer", fontWeight: 800, fontSize: 13.5, border: `1.5px solid ${dEff === k ? "#305a55" : "#e8e0d0"}`, background: dEff === k ? "#305a55" : "#fff", color: dEff === k ? "#fff" : "#374151" }}>{lib}</button>
+        ))}
+        <span style={{ flex: 1 }} />
+        <button type="button" onClick={() => setVueCompleteNoel(!vueCompleteNoel)} style={{ border: "none", background: "none", color: "#6b7280", fontSize: 12.5, fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}>{vueCompleteNoel ? "Vue simple" : "Vue complète (tout afficher)"}</button>
+      </div>
+    );
     return (
       <div>
         {(historique.length > 0 || f.base) && (
@@ -697,23 +720,22 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
           const carteSource = (on: boolean) => ({ flex: "1 1 260px", minWidth: 0, background: "#fff", borderRadius: 12, padding: "10px 12px", border: `1.5px solid ${on ? "#93c5fd" : "#e5e7eb"}` });
           return (
             <div style={{ ...carte, marginTop: 12, marginBottom: 0, padding: "12px 14px", borderColor: "#93c5fd", background: "#eff6ff", color: "#1e3a8a", fontSize: 13 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 10 }}>
-                <span style={{ fontWeight: 900, fontSize: 14 }}>🔢 Quels chiffres sont comptés ?</span>
-                <span style={{ flex: 1 }} />
-                <span style={{ fontWeight: 800 }}>{avecGeslot ? <>✔️ Livrés = factures Geslot : {badge(100, "")}</> : <>✔️ Livrés retrouvés dans Geslot : {badge(fScan, "")}</>}</span>
-              </div>
-              <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
-                {([[false, "📄 Commandes client", `ce qui est écrit sur les commandes · ${ent(sc.lv)} livrés`], [true, "🧾 Commandes Geslot", `livrés = Geslot, sans doublon · ${ent(lvGeslot)} livrés`]] as const).map(([v, titre, sous]) => {
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span style={{ fontWeight: 900, fontSize: 14 }}>🔢 Compter :</span>
+                {([[false, "📄 Commandes client", sc.lv], [true, "🧾 Commandes Geslot", lvGeslot]] as const).map(([v, titre, n]) => {
                   const on = avecGeslot === v;
                   return (
-                    <button key={titre} type="button" onClick={() => setAvecGeslot(v)} style={{ flex: "1 1 220px", padding: "10px 14px", borderRadius: 12, cursor: "pointer", fontFamily: "inherit",
-                      border: `2.5px solid #1d4ed8`, background: on ? "#1d4ed8" : "#fff", color: on ? "#fff" : "#1d4ed8" }}>
-                      <span style={{ display: "block", fontWeight: 900, fontSize: 15 }}>{on ? "✓ " : ""}{titre}</span>
-                      <span style={{ display: "block", fontSize: 12, fontWeight: 600, opacity: 0.85, marginTop: 2 }}>{sous}</span>
+                    <button key={titre} type="button" onClick={() => setAvecGeslot(v)} style={{ padding: "8px 14px", borderRadius: 10, cursor: "pointer", fontFamily: "inherit", fontWeight: 900, fontSize: 14,
+                      border: `2px solid #1d4ed8`, background: on ? "#1d4ed8" : "#fff", color: on ? "#fff" : "#1d4ed8" }}>
+                      {on ? "✓ " : ""}{titre} <span style={{ fontSize: 12, fontWeight: 600, opacity: 0.85 }}>· {ent(n)} livrés</span>
                     </button>
                   );
                 })}
+                <span style={{ flex: 1 }} />
+                <span style={{ fontWeight: 800 }}>{avecGeslot ? <>Livrés = Geslot {badge(100, "")}</> : <>Retrouvés dans Geslot {badge(fScan, "")}</>}</span>
+                <button type="button" onClick={() => setExplications(!explications)} style={{ border: "none", background: "none", color: "#1d4ed8", fontWeight: 800, fontSize: 12.5, cursor: "pointer", textDecoration: "underline" }}>ⓘ {explications ? "Masquer" : "Explications"}</button>
               </div>
+              {explications && <div style={{ marginTop: 12 }}>
               <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
                 <div style={carteSource(!avecGeslot)}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -736,6 +758,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                 {avecGeslot ? <>Les chiffres en haut : <b>livrés = Geslot</b>, <b>manquants = commandes client</b>. Un manque sur une commande prise au téléphone n'est pas visible.</> : <>Les chiffres en haut = <b>ce qui est écrit sur les commandes client</b> : les livrés peuvent différer de Geslot ({ent(lvGeslot)}).</>}
                 {" "}<u style={{ cursor: "pointer", fontWeight: 700 }} onClick={() => setVue("geslot")}>Comparer les deux sources ›</u>
               </div>
+              </div>}
             </div>
           );
         })()}
@@ -766,13 +789,14 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
               <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 8 }}>📦 Colis commandés par jour <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— en rouge la part qui a manqué{surJour ? " · touchez un jour pour le détail" : ""}</span></div>
               {barresBesoin(lsGraph, surJour, jours, f.jourChoisi)}
             </div>
-            {f.type !== "bl" && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap: 14 }}>
+            {barreDetail}
+            {voirD("tableau") && tableBesoin}
+            {f.type !== "bl" && voirD("listes") && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap: 14, marginTop: 14 }}>
                 {f.type !== "client" && listeTop("👤 Clients qui commandent le plus", topCommandes(ls, "c"), "client", true)}
                 {f.type !== "article" && listeTop("📦 Produits les plus commandés", topCommandes(ls, "a"), "article", true)}
               </div>
             )}
-            {tableBesoin}
           </>
         ) : (
           <>
@@ -780,18 +804,19 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
               <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 8 }}>📅 Colis manquants par jour{surJour ? <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}> — touchez un jour pour le détail</span> : null}</div>
               {barresJours(lsGraph, surJour, jours, f.jourChoisi)}
             </div>
-            {f.type !== "bl" && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap: 14 }}>
+            {barreDetail}
+            {f.type !== "bl" && voirD("listes") && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(380px, 100%), 1fr))", gap: 14, marginTop: 14 }}>
                 {f.type !== "article" && listeTop("❌ Produits qui ont manqué", topManques(ls, "a"), "article")}
                 {f.type !== "client" && listeTop("👤 Clients touchés", topManques(ls, "c"), "client")}
               </div>
             )}
           </>
         )}
-        {!vueLitiges && !vueGeslot && (lits.length === 0 || global) && (
+        {vueCompleteNoel && !vueLitiges && !vueGeslot && (lits.length === 0 || global) && (
           <button type="button" onClick={() => setVue("litiges")} style={{ ...carte, width: "100%", textAlign: "left", cursor: "pointer", borderColor: "#fde68a", padding: "10px 16px", fontSize: 13.5, color: "#92400e" }}>⚠️ <b>Litiges</b> — {lits.length ? `${lits.length} litiges` : `aucun litige pour ${f.valeur}`}{lits.length ? " · voir l'onglet ⚠️ Litiges ›" : ""}</button>
         )}
-        {!vueLitiges && !vueGeslot && !global && lits.length > 0 && (
+        {vueCompleteNoel && !vueLitiges && !vueGeslot && !global && lits.length > 0 && (
           <div style={{ ...carte, borderColor: "#fcd34d" }}>
             <div style={{ fontSize: 15, fontWeight: 900, color: "#b45309", marginBottom: 6 }}>⚠️ Litiges ({lits.length})</div>
             {lits.map((x, i) => (
@@ -803,8 +828,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             ))}
           </div>
         )}
-        {!global && !vueLitiges && !vueGeslot && (
-        <div style={carte}>
+        {!global && !vueLitiges && !vueGeslot && voirD("commandes") && (
+        <div style={{ ...carte, marginTop: 14 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
             <div style={{ fontSize: 15, fontWeight: 900, flex: 1 }}>🧾 Les commandes ({listeCmds.length})</div>
             <div style={{ display: "flex", border: "1.5px solid #305a55", borderRadius: 9, overflow: "hidden" }}>

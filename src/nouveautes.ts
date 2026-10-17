@@ -8,6 +8,8 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 137, date: "18/10", pages: ["extractions"], texte: "🧹 Pages allégées. Fiches Stats : sous les chiffres, des onglets Articles · Clients · Livraisons / Arrivages · Qualité · Exporter. Noël : « Compter » sur une ligne (ⓘ pour l'explication) et un seul détail à la fois sous le graphique. Le lien « Vue complète » remet l'ancienne page." },
+  { id: 136, date: "18/10", pages: ["extractions"], texte: "🕘 Stats : les périodes choisies au calendrier sont gardées sous « Déjà choisies » (les 8 dernières) — un clic pour les reprendre, ✕ pour en retirer une." },
   { id: 135, date: "18/10", pages: ["extractions"], texte: "📊 Stats › fiches client / fournisseur : nouveau bloc « Exporter les stats de la période » — Excel, PDF ou impression, par client › réf, par réf, par client (ou fournisseur) ou par jour, sur les dates choisies (colis, ventes, marge, jours livrés)." },
   { id: 134, date: "18/10", pages: ["extractions"], texte: "🎄 Noël 2025 › tableau du besoin : avec plusieurs réfs cochées, elles sont cumulées sur une seule ligne (bouton « ↔️ Réfs séparées » pour revenir comme avant). Les fichiers Excel / PDF portent le nom de la recherche (ex. « PASSION VIETNAM … - Noel 2025 - … »)." },
   { id: 133, date: "18/10", pages: ["extractions"], texte: "🎄 Noël 2025 : la période va maintenant du 01/12/2025 au 06/01/2026 (ventes Geslot). Les commandes scannées restent celles du 08/12 au 30/12 : avant et après, voir le mode « 🧾 Commandes Geslot »." },
