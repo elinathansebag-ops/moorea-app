@@ -352,19 +352,22 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
 
   const sourceGeslot = useMemo(() => [...lignesScanGeslot, ...lignesComplement], [lignesScanGeslot, lignesComplement]);
   // Options de la recherche intelligente.
+  // 18/10/2026 — « pourquoi il y en a 2 ? » (mini aubergine = la famille ET l'article) : la famille dit
+  // maintenant combien de réfs elle regroupe, et les chiffres sont ceux de la page (livrés Geslot + manquants).
   const options = useMemo(() => {
-    const m = new Map<string, Option>();
+    const m = new Map<string, Option>(), refs = new Map<string, Set<string>>();
     const ajout = (type: string, valeur: string, q: number, man: number) => {
       if (!valeur) return; const k = type + "|" + valeur; const o: any = m.get(k) || { type, valeur, poids: 0, man: 0 };
-      o.poids += q; o.man += man; o.detail = `${ent(o.poids)} colis commandés${o.man ? ` · ${ent(o.man)} manquants` : " · tout livré"}`; m.set(k, o);
+      o.poids += q; o.man += man; m.set(k, o);
     };
-    lignes.forEach(l => { ajout("client", l.c, l.q, l.m); ajout("article", l.a, l.q, l.m); ajout("famille", l.f, l.q, l.m); ajout("fournisseur", fournisseurDe[l.a], l.q, l.m); });
-    // Clients livrés d'après Geslot mais sans aucune commande scannée.
-    const geslotSeul = new Map<string, number>();
-    lignesGeslot.forEach(l => { if (!m.has("client|" + l.c)) geslotSeul.set(l.c, (geslotSeul.get(l.c) || 0) + l.q); });
-    geslotSeul.forEach((q, c) => m.set("client|" + c, { type: "client", valeur: c, poids: q, detail: `🧾 Geslot uniquement · ${ent(q)} colis livrés · aucune commande scannée` } as any));
+    const base = sourceGeslot.length ? sourceGeslot : lignes;
+    base.filter(compte).forEach(l => { ajout("client", l.c, l.q, l.m); ajout("article", l.a, l.q, l.m); ajout("famille", l.f, l.q, l.m); ajout("fournisseur", fournisseurDe[l.a], l.q, l.m); if (l.f && l.a) { const r = refs.get(l.f) || new Set<string>(); r.add(l.a); refs.set(l.f, r); } });
+    m.forEach((o: any) => {
+      const nb = o.type === "famille" ? refs.get(o.valeur)?.size || 0 : 0;
+      o.detail = `${o.type === "famille" ? `Famille · ${nb} réf${nb > 1 ? "s" : ""} · ` : ""}${ent(o.poids)} colis commandés${o.man ? ` · ${ent(o.man)} manquants` : " · tout livré"}`;
+    });
     return [...m.values()];
-  }, [lignes, fournisseurDe, lignesGeslot]);
+  }, [lignes, fournisseurDe, sourceGeslot]);
   const extra = (q: string): Option[] => {
     const t = q.trim(); const out: Option[] = [];
     const j = t.match(/^(\d{1,2})[/.-](\d{1,2})/);
