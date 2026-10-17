@@ -1008,51 +1008,43 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const carteBesoin = (tableau: LigneTab[], entete?: any, sujet?: string) => (
                   <div style={carte}>
                     {entete}
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
-                      <span style={{ display: "inline-flex", border: "1.5px solid #305a55", borderRadius: 9, overflow: "hidden" }}>
-                        {([["articleClient", typeSujet === "article" ? "👤 Clients × bases" : typeSujet === "client" ? "🥬 Réf × base" : "🥬 Réf × client"], ["clientArticle", "👤 Client × réf"], ["fournisseurArticle", "🏭 Fournisseur × réf"], ["article", "🥬 Par réf"], ["client", "👤 Par client"]] as const).filter(([v]) => vuesUtiles.includes(v)).map(([v, lib]) => (
-                          <button key={v} type="button" onClick={() => setLignesPar(v)} style={{ padding: "7px 11px", border: "none", background: lignesPar === v ? "#305a55" : "#fff", color: lignesPar === v ? "#fff" : "#305a55", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>{lib}</button>
-                        ))}
-                      </span>
+                    {/* 18/10/2026 — « trop de trucs dans tous les sens » : les 5 groupes de boutons deviennent une
+                        phrase de menus déroulants (Voir … rangé … par … du … au …), exports à droite. */}
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10, fontSize: 13.5, fontWeight: 800, color: "#374151" }}>
+                      Voir
+                      <select value={mesure} onChange={e => setMesure(e.target.value as any)} style={{ ...sel, fontWeight: 800, color: mesure === "m" ? "#b91c1c" : "#1a2e1a" }}>
+                        <option value="q">📦 le besoin (commandé)</option><option value="lv">✅ le livré</option><option value="m">❌ le manquant</option><option value="taux">🎯 le taux de service</option>
+                      </select>
+                      rangé
+                      <select value={lignesPar} onChange={e => setLignesPar(e.target.value as any)} style={{ ...sel, fontWeight: 800 }}>
+                        {([["articleClient", typeSujet === "article" ? "par client › base" : typeSujet === "client" ? "par réf › base" : "par réf › client"], ["clientArticle", "par client › réf"], ["fournisseurArticle", "par fournisseur › réf"], ["article", "par réf"], ["client", "par client"]] as const).filter(([v]) => vuesUtiles.includes(v)).map(([v, lib]) => <option key={v} value={v}>{lib}</option>)}
+                      </select>
+                      <select value={parSemaine ? "s" : "j"} onChange={e => setParSemaine(e.target.value === "s")} style={{ ...sel, fontWeight: 800 }}>
+                        <option value="j">jour par jour</option><option value="s">semaine par semaine</option>
+                      </select>
+                      du
+                      <select value={periode.du || jours[0]} onChange={e => setPeriode(p => ({ du: e.target.value, au: p.au && p.au < e.target.value ? e.target.value : p.au }))} style={{ ...sel, fontWeight: 800 }}>{jours.map(j => <option key={j} value={j}>{jjmm(j)}</option>)}</select>
+                      au
+                      <select value={periode.au || jours[jours.length - 1]} onChange={e => setPeriode(p => ({ au: e.target.value, du: p.du && p.du > e.target.value ? e.target.value : p.du }))} style={{ ...sel, fontWeight: 800 }}>{jours.map(j => <option key={j} value={j}>{jjmm(j)}</option>)}</select>
+                      {(periode.du || periode.au) && <button type="button" onClick={() => setPeriode({ du: "", au: "" })} style={{ border: "none", background: "none", color: "#6b7280", fontSize: 12, textDecoration: "underline", cursor: "pointer" }}>tout Noël</button>}
                       {tArticles.length > 1 && (
-                        <span style={{ display: "inline-flex", border: "1.5px solid #305a55", borderRadius: 9, overflow: "hidden" }}>
-                          {([[true, "➕ Réfs cumulées"], [false, "↔️ Réfs séparées"]] as const).map(([v, lib]) => (
-                            <button key={lib} type="button" onClick={() => setCumulRefs(v)} style={{ padding: "7px 11px", border: "none", background: cumulRefs === v ? "#305a55" : "#fff", color: cumulRefs === v ? "#fff" : "#305a55", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>{lib}</button>
-                          ))}
-                        </span>
+                        <label style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
+                          <input type="checkbox" checked={cumulRefs} onChange={e => setCumulRefs(e.target.checked)} /> réfs cumulées
+                        </label>
                       )}
-                      {groupe && (
-                        <button type="button" onClick={() => setClientsFermes(f => (Object.keys(f).length ? {} : Object.fromEntries(tableau.filter(x => x.titre).map(x => [x.art, true]))))}
-                          style={{ padding: "7px 11px", borderRadius: 9, border: "1.5px solid #e8e0d0", background: "#fff", color: "#374151", fontWeight: 700, fontSize: 12, cursor: "pointer" }}>{Object.keys(clientsFermes).length ? "▾ Tout déplier" : "▸ Tout replier"}</button>
-                      )}
-                      <span style={{ display: "inline-flex", border: "1.5px solid #305a55", borderRadius: 9, overflow: "hidden" }}>
-                        {([[false, "📅 Par jour"], [true, "🗓️ Par semaine"]] as const).map(([v, lib]) => (
-                          <button key={lib} type="button" onClick={() => setParSemaine(v)} style={{ padding: "7px 11px", border: "none", background: parSemaine === v ? "#305a55" : "#fff", color: parSemaine === v ? "#fff" : "#305a55", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>{lib}</button>
-                        ))}
-                      </span>
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12.5, fontWeight: 800, color: "#374151" }}>
-                        Du
-                        <select value={periode.du || jours[0]} onChange={e => setPeriode(p => ({ du: e.target.value, au: p.au && p.au < e.target.value ? e.target.value : p.au }))} style={sel}>{jours.map(j => <option key={j} value={j}>{jjmm(j)}</option>)}</select>
-                        au
-                        <select value={periode.au || jours[jours.length - 1]} onChange={e => setPeriode(p => ({ au: e.target.value, du: p.du && p.du > e.target.value ? e.target.value : p.du }))} style={sel}>{jours.map(j => <option key={j} value={j}>{jjmm(j)}</option>)}</select>
-                        {(periode.du || periode.au) && <button type="button" onClick={() => setPeriode({ du: "", au: "" })} style={{ border: "none", background: "none", color: "#6b7280", fontSize: 12, textDecoration: "underline", cursor: "pointer" }}>tout Noël</button>}
-                      </span>
                       <span style={{ flex: 1 }} />
-                      <span style={{ display: "inline-flex", border: "1.5px solid #e8e0d0", borderRadius: 9, overflow: "hidden" }}>
-                        {([["q", "📦 Besoin (commandé)"], ["lv", "✅ Livré"], ["m", "❌ Manquant"], ["taux", "🎯 Taux"]] as const).map(([v, lib]) => (
-                          <button key={v} type="button" onClick={() => setMesure(v)} style={{ padding: "7px 11px", border: "none", background: mesure === v ? (v === "m" ? "#dc2626" : "#305a55") : "#fff", color: mesure === v ? "#fff" : "#374151", fontWeight: 800, fontSize: 12, cursor: "pointer" }}>{lib}</button>
-                        ))}
-                      </span>
                       <span style={{ display: "inline-flex", gap: 6 }}>
                         <button type="button" onClick={() => exporterTableau("excel", tableau, sujet)} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #16a34a", background: "#f0fdf4", color: "#15803d", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>📊 Excel</button>
                         <button type="button" onClick={() => exporterTableau("pdf", tableau, sujet)} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #dc2626", background: "#fef2f2", color: "#b91c1c", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>📄 PDF</button>
-                        <button type="button" onClick={() => exporterTableau("imprimer", tableau, sujet)} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #305a55", background: "#fff", color: "#305a55", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>🖨️ Imprimer</button>
+                        <button type="button" onClick={() => exporterTableau("imprimer", tableau, sujet)} style={{ padding: "7px 12px", borderRadius: 9, border: "1.5px solid #305a55", background: "#fff", color: "#305a55", fontWeight: 800, fontSize: 12.5, cursor: "pointer" }}>🖨️</button>
                       </span>
                     </div>
                     <div style={{ overflow: "auto", maxHeight: "70vh", border: "1px solid #eee8dc", borderRadius: 10 }}>
                       <table style={{ borderCollapse: "collapse", fontSize: 12 }}>
                         <thead><tr>
-                          <th style={{ ...th, position: "sticky", left: 0, top: 0, zIndex: 2, minWidth: 280 }}>{lignesPar === "article" ? "Article" : lignesPar === "client" ? "Client" : lignesPar === "fournisseurArticle" ? "Fournisseur › article" : lignesPar === "articleClient" ? "Article › client › base" : "Client › article"}</th>
+                          <th style={{ ...th, position: "sticky", left: 0, top: 0, zIndex: 2, minWidth: 280 }}>{lignesPar === "article" ? "Article" : lignesPar === "client" ? "Client" : lignesPar === "fournisseurArticle" ? "Fournisseur › article" : lignesPar === "articleClient" ? "Article › client › base" : "Client › article"}
+                            {groupe && <button type="button" onClick={() => setClientsFermes(f => (Object.keys(f).length ? {} : Object.fromEntries(tableau.filter(x => x.titre).map(x => [x.art, true]))))} style={{ marginLeft: 10, border: "none", background: "none", color: "#305a55", fontSize: 11, fontWeight: 800, textDecoration: "underline", cursor: "pointer" }}>{Object.keys(clientsFermes).length ? "▾ tout déplier" : "▸ tout replier"}</button>}
+                          </th>
                           {colonnes.map(c => <th key={c.cle} style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>{c.lib}{c.sous && <div style={{ fontSize: 9.5, fontWeight: 500 }}>{c.sous}</div>}</th>)}
                           <th style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>Total</th>
                         </tr></thead>

@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 140, date: "18/10", pages: ["extractions"], texte: "🧹 Noël 2025 › tableau du besoin : les réglages tiennent sur une ligne qui se lit comme une phrase — « Voir [le besoin] rangé [par réf › client] [jour par jour] du [01/12] au [06/01] » — exports à droite, « tout replier » dans l'en-tête du tableau." },
   { id: 139, date: "18/10", pages: ["extractions"], texte: "⚡ Noël 2025 plus rapide : les onglets répondent tout de suite (« ⏳ Calcul… » le temps du calcul), le tableau du besoin affiche ses 150 premières lignes (« Afficher 300 de plus » / « Tout afficher » ; les exports contiennent tout)." },
   { id: 138, date: "18/10", pages: ["extractions"], texte: "🎨 Noël 2025 : le fond de la page prend la couleur de l'onglet (vert Besoin, rouge Manquants, jaune Litiges, bleu Geslot / scans) et la page s'ouvre sur 📦 Besoin." },
   { id: 137, date: "18/10", pages: ["extractions"], texte: "🧹 Pages allégées. Fiches Stats : sous les chiffres, des onglets Articles · Clients · Livraisons / Arrivages · Qualité · Exporter. Noël : « Compter » sur une ligne (ⓘ pour l'explication) et un seul détail à la fois sous le graphique. Le lien « Vue complète » remet l'ancienne page." },
