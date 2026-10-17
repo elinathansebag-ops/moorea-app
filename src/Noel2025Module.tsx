@@ -189,7 +189,6 @@ async function envoyerScans(fichiers: File[], dejaLa: Record<string, string>, pr
 // mode « besoin » : la même fiche, mais centrée sur ce qui a été commandé (ouverte depuis l'onglet Besoin).
 type Fiche = { type: string; valeur: string; filtre: (l: Ligne) => boolean; filtreR: (r: Rupture) => boolean; filtreL: (x: Litige) => boolean; mode?: "besoin"; jourChoisi?: string; base?: Fiche };
 const C: Couleurs = { fond: "#f5f3ee", carte: "#fff", texte: "#1a2e1a", gris: "#6b7280", bord: "#e8e0d0", vert: "#305a55", sombre: false };
-const pct = (a: number, b: number) => (b ? `${(a / b * 100).toLocaleString("fr-FR", { maximumFractionDigits: 1 })} %` : "—");
 const TITRES: Record<string, string> = { client: "👤", article: "", famille: "🗂️", jour: "📅", bl: "🧾", fournisseur: "🏭" };
 
 export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; estAdmin?: boolean }) {
@@ -267,7 +266,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   // Une seule recherche (en haut) : ce qui y est coché filtre le tableau « Besoin » et la fiche « sélection ».
   const selection: Option[] = [...tFournisseurs.map(valeur => ({ type: "fournisseur", valeur })), ...tClients.map(valeur => ({ type: "client", valeur })),
     ...tFamilles.map(valeur => ({ type: "famille", valeur })), ...tArticles.map(valeur => ({ type: "article", valeur }))];
-  const [mesure, setMesure] = useState<"q" | "lv" | "m" | "taux">("q");
+  const [mesure, setMesure] = useState<"q" | "lv" | "m">("q"); // 18/10/2026 : plus de « taux de service » (« ça sert à rien »)
   const [cmdOuverte, setCmdOuverte] = useState<string | null>(null);
   // Les commandes d'une fiche : rangées par client puis par base (par défaut), ou l'ancienne liste par date.
   const [vueCmds, setVueCmdsEtat] = useState<"base" | "date">(() => { try { return localStorage.getItem("noel-vue-cmds") === "date" ? "date" : "base"; } catch { return "base"; } });
@@ -424,7 +423,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const sel = { padding: "8px 10px", borderRadius: 9, border: "1.5px solid #e8e0d0", fontSize: 13, background: "#fff", maxWidth: "100%" } as const;
   const chiffres = (t: { q: number; lv: number; m: number }, nbLitiges?: number) => (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(150px, 100%), 1fr))", gap: 10 }}>
-      {[["📦 Commandés", ent(t.q), "#1a2e1a"], ["✅ Livrés", ent(t.lv), "#15803d"], ["❌ Manquants", ent(t.m), "#dc2626"], ["🎯 Taux de service", pct(t.lv, t.q), "#305a55"], ...(nbLitiges != null ? [["⚠️ Litiges", String(nbLitiges), "#b45309"]] : [])].map(([lib, v, c]) => (
+      {[["📦 Commandés", ent(t.q), "#1a2e1a"], ["✅ Livrés", ent(t.lv), "#15803d"], ["❌ Manquants", ent(t.m), "#dc2626"], ...(nbLitiges != null ? [["⚠️ Litiges", String(nbLitiges), "#b45309"]] : [])].map(([lib, v, c]) => (
         <div key={lib} style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: "10px 14px" }}>
           <div style={{ fontSize: 11.5, fontWeight: 700, color: "#6b7280" }}>{lib}</div>
           <div style={{ fontSize: 23, fontWeight: 900, color: c }}>{v}</div>
@@ -959,7 +958,6 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   };
   const valeur = (x?: { q: number; lv: number; m: number }) => {
     if (!x) return "";
-    if (mesure === "taux") return x.q ? `${Math.round((x.lv / x.q) * 100)} %` : "";
     const v = x[mesure]; return v ? ent(v) : "";
   };
   const basculerT = (o: Option) => {
@@ -969,7 +967,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const estCocheT = (o: Option) => (o.type === "client" ? tClients : o.type === "famille" ? tFamilles : o.type === "fournisseur" ? tFournisseurs : tArticles).includes(o.valeur);
   const exporterTableau = async (format: "excel" | "pdf" | "imprimer", tableau: LigneTab[], sujet?: string) => {
     const { exporterExcelMoorea, exporterPdfMoorea, imprimerPdfMoorea } = await import("./exportsMoorea");
-    const lib = { q: "commandés (besoin)", lv: "livrés", m: "manquants", taux: "taux de service" }[mesure];
+    const lib = { q: "commandés (besoin)", lv: "livrés", m: "manquants" }[mesure];
     const par = { article: "par produit", articleClient: "par produit et par client", clientArticle: "par client et par produit", fournisseurArticle: "par fournisseur et par produit", client: "par client" }[lignesPar] + (parSemaine ? " et par semaine" : " et par jour");
     const nomG = lignesPar === "fournisseurArticle" ? "Fournisseur" : lignesPar === "articleClient" ? "Article" : "Client";
     // 16/10/2026 — Une seule valeur de regroupement (ex. un seul fournisseur) : pas de colonne inutile,
@@ -978,7 +976,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const deux = groupe && groupes.length > 1;
     const seul = groupe && groupes.length === 1 ? groupes[0] : "";
     // Valeurs des jours / semaines : des nombres (Excel), le taux en texte.
-    const vx = (x?: { q: number; lv: number; m: number }) => !x ? "" : mesure === "taux" ? (x.q ? `${Math.round((x.lv / x.q) * 100)} %` : "") : (x[mesure] || "");
+    const vx = (x?: { q: number; lv: number; m: number }) => !x ? "" : (x[mesure] || "");
     const filtres = [...(sujet ? [sujet] : [tFournisseurs.length && `Fournisseurs : ${tFournisseurs.join(", ")}`, tClients.length && `Clients : ${tClients.join(", ")}`, tArticles.length && `Articles : ${tArticles.join(", ")}`, tFamilles.length && `Familles : ${tFamilles.join(", ")}`].filter(Boolean) as string[]),
       ...(seul && seul !== sujet ? [`${nomG} : ${seul}`] : []), `Jours : colis ${lib}`];
     // 16/10/2026 — « le besoin par jour ET le manquant, en rouge » : sous chaque ligne qui a eu des
@@ -987,10 +985,10 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const lignes: (string | number)[][] = [], couleurs: (string | null)[] = [], fonds: (string | null)[] = [], gras: boolean[] = [], bandes: number[] = [];
     tableau.forEach(({ art, client, titre, base, r, tq, tlv, tm }, k) => {
       const debut = [...(deux ? [client || ""] : []), titre && groupe ? (deux ? `TOTAL ${nomG.toUpperCase()}` : `TOTAL ${art}`) : base ? base : art, ...(lignesPar === "articleClient" ? [base ? art : titre ? "" : "TOUTES BASES"] : [])];
-      lignes.push([...debut, ...(avecManq ? ["Commandés"] : []), ...colonnes.map(c => vx(cellule(r, c))), Math.round(tq), Math.round(tlv), tm ? Math.round(tm) : "", tq ? Math.round((tlv / tq) * 1000) / 10 : ""]);
+      lignes.push([...debut, ...(avecManq ? ["Commandés"] : []), ...colonnes.map(c => vx(cellule(r, c))), Math.round(tq), Math.round(tlv), tm ? Math.round(tm) : ""]);
       couleurs.push(null); fonds.push(null); gras.push(!!titre); bandes.push(k);
       if (avecManq && tm > 0) {
-        lignes.push([...debut.map(() => ""), "dont manquants", ...colonnes.map(c => { const x = cellule(r, c); return x?.m ? Math.round(x.m) : ""; }), "", "", Math.round(tm), ""]);
+        lignes.push([...debut.map(() => ""), "dont manquants", ...colonnes.map(c => { const x = cellule(r, c); return x?.m ? Math.round(x.m) : ""; }), "", "", Math.round(tm)]);
         couleurs.push("#B91C1C"); fonds.push("#FEF2F2"); gras.push(true); bandes.push(k);
       }
     });
@@ -998,7 +996,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
       sousTitre: periodeTxt(joursT[0], joursT[joursT.length - 1]),
       filtres,
       entetes: [...(deux ? [nomG] : []), lignesPar === "client" || lignesPar === "articleClient" ? "Client" : "Article", ...(lignesPar === "articleClient" ? ["Base"] : []), ...(avecManq ? ["Détail"] : []),
-        ...colonnes.map(c => (c.sous ? `${c.lib} (${c.sous})` : c.lib)), "Total commandé", "Total livré", "Manquant", "Taux de service"],
+        ...colonnes.map(c => (c.sous ? `${c.lib} (${c.sous})` : c.lib)), "Total commandé", "Total livré", "Manquant"],
       lignes, couleurs, fonds, gras, groupes: bandes };
     if (format === "excel") await exporterExcelMoorea(e); else if (format === "imprimer") await imprimerPdfMoorea(e); else await exporterPdfMoorea(e);
   };
@@ -1013,7 +1011,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10, fontSize: 13.5, fontWeight: 800, color: "#374151" }}>
                       Voir
                       <select value={mesure} onChange={e => setMesure(e.target.value as any)} style={{ ...sel, fontWeight: 800, color: mesure === "m" ? "#b91c1c" : "#1a2e1a" }}>
-                        <option value="q">📦 le besoin (commandé)</option><option value="lv">✅ le livré</option><option value="m">❌ le manquant</option><option value="taux">🎯 le taux de service</option>
+                        <option value="q">📦 le besoin (commandé)</option><option value="lv">✅ le livré</option><option value="m">❌ le manquant</option>
                       </select>
                       rangé
                       <select value={lignesPar} onChange={e => setLignesPar(e.target.value as any)} style={{ ...sel, fontWeight: 800 }}>
