@@ -1425,6 +1425,7 @@ const isoFr = (fr: string) => { const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(Stri
 function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options, choisir, ouvrir }: { c: Couleurs; ventes: LigneVente[] | null; arrivages: any[] | null; voirMarge: boolean; voirEuros: boolean; fiche?: { type: "client" | "fournisseur"; nom: string }; options: Option[]; choisir: (f: { type: "client" | "fournisseur"; nom: string }) => void; ouvrir: (o: Onglet, p: Preset) => void }) {
   const [q, setQ] = useState<{ rapports: any[]; retours: any[] } | null>(null);
   const [rapportOuvert, setRapportOuvert] = useState<any>(null);
+  const [exportPar, setExportPar] = useState<"croise" | "article" | "autre" | "jour">("croise");
   useEffect(() => { if (fiche) chargerQualite().then(setQ); }, [fiche?.nom]);
   const estClient = fiche?.type === "client", nom = fiche?.nom || "";
   const lignesTout = useMemo(() => (ventes || []).filter(l => fiche && (estClient ? l.c === nom : l.f === nom)), [ventes, fiche]);
@@ -1476,6 +1477,31 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
     </Bloc>
   );
   const val = (x: { ven: number; col: number }) => voirEuros ? eur0(x.ven) : `${ent(x.col)} colis`;
+  // 18/10/2026 — Demande d'Elinathan : « pouvoir sortir des Excel de stats de tout, par client, par réf, et
+  // choisir les dates que je veux » (fiche client / fournisseur, période choisie au-dessus).
+  function exporterFiche() {
+    const autreLib = estClient ? "Fournisseur" : "Client", autreDe = (l: LigneVente) => (estClient ? l.f : l.c) || "—";
+    const cles: ((l: LigneVente) => string)[] = exportPar === "croise" ? (estClient ? [l => l.a, autreDe] : [autreDe, l => l.a]) : exportPar === "article" ? [l => l.a] : exportPar === "autre" ? [autreDe] : [l => l.d];
+    const libs = exportPar === "croise" ? (estClient ? ["Article", autreLib] : [autreLib, "Article"]) : exportPar === "article" ? ["Article"] : exportPar === "autre" ? [autreLib] : ["Jour"];
+    type Agg = { col: number; ven: number; res: number; venR: number; jours: Set<string>; min: string; max: string };
+    const m = new Map<string, { k: string[]; x: Agg }>();
+    lignes.forEach(l => {
+      const k = cles.map(f => f(l)), id = k.join("\u0001");
+      let e = m.get(id); if (!e) { e = { k, x: { col: 0, ven: 0, res: 0, venR: 0, jours: new Set(), min: l.d, max: l.d } }; m.set(id, e); }
+      const x = e.x; x.col += l.col; x.ven += l.ven; if (!l.sa) { x.res += l.res; x.venR += l.ven; } x.jours.add(l.d); if (l.d < x.min) x.min = l.d; if (l.d > x.max) x.max = l.d;
+    });
+    const poids = (x: Agg) => (voirEuros ? x.ven : x.col);
+    const parPremier = new Map<string, number>(); m.forEach(({ k, x }) => parPremier.set(k[0], (parPremier.get(k[0]) || 0) + poids(x)));
+    const rangs = [...m.values()].sort((a, b) => exportPar === "jour" ? a.k[0].localeCompare(b.k[0]) : (parPremier.get(b.k[0])! - parPremier.get(a.k[0])!) || a.k[0].localeCompare(b.k[0]) || poids(b.x) - poids(a.x));
+    const chiffres = (x: Agg) => [Math.round(x.col * 100) / 100, ...(voirEuros ? [Math.round(x.ven * 100) / 100] : []), ...(voirMarge ? [Math.round(x.res * 100) / 100, x.venR ? Math.round(x.res / x.venR * 1000) / 10 : ""] : [])];
+    const lignesX = rangs.map(({ k, x }) => [...k.map((v, i) => (libs[i] === "Jour" ? dateFr(v) : v)), ...chiffres(x), ...(exportPar === "jour" ? [] : [x.jours.size, dateFr(x.min), dateFr(x.max)])]);
+    const tot = rangs.reduce((t, { x }) => ({ col: t.col + x.col, ven: t.ven + x.ven, res: t.res + x.res, venR: t.venR + x.venR }), { col: 0, ven: 0, res: 0, venR: 0 });
+    const total = ["TOTAL", ...libs.slice(1).map(() => ""), ...chiffres({ ...tot, jours: new Set(), min: "", max: "" }), ...(exportPar === "jour" ? [] : [d.jours.length, "", ""])];
+    const du = debut || minBase, au = fin || maxBase;
+    const par = { croise: estClient ? "par réf et fournisseur" : "par client et réf", article: "par réf", autre: estClient ? "par fournisseur" : "par client", jour: "par jour" }[exportPar];
+    exporterExcel(`${nom} - stats ${par} du ${dateFr(du).replace(/\//g, "-")} au ${dateFr(au).replace(/\//g, "-")}`, `${nom} — stats ${par} · du ${dateFr(du)} au ${dateFr(au)}`,
+      [...libs, "Colis", ...(voirEuros ? ["Ventes €"] : []), ...(voirMarge ? ["Marge €", "Marge %"] : []), ...(exportPar === "jour" ? [] : ["Jours livrés", "Premier jour", "Dernier jour"])], lignesX, total);
+  }
   const depuis = d.joursTout.length ? Math.round((new Date(d.finBase + "T12:00:00").getTime() - new Date(d.joursTout[d.joursTout.length - 1] + "T12:00:00").getTime()) / 86400000) : null;
   const alerte = estClient && d.freqTout && depuis != null && d.joursTout.length >= 4 && depuis > Math.max(3, d.freqTout * 2);
   const maxMois = Math.max(1, ...d.parMois.map(([, x]) => voirEuros ? x.ven : x.col));
@@ -1525,6 +1551,15 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
           ))}
         </div>
         <ChoixPeriode c={c} debut={debut || minBase} fin={fin || maxBase} min={minBase} max={maxBase} onChange={(a, b) => { setDebut(a); setFin(b); setRapide(""); }} />
+      </Bloc>
+      <Bloc titre="📊 Exporter les stats de la période" c={c}>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginBottom: 10 }}>
+          {([["croise", estClient ? "🥬 Par réf › fournisseur" : "👤 Par client › réf"], ["article", "🥬 Par réf"], ["autre", estClient ? "🏭 Par fournisseur" : "👤 Par client"], ["jour", "📅 Par jour"]] as const).map(([k, lib]) => (
+            <button key={k} type="button" onClick={() => setExportPar(k)} style={puce(c, exportPar === k)}>{lib}</button>
+          ))}
+        </div>
+        {boutonExport(c, exporterFiche, [`${estClient ? "Client" : "Fournisseur"} : ${nom}`])}
+        <div style={{ fontSize: 11.5, color: c.gris, marginTop: 6 }}>Sur la période choisie au-dessus ({d.jours.length ? `${dateFr(debut || minBase)} → ${dateFr(fin || maxBase)}` : "aucune vente"}) : colis{voirEuros ? ", ventes" : ""}{voirMarge ? ", marge" : ""}, jours livrés, première et dernière livraison.</div>
       </Bloc>
       {alerte && <p style={{ margin: "0 0 12px", padding: "10px 14px", borderRadius: 12, background: "#fef3c7", color: "#92400e", fontWeight: 800, fontSize: 13.5 }}>⚠️ Pas de commande depuis {depuis} jours (d'habitude tous les {Math.round(d.freqTout!)} jours environ).</p>}
       <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 12 }}>
