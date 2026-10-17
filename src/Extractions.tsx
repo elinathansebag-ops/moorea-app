@@ -1613,7 +1613,7 @@ function FicheTiers({ c, ventes, arrivages, voirMarge, voirEuros, fiche, options
           <button key={k} type="button" onClick={() => setOngletFiche(k)} style={{ ...puce(c, ongletFiche === k), fontSize: 13.5, padding: "9px 14px" }}>{lib}</button>
         ))}
         <span style={{ flex: 1 }} />
-        <button type="button" onClick={() => setVueComplete(!vueComplete)} style={{ border: "none", background: "none", color: c.gris, fontSize: 12.5, fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}>{vueComplete ? "Vue en onglets" : "Vue complète (tout afficher)"}</button>
+        <button type="button" onClick={() => setVueComplete(!vueComplete)} style={{ border: "none", background: "none", color: c.gris, fontSize: 12.5, fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}>{vueComplete ? "↩ Revenir à la nouvelle page" : "Voir l'ancienne version de la page"}</button>
       </div>
       {(voir("articles") || voir("autres")) && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(min(320px, 100%), 1fr))", gap: 12 }}>

@@ -702,7 +702,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
           <button key={k} type="button" onClick={() => setDetailNoel(k)} style={{ padding: "9px 14px", borderRadius: 99, cursor: "pointer", fontWeight: 800, fontSize: 13.5, border: `1.5px solid ${dEff === k ? "#305a55" : "#e8e0d0"}`, background: dEff === k ? "#305a55" : "#fff", color: dEff === k ? "#fff" : "#374151" }}>{lib}</button>
         ))}
         <span style={{ flex: 1 }} />
-        <button type="button" onClick={() => setVueCompleteNoel(!vueCompleteNoel)} style={{ border: "none", background: "none", color: "#6b7280", fontSize: 12.5, fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}>{vueCompleteNoel ? "Vue simple" : "Vue complète (tout afficher)"}</button>
+        <button type="button" onClick={() => setVueCompleteNoel(!vueCompleteNoel)} style={{ border: "none", background: "none", color: "#6b7280", fontSize: 12.5, fontWeight: 700, textDecoration: "underline", cursor: "pointer" }}>{vueCompleteNoel ? "↩ Revenir à la nouvelle page" : "Voir l'ancienne version de la page"}</button>
       </div>
     );
     return (
