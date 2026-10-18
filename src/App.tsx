@@ -64,6 +64,7 @@ const LidlModule = chargerModule(() => import("./LidlModule"), "LidlModule");
 const Extractions = chargerModule(() => import("./Extractions"), "Extractions");
 const QualiteDashboard = chargerModule(() => import("./QualiteDashboard"), "default");
 const HubModules = chargerModule(() => import("./HubModules"), "HubModules");
+const ImportNoel2025 = chargerModule(() => import("./Noel2025Module"), "ImportNoel2025");
 const ConsultationLidl = chargerModule(() => import("./ConsultationLidl"), "ConsultationLidl");
 const FacturesPrestataires = chargerModule(() => import("./FacturesPrestataires"), "FacturesPrestataires");
 const StatsAchatsModule = chargerModule(() => import("./StatsAchatsModule"), "StatsAchatsModule");
@@ -4386,8 +4387,8 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
                     </CarteReglage>
                     {/* 14/10/2026 — ImgBB n'affiche plus les photos hors de son site : recopie vers Firebase Storage. */}
                     {/* 16/10/2026 — Raccourci vers l'import des commandes de Noël 2025 (fichiers + scans PDF). */}
-                    <CarteReglage titre="🎄 Commandes Noël 2025" desc="Importer les commandes scannées, ruptures, litiges et les scans PDF (dossier « Import Noël 2025 » sur le Bureau).">
-                      <BoutonReglage label="📦 Ouvrir l'import Noël 2025 →" onClick={() => { try { sessionStorage.setItem("noel-ouvrir-donnees", "1"); } catch { /* ignore */ } setShowAdmin(false); setShowAccueil(false); setStatsDepart({ onglet: "noel" } as any); setShowExtractions(true); }} />
+                    <CarteReglage titre="🎄 Importer les données de Noël 2025" desc="Commandes scannées, ruptures, litiges et scans PDF (dossier « Import Noël 2025 » sur le Bureau). Déplacé ici depuis la page Noël le 18/10/2026.">
+                      <Suspense fallback={<p style={{ color: "#9ca3af", fontSize: 13 }}>Chargement…</p>}><ImportNoel2025 /></Suspense>
                     </CarteReglage>
                     <CarteReglage titre="📷 Photos des rapports" desc="Recopie les anciennes photos (hébergées sur ImgBB) vers Firebase, puis met chaque rapport à jour. Se relance sans risque : les photos déjà recopiées sont ignorées.">
                       <RecopiePhotos />

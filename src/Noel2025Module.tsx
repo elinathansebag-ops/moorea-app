@@ -229,10 +229,9 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     if (!historique.length) { fermerFiche(); return; }
     setFiche(historique[historique.length - 1]); setHistorique(h => h.slice(0, -1)); window.scrollTo(0, 0);
   };
-  const [importEtat, setImportEtat] = useState("");
   const [rechargement, setRechargement] = useState(0);
   // Ouvert depuis Admin › Données : le panneau d'import est affiché directement.
-  const [voirDonnees, setVoirDonnees] = useState(() => { try { const v = sessionStorage.getItem("noel-ouvrir-donnees") === "1"; sessionStorage.removeItem("noel-ouvrir-donnees"); return v; } catch { return false; } });
+  const [_voirDonnees] = useState(() => { try { const v = sessionStorage.getItem("noel-ouvrir-donnees") === "1"; sessionStorage.removeItem("noel-ouvrir-donnees"); return v; } catch { return false; } });
   // 16/10/2026 — Demande d'Elinathan : « mets les cases à cocher comme dans Stats » + « je veux
   // connaître le besoin global de chaque client par jour par réf ». Le tableau jour par jour se
   // filtre par cases à cocher (clients, articles, familles — cumulables) et peut se lire par
@@ -443,10 +442,11 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const sel = { padding: "8px 10px", borderRadius: 9, border: "1.5px solid #e8e0d0", fontSize: 13, background: "#fff", maxWidth: "100%" } as const;
   const chiffres = (t: { q: number; lv: number; m: number }, nbLitiges?: number) => (
     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(min(150px, 100%), 1fr))", gap: 10 }}>
-      {[["📦 Commandés", ent(t.q), "#1a2e1a"], ["✅ Livrés", ent(t.lv), "#15803d"], ["❌ Manquants", ent(t.m), "#dc2626"], ...(nbLitiges != null ? [["⚠️ Litiges", String(nbLitiges), "#b45309"]] : [])].map(([lib, v, c]) => (
+      {/* 18/10/2026 — « ajoute des unités, par exemple colis et litiges déclarés ». */}
+      {[["📦 Commandés", ent(t.q), "#1a2e1a", "colis"], ["✅ Livrés", ent(t.lv), "#15803d", "colis"], ["❌ Manquants", ent(t.m), "#dc2626", "colis"], ...(nbLitiges != null ? [["⚠️ Litiges", String(nbLitiges), "#b45309", nbLitiges > 1 ? "litiges déclarés" : "litige déclaré"]] : [])].map(([lib, v, c, unite]) => (
         <div key={lib} style={{ background: "#fff", border: "1.5px solid #e8e0d0", borderRadius: 14, padding: "10px 14px" }}>
           <div style={{ fontSize: 11.5, fontWeight: 700, color: "#6b7280" }}>{lib}</div>
-          <div style={{ fontSize: 23, fontWeight: 900, color: c }}>{v}</div>
+          <div style={{ fontSize: 23, fontWeight: 900, color: c }}>{v} <span style={{ fontSize: 13, fontWeight: 700, color: "#6b7280" }}>{unite}</span></div>
         </div>
       ))}
     </div>
@@ -1263,40 +1263,39 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
           </>
         )}
 
-        {/* Données (admin) : rangé en bas, fermé quand tout est déjà importé */}
-        {don && (estAdmin || vide) && (
-          <div style={{ marginTop: 20 }}>
-            {!vide && !voirDonnees ? (
-              <button type="button" onClick={() => setVoirDonnees(true)} style={{ padding: "8px 14px", borderRadius: 10, border: "1.5px dashed #c8c2b4", background: "transparent", color: "#6b7280", fontWeight: 700, fontSize: 12.5, cursor: "pointer" }}>
-                ⚙️ Données ({ent(don.lignes.length)} lignes · {nbScans} scan{nbScans > 1 ? "s" : ""} PDF{!nbScans ? " — scans à importer" : ""})
-              </button>
-            ) : (
-              <div style={{ ...carte, borderStyle: "dashed" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                  <span style={{ fontSize: 14, fontWeight: 800, flex: 1 }}>⚙️ Importer les données de Noël</span>
-                  {!vide && <button type="button" onClick={() => setVoirDonnees(false)} style={{ border: "none", background: "none", color: "#9ca3af", fontSize: 16, cursor: "pointer" }}>✕</button>}
-                </div>
-                <label style={{ display: "block", textAlign: "center", padding: "16px 18px", borderRadius: 12, background: "#305a55", color: "#fff", fontWeight: 900, fontSize: 15, cursor: "pointer", marginBottom: 8 }}>
-                  📦 Tout importer : choisir le dossier « Import Noël 2025 » (sur le Bureau)
-                  <span style={{ display: "block", fontSize: 11.5, fontWeight: 500, opacity: .85, marginTop: 3 }}>Commandes, ruptures, litiges et scans PDF en une fois — laisser la page ouverte jusqu'au ✅</span>
-                  <input type="file" multiple style={{ display: "none" }} {...({ webkitdirectory: "", directory: "" } as any)} onChange={async e => {
-                    const fs = Array.from(e.target.files || []); e.target.value = "";
-                    if (!fs.length) return;
-                    try {
-                      const donnees = fs.filter(f => /\.(xlsx|xls|csv)$/i.test(f.name) && !/\/SCANS_COMMANDES\//.test((f as any).webkitRelativePath || ""));
-                      const r1 = donnees.length ? await importerFichiers(donnees, setImportEtat) : [];
-                      const r2 = await envoyerScans(fs, don.scans, setImportEtat);
-                      setImportEtat("✅ " + [...r1, r2].join(" · ")); setRechargement(x => x + 1);
-                    } catch (err: any) { setImportEtat("❌ " + (err?.message || "import impossible")); }
-                  }} />
-                </label>
-                <span style={{ fontSize: 12, color: "#6b7280" }}>{nbScans} scan(s) PDF dans l'appli{don.meta?.importeLe ? ` · données importées le ${new Date(don.meta.importeLe).toLocaleString("fr-FR")}` : ""}</span>
-                {importEtat && <p style={{ fontSize: 12.5, fontWeight: 700, margin: "10px 0 0", color: importEtat.startsWith("❌") ? "#b91c1c" : "#305a55", overflowWrap: "anywhere" }}>{importEtat}</p>}
-              </div>
-            )}
-          </div>
-        )}
+        {/* 18/10/2026 — « Importer les données de Noël : enlève-le de la page Stats, mets-le dans les paramètres
+            admin » → Admin › Réglages › 🗄️ Données (composant ImportNoel2025 ci-dessous). */}
+        {vide && <div style={{ ...carte, textAlign: "center", color: "#6b7280" }}>Aucune donnée de Noël pour l'instant : l'import se fait dans ⚙️ Admin › Réglages › 🗄️ Données.</div>}
       </div>
+    </div>
+  );
+}
+
+// 18/10/2026 — Import des données de Noël 2025 (commandes, ruptures, litiges, scans PDF), dans Admin › Réglages.
+export function ImportNoel2025() {
+  const [don, setDon] = useState<Donnees | null>(null);
+  const [etat, setEtat] = useState("");
+  const [tour, setTour] = useState(0);
+  useEffect(() => { charger().then(setDon).catch(e => setEtat("❌ " + (e?.message || "lecture impossible"))); }, [tour]);
+  const nbScans = Object.keys(don?.scans || {}).length;
+  return (
+    <div>
+      <label style={{ display: "block", textAlign: "center", padding: "14px 16px", borderRadius: 12, background: "#305a55", color: "#fff", fontWeight: 900, fontSize: 14.5, cursor: don ? "pointer" : "wait", marginBottom: 8, opacity: don ? 1 : 0.6 }}>
+        📦 Tout importer : choisir le dossier « Import Noël 2025 » (sur le Bureau)
+        <span style={{ display: "block", fontSize: 11.5, fontWeight: 500, opacity: .85, marginTop: 3 }}>Commandes, ruptures, litiges et scans PDF en une fois — laisser la page ouverte jusqu'au ✅</span>
+        <input type="file" multiple disabled={!don} style={{ display: "none" }} {...({ webkitdirectory: "", directory: "" } as any)} onChange={async e => {
+          const fs = Array.from(e.target.files || []); e.target.value = "";
+          if (!fs.length || !don) return;
+          try {
+            const donnees = fs.filter(f => /\.(xlsx|xls|csv)$/i.test(f.name) && !/\/SCANS_COMMANDES\//.test((f as any).webkitRelativePath || ""));
+            const r1 = donnees.length ? await importerFichiers(donnees, setEtat) : [];
+            const r2 = await envoyerScans(fs, don.scans, setEtat);
+            setEtat("✅ " + [...r1, r2].join(" · ")); cache = null; setTour(x => x + 1);
+          } catch (err: any) { setEtat("❌ " + (err?.message || "import impossible")); }
+        }} />
+      </label>
+      <span style={{ fontSize: 12, color: "#6b7280" }}>{don ? `${don.lignes.length.toLocaleString("fr-FR")} lignes · ${nbScans} scan(s) PDF dans l'appli${don.meta?.importeLe ? ` · données importées le ${new Date(don.meta.importeLe).toLocaleString("fr-FR")}` : ""}` : "Lecture des données…"}</span>
+      {etat && <p style={{ fontSize: 12.5, fontWeight: 700, margin: "10px 0 0", color: etat.startsWith("❌") ? "#b91c1c" : "#305a55", overflowWrap: "anywhere" }}>{etat}</p>}
     </div>
   );
 }
