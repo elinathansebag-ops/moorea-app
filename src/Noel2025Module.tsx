@@ -720,7 +720,15 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             ← Revenir à <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{historique.length ? historique[historique.length - 1].valeur : f.base?.valeur}</span>
           </button>
         )}
-        {!global && (
+        {/* 18/10/2026 — « trop de bandeaux » : en vue simple, une ligne fine (nom + ✕), les chiffres sont juste dessous. */}
+        {!global && !vueCompleteNoel && (
+          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", padding: "8px 12px", marginBottom: 10, background: "#fff", borderRadius: 12, borderLeft: `5px solid ${besoin ? "#305a55" : vueLitiges ? "#ca8a04" : vueGeslot ? "#1d4ed8" : "#b91c1c"}` }}>
+            <span style={{ fontSize: 22 }}>{icone}</span>
+            <span style={{ flex: 1, minWidth: 180, fontSize: 17, fontWeight: 900, color: "#1a2e1a" }}>{f.valeur}</span>
+            <button type="button" onClick={() => { fermerFiche(); if (f.type === "selection") toutDecocher(); }} style={{ padding: "6px 11px", borderRadius: 9, border: "1.5px solid #e5e7eb", background: "#fff", color: "#374151", fontWeight: 800, cursor: "pointer" }}>✕ Effacer</button>
+          </div>
+        )}
+        {!global && vueCompleteNoel && (
           <div style={{ ...carte, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: besoin ? "#305a55" : vueLitiges ? "#facc15" : vueGeslot ? "#1e40af" : "#8f1d1d", border: "none", color: vueLitiges ? "#422006" : "#fff", marginBottom: 12 }}>
             <span style={{ fontSize: 38 }}>{icone}</span>
             <div style={{ flex: 1, minWidth: 200 }}>
@@ -1167,21 +1175,16 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
 
         {don && !vide && (
           <>
-            {/* 18/10/2026 — « rends plus clair qu'on est dans le programme Noël » : bandeau de fête en tête de page. */}
-            <div style={{ ...carte, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: "linear-gradient(135deg, #9f1239, #b91c1c 55%, #166534)", border: "none", color: "#fff", padding: "14px 18px", position: "relative", overflow: "hidden" }}>
-              <span style={{ fontSize: 42, lineHeight: 1 }}>🎄</span>
-              <div style={{ flex: 1, minWidth: 220 }}>
-                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", opacity: 0.85 }}>Programme des fêtes</div>
-                <div style={{ fontSize: 24, fontWeight: 900, lineHeight: 1.15 }}>Noël 2025</div>
-                <div style={{ fontSize: 13.5, opacity: 0.92 }}>Livraisons du 01/12/2025 au 06/01/2026 · ce qui a été commandé, livré et ce qui a manqué pendant les fêtes</div>
+            {/* 18/10/2026 — « trop de bandeaux, ça va dans tous les sens ; réduis le Quoi ? » : un seul bloc Noël,
+                titre + dates sur une ligne, la recherche dessous (l'aide est dans la barre). */}
+            <div style={{ ...carte, background: "linear-gradient(135deg, #9f1239, #b91c1c 55%, #166534)", border: "none", color: "#fff", padding: "12px 16px" }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
+                <span style={{ fontSize: 20, fontWeight: 900 }}>🎄 Noël 2025</span>
+                <span style={{ fontSize: 13, opacity: 0.9 }}>livraisons du 01/12/2025 au 06/01/2026</span>
+                <span style={{ flex: 1 }} />
+                <span aria-hidden style={{ fontSize: 18, letterSpacing: 4 }}>❄️🎁⭐</span>
               </div>
-              <span aria-hidden style={{ fontSize: 26, opacity: 0.9, letterSpacing: 6 }}>❄️🎁⭐</span>
-            </div>
-            {/* Grande recherche intelligente */}
-            <div style={{ ...carte, background: "linear-gradient(135deg, #305a55, #1f4440)", border: "none", color: "#fff" }}>
-              <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 4 }}>🎯 Quoi ?</div>
-              <div style={{ fontSize: 13, color: "#d9e7e1", marginBottom: 10 }}>Touchez un client, un fournisseur, un article (ou <b>cochez-en plusieurs</b>), un jour (« 19/12 »), un BL… puis choisissez l'onglet {vueCompleteNoel ? <><b>Besoin</b>, <b>Manquants</b> ou <b>Litiges</b></> : <><b>Commandes</b>, <b>Litiges</b> ou <b>Geslot / scans</b></>}. Barre vide = tout Noël.</div>
-              <RechercheIntelligente options={options} placeholder="🏭 Yukon · 👤 Carrefour · 🫛 hv · 🗂️ passion · 📅 19/12 · 🧾 BL…" onChoisir={o => { toutDecocher(); setHistorique([]); ouvrir(o); }} c={C} grand extra={extra}
+              <RechercheIntelligente options={options} placeholder="🔎 Chercher un client, un produit, un fournisseur, un jour (19/12)… vide = tout Noël" onChoisir={o => { toutDecocher(); setHistorique([]); ouvrir(o); }} c={C} grand extra={extra}
                 onCocher={cocher} estChoisi={estCocheT} />
               {selection.length > 0 && (
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", alignItems: "center", marginTop: 10 }}>
