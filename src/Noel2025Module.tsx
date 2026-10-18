@@ -1235,9 +1235,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                       );
                     })}
                   </div>
-                  {sujet.type === "global" ? <div style={{ fontSize: 14, color: "#4b5563", margin: "2px 2px 12px" }}>
-                    🎄 <b style={{ color: "#9f1239" }}>Tout Noël 2025</b> <span style={{ color: "#9ca3af" }}>— tapez un nom dans « Quoi ? » pour ne voir que lui</span>
-                  </div> : <div style={{ height: 6 }} />}
+                  <div style={{ height: 6 }} />
                   {rendreFiche(sujet)}
                 </>
               );
