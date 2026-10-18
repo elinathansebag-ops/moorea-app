@@ -267,6 +267,10 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   // Puis : « tout replié par défaut, et une case à cocher pour voir les bases en détail ».
   const [voirBases, setVoirBasesEtat] = useState(() => { try { return localStorage.getItem("noel-voir-bases") === "oui"; } catch { return false; } });
   const setVoirBases = (v: boolean) => { setVoirBasesEtat(v); try { localStorage.setItem("noel-voir-bases", v ? "oui" : "non"); } catch { /* */ } };
+  // Puis : « fournisseur : produits repliés, une case voir le détail des clients ; si elle est cochée, la case
+  // détail par base. Produit : déjà le détail par client, puis la case par base. »
+  const [voirClients, setVoirClientsEtat] = useState(() => { try { return localStorage.getItem("noel-voir-clients") === "oui"; } catch { return false; } });
+  const setVoirClients = (v: boolean) => { setVoirClientsEtat(v); setOuverts({}); try { localStorage.setItem("noel-voir-clients", v ? "oui" : "non"); } catch { /* */ } };
   const basculerOuvert = (k: string) => setOuverts(o => { const n = { ...o }; if (n[k]) delete n[k]; else n[k] = true; return n; });
   // Une seule recherche (en haut) : ce qui y est coché filtre le tableau « Besoin » et la fiche « sélection ».
   const selection: Option[] = [...tFournisseurs.map(valeur => ({ type: "fournisseur", valeur })), ...tClients.map(valeur => ({ type: "client", valeur })),
@@ -1052,11 +1056,21 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const carteBesoin = (tableau: LigneTab[], entete?: any, sujet?: string) => {
     // Dépliage : un groupe (produit ou client) s'ouvre au clic, tout est replié au départ ; les bases sous
     // chaque client n'apparaissent qu'avec la case « voir les bases en détail ».
-    const estOuvert = (g: string) => !groupe || !ouverts[g]; // ouverts[g] = replié à la main
+    const nbGroupes = tableau.filter(t => t.titre).length;
+    // Détail sous chaque produit (ou client) : d'office pour un produit, un client ou un seul groupe ; sinon la case.
+    const sousForce = typeSujet === "article" || typeSujet === "client" || nbGroupes <= 1;
+    const voirSous = sousForce || voirClients;
+    // ouverts[g] : groupe ouvert à la main quand le détail est masqué, replié à la main quand il est affiché.
+    const estOuvert = (g: string) => !groupe || (voirSous ? !ouverts[g] : !!ouverts[g]);
     const aDesBases = new Set<string>();
     const sousLignes = new Set(tableau.filter(t => !t.titre && !t.base).map(t => t.cle));
-    const visibles = !groupe ? tableau : tableau.filter(t => t.titre || (estOuvert(t.client || "") && (!t.base || !sousLignes.has(`${t.client}|${t.base}`) || voirBases)));
-    const aBases = lignesPar === "articleClient" && tableau.some(t => t.base && sousLignes.has(`${t.client}|${t.base}`));
+    const visibles = !groupe ? tableau : tableau.filter(t => {
+      if (t.titre) return true;
+      if (!estOuvert(t.client || "")) return false;
+      if (!t.base) return true;
+      return voirBases;
+    });
+    const aBases = lignesPar === "articleClient" && tableau.some(t => t.base);
     const deuxDebuts = vuesUtiles.includes("articleClient") && vuesUtiles.includes("clientArticle") && typeSujet !== "article" && typeSujet !== "client";
     return (
                   <div style={carte}>
@@ -1089,7 +1103,12 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                       {vueCompleteNoel && <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 11px", borderRadius: 9, border: `1.5px solid ${voirDemande ? "#305a55" : "#e8e0d0"}`, background: voirDemande ? "#eef4f2" : "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
                         <input type="checkbox" checked={voirDemande} onChange={e => setVoirDemande(e.target.checked)} style={{ width: 16, height: 16 }} /> voir les manquants
                       </label>}
-                      {aBases && (
+                      {groupe && !sousForce && (
+                        <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 11px", borderRadius: 9, border: `1.5px solid ${voirClients ? "#305a55" : "#e8e0d0"}`, background: voirClients ? "#eef4f2" : "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
+                          <input type="checkbox" checked={voirClients} onChange={e => demarrer(() => setVoirClients(e.target.checked))} style={{ width: 16, height: 16 }} /> voir le détail par {lignesPar === "clientArticle" ? "produit" : "client"}
+                        </label>
+                      )}
+                      {aBases && voirSous && (
                         <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 11px", borderRadius: 9, border: `1.5px solid ${voirBases ? "#305a55" : "#e8e0d0"}`, background: voirBases ? "#eef4f2" : "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
                           <input type="checkbox" checked={voirBases} onChange={e => demarrer(() => setVoirBases(e.target.checked))} style={{ width: 16, height: 16 }} /> voir les bases en détail
                         </label>
