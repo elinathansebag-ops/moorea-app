@@ -203,6 +203,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const [calculEnCours, demarrer] = useTransition();
   const setVue = (v: "besoin" | "manque" | "litiges" | "geslot") => demarrer(() => setVueEtat(v));
   const [nbLignesTab, setNbLignesTab] = useState(150);
+  const [detailManque, setDetailManque] = useState<{ titre: string; ls: Ligne[] } | null>(null);
   // 18/10/2026 — « les pages sont très compliquées, trop d'infos dans tous les sens » : explications repliées,
   // et sous le graphique un seul détail à la fois (clients & produits / tableau / commandes / litiges).
   // « Vue complète » remet tout à la suite comme avant.
@@ -929,7 +930,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
 
   // Tableau jour par jour : lignes par produit, par client × produit (le besoin de chaque client,
   // réf par réf) ou par client. Articles et familles cochés s'additionnent ; clients = filtre.
-  type Cellules = Record<string, { q: number; lv: number; m: number }>;
+  type Cellules = Record<string, { q: number; lv: number; m: number; ls?: Ligne[] }>;
   type LigneTab = { cle: string; art: string; client?: string; titre?: boolean; base?: string; r: Cellules; tq: number; tlv: number; tm: number };
   // Base de livraison de chaque ligne (Savigny, 729 Dammartin…) — mêmes regroupements que dans les fiches.
   const baseDe = useMemo(() => {
@@ -950,7 +951,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const familleDe = useMemo(() => { const m = new Map<string, string>(); lignes.forEach(l => { if (l.a && l.f) m.set(l.a, l.f); }); return m; }, [lignes]);
   // Tableau du besoin pour un ensemble de lignes (onglet Besoin, et dans chaque fiche).
   const construireTableau = (filtrees: Ligne[]): LigneTab[] => {
-    const ajouter = (r: Cellules, l: Ligne) => { const x = r[l.d] || { q: 0, lv: 0, m: 0 }; x.q += l.q; x.lv += l.lv; x.m += l.m; r[l.d] = x; };
+    // ls : les lignes de commande qui ont un manquant (pour « d'où vient ce −200 ? »).
+    const ajouter = (r: Cellules, l: Ligne) => { const x = r[l.d] || { q: 0, lv: 0, m: 0 }; x.q += l.q; x.lv += l.lv; x.m += l.m; if (l.m > 0) (x.ls ||= []).push(l); r[l.d] = x; };
     const totaliser = (r: Cellules) => Object.values(r).reduce((t, x) => ({ tq: t.tq + x.q, tlv: t.tlv + x.lv, tm: t.tm + x.m }), { tq: 0, tlv: 0, tm: 0 });
     const refsCumulees = cumulRefs && tArticles.length > 1 ? tArticles.join(" + ") : "";
     const nomArt = (l: Ligne) => (refsCumulees && tArticles.includes(l.a) ? refsCumulees : l.a || `(${l.l})`);
@@ -975,7 +977,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const unSeulClient = new Set(filtrees.map(l => l.c)).size === 1;
     [...parClient].map(([c, arts]) => {
       const tot: Cellules = {};
-      arts.forEach(r => Object.entries(r).forEach(([d, x]) => { const t = tot[d] || { q: 0, lv: 0, m: 0 }; t.q += x.q; t.lv += x.lv; t.m += x.m; tot[d] = t; }));
+      arts.forEach(r => Object.entries(r).forEach(([d, x]) => { const t = tot[d] || { q: 0, lv: 0, m: 0 }; t.q += x.q; t.lv += x.lv; t.m += x.m; if (x.ls) t.ls = [...(t.ls || []), ...x.ls]; tot[d] = t; }));
       return { c, arts, tot, ...totaliser(tot) };
     }).sort((a, b) => b.tq - a.tq).forEach(g => {
       out.push({ cle: `#${g.c}`, art: g.c, client: g.c, titre: true, r: g.tot, tq: g.tq, tlv: g.tlv, tm: g.tm });
@@ -1000,15 +1002,19 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     return [...m].map(([w, js]) => ({ cle: w, lib: `S${+w.slice(5)}`, sous: `${jjmm(js[0])}→${jjmm(js[js.length - 1])}`, jours: js }));
   }, [joursT, parSemaine]);
   const cellule = (r: Cellules, col: { jours: string[] }) => {
-    let x: { q: number; lv: number; m: number } | undefined;
-    col.jours.forEach(j => { const y = r[j]; if (y) x = { q: (x?.q || 0) + y.q, lv: (x?.lv || 0) + y.lv, m: (x?.m || 0) + y.m }; });
+    let x: { q: number; lv: number; m: number; ls?: Ligne[] } | undefined;
+    col.jours.forEach(j => { const y = r[j]; if (y) x = { q: (x?.q || 0) + y.q, lv: (x?.lv || 0) + y.lv, m: (x?.m || 0) + y.m, ls: [...(x?.ls || []), ...(y.ls || [])] }; });
     return x;
   };
-  const valeur = (x?: { q: number; lv: number; m: number }) => !x || (!x.q && !x.lv) ? "" : voirBesoin && !vueCompleteNoel ? ent(x.q) : (
+  // 18/10/2026 — « quand je passe la souris sur le −200, ça me dit comment il l'a trouvé ; si mail, voir le mail ;
+  // si PDF / scan, voir le PDF » : survol = résumé, clic = fenêtre avec les commandes et le bouton du scan.
+  const resumeManque = (ls?: Ligne[]) => (ls || []).slice(0, 6).map(l => `${jjmm(l.d)} · ${l.c}${l.s ? ` (${l.s})` : ""}${l.n ? ` · cde ${l.n}` : ""} : −${ent(l.m)}${l.st ? ` · ${l.st}` : ""}${l.an ? ` · « ${l.an} »` : ""}`).join("\n") + ((ls || []).length > 6 ? `\n… et ${(ls || []).length - 6} autres` : "") + "\n(cliquez pour voir les scans)";
+  const valeur = (x?: { q: number; lv: number; m: number; ls?: Ligne[] }, titre = "") => !x || (!x.q && !x.lv) ? "" : voirBesoin && !vueCompleteNoel ? ent(x.q) : (
     // 18/10/2026 — « ne mets pas le livré en rouge, mets-le en vert, une légende, et il manque le 44 » :
     // livré en vert ; avec « voir les manquants » : −manquant en rouge et la demande (livré + manquant) en gris.
     <><span style={{ color: voirDemande && x.m > 0 ? "#15803d" : undefined }}>{ent(x.lv)}</span>{voirDemande && x.m > 0 && <>
-      <div style={{ fontSize: 10.5, fontWeight: 800, color: "#dc2626", whiteSpace: "nowrap" }}>−{ent(x.m)}</div>
+      <div onClick={e => { e.stopPropagation(); if (x.ls?.length) setDetailManque({ titre, ls: x.ls }); }} title={x.ls?.length ? resumeManque(x.ls) : undefined}
+        style={{ fontSize: 10.5, fontWeight: 800, color: "#dc2626", whiteSpace: "nowrap", cursor: x.ls?.length ? "pointer" : undefined, textDecoration: x.ls?.length ? "underline dotted" : undefined }}>−{ent(x.m)}</div>
       <div style={{ fontSize: 10.5, fontWeight: 600, color: "#6b7280", whiteSpace: "nowrap" }}>= {ent(x.q)}</div>
     </>}</>
   );
@@ -1183,8 +1189,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                                     : base ? <>📍 {art}</>
                                     : <>{aSous && <span style={{ display: "inline-block", width: 14, color: "#305a55" }}>{ferme ? "▸" : "▾"}</span>}{ficheType === "client" ? "👤" : emojiProduit(art)} {art}</>}
                                 </td>
-                                {colonnes.map(col => { const x = cellule(r, col); return <td key={col.cle} style={{ ...td, textAlign: "right", fontWeight: titre ? 900 : undefined, fontSize: base ? 11.5 : undefined, borderTop: titre ? "2px solid #305a55" : undefined, color: "#1f2937" }} title={x ? `Commandé ${x.q} · livré ${x.lv} · manquant ${x.m}` : ""}>{valeur(x)}</td>; })}
-                                <td style={{ ...td, textAlign: "right", fontWeight: 900, borderTop: titre ? "2px solid #305a55" : undefined, }}>{valeur({ q: tq, lv: tlv, m: tm })}</td>
+                                {colonnes.map(col => { const x = cellule(r, col); return <td key={col.cle} style={{ ...td, textAlign: "right", fontWeight: titre ? 900 : undefined, fontSize: base ? 11.5 : undefined, borderTop: titre ? "2px solid #305a55" : undefined, color: "#1f2937" }} title={x && !x.m ? `Commandé ${x.q} · livré ${x.lv}` : undefined}>{valeur(x, `${art} · ${col.lib}`)}</td>; })}
+                                <td style={{ ...td, textAlign: "right", fontWeight: 900, borderTop: titre ? "2px solid #305a55" : undefined, }}>{valeur({ q: tq, lv: tlv, m: tm, ls: Object.values(r).flatMap(y => y.ls || []) }, `${art} · total`)}</td>
                               </tr>
                             );
                           })}
@@ -1211,6 +1217,35 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     // 18/10/2026 — « changer le fond de l'appli en fonction de l'onglet » : vert Besoin, rouge Manquants,
     // jaune Litiges, bleu Geslot / scans (teintes pâles, les cartes restent blanches).
     <div style={{ minHeight: "100vh", background: { besoin: "#e3f0e8", manque: "#fbe5e5", litiges: "#fbf1c7", geslot: "#e2eafb" }[vue], transition: "background .25s" }}>
+      {detailManque && (
+        <div onClick={() => setDetailManque(null)} style={{ position: "fixed", inset: 0, zIndex: 60, background: "rgba(0,0,0,.4)", display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: "#fff", borderRadius: 16, width: "min(640px, 100%)", maxHeight: "85vh", overflowY: "auto", padding: 16, boxShadow: "0 20px 50px rgba(0,0,0,.3)" }}>
+            <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginBottom: 10 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 16, fontWeight: 900, color: "#b91c1c" }}>❌ D'où vient ce manquant ?</div>
+                <div style={{ fontSize: 12.5, color: "#6b7280" }}>{detailManque.titre} · {ent(detailManque.ls.reduce((t, l) => t + l.m, 0))} colis manquants</div>
+              </div>
+              <button type="button" onClick={() => setDetailManque(null)} style={{ border: "none", background: "none", fontSize: 18, color: "#9ca3af", cursor: "pointer" }}>✕</button>
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {detailManque.ls.slice(0, 80).map((l, i) => (
+                <div key={l.i + i} style={{ border: "1.5px solid #fecaca", borderRadius: 12, padding: "9px 12px", background: "#fffafa", display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                  <div style={{ flex: "1 1 300px", minWidth: 0, fontSize: 13 }}>
+                    <div style={{ fontWeight: 800 }}>📅 {jjmm(l.d)} · 👤 {l.c}{l.s ? <span style={{ fontWeight: 600, color: "#4b5563" }}> · 📍 {l.s}</span> : null}</div>
+                    <div style={{ color: "#4b5563" }}>{l.n ? `Commande n° ${l.n} · ` : ""}{l.l || l.a}</div>
+                    <div><b style={{ color: "#dc2626" }}>−{ent(l.m)} manquant{l.m > 1 ? "s" : ""}</b>{l.lv ? <> · {ent(l.lv)} livré{l.lv > 1 ? "s" : ""}</> : null}</div>
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>
+                      Trouvé : {l.st || "manquant"}{l.an ? <> · annotation « {l.an} »</> : null}{l.rq ? <> · {l.rq}</> : null}{l.bl ? <> · {l.bl}</> : null}
+                    </div>
+                  </div>
+                  {boutonScan(l)}
+                </div>
+              ))}
+              {detailManque.ls.length > 80 && <p style={{ fontSize: 12, color: "#9ca3af" }}>… et {detailManque.ls.length - 80} autres.</p>}
+            </div>
+          </div>
+        </div>
+      )}
       {calculEnCours && <div style={{ position: "fixed", top: 76, left: "50%", transform: "translateX(-50%)", zIndex: 50, padding: "6px 14px", borderRadius: 99, background: "#305a55", color: "#fff", fontSize: 13, fontWeight: 800, boxShadow: "0 4px 14px rgba(0,0,0,.2)" }}>⏳ Calcul…</div>}
       <PageHeader titre="🎄 Commandes Noël 2025" couleur="#305a55" onBack={fiche ? revenir : onClose} onHome={onClose} />
       <div style={{ maxWidth: 1250, margin: "0 auto", padding: "16px 16px 60px", boxSizing: "border-box" }}>

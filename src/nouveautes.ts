@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 162, date: "18/10", pages: ["extractions"], texte: "🔎 Noël 2025 › tableau : en passant la souris sur un manquant (« −200 ») on voit d'où il vient (commande, base, annotation) ; en cliquant, une fenêtre liste les commandes concernées avec le bouton « 📄 Voir le scan »." },
   { id: 161, date: "18/10", pages: ["extractions"], texte: "📦 Noël 2025 › tableau jour par jour : 2 boutons « ✅ Livré et manquants » / « 📦 Besoin (commandé) » — le second montre juste ce que les clients ont commandé, jour par jour (et l'export Excel / PDF du besoin avec les « dont manquants » en rouge)." },
   { id: 160, date: "18/10", pages: ["extractions"], texte: "🔢 Noël 2025 : les chiffres du haut ont leur unité (« 15 279 colis », « 19 litiges déclarés »)." },
   { id: 159, date: "18/10", pages: ["extractions"], texte: "⚙️ L'import des données de Noël 2025 a quitté la page Noël : il est dans ⚙️ Admin › Réglages › 🗄️ Données." },
