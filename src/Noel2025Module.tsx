@@ -276,8 +276,10 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   // la case « voir aussi la demande » ajoute « sur 120 » sous chaque chiffre (et la ligne Demandé aux exports).
   // Puis (même jour) : « voir les manquants » plutôt que la demande — « −50 » en rouge seulement là où il a
   // vraiment manqué (manquants relevés sur les BL / ruptures), rien ailleurs.
-  const [voirDemande, setVoirDemandeEtat] = useState(() => { try { return localStorage.getItem("noel-voir-manquants") === "oui"; } catch { return false; } });
+  const [voirDemandeChoix, setVoirDemandeEtat] = useState(() => { try { return localStorage.getItem("noel-voir-manquants") === "oui"; } catch { return false; } });
   const setVoirDemande = (v: boolean) => { setVoirDemandeEtat(v); try { localStorage.setItem("noel-voir-manquants", v ? "oui" : "non"); } catch { /* */ } };
+  // Puis : « par défaut comme ça (produit déplié, manquants affichés) + le bouton voir les bases, c'est tout ».
+  const voirDemande = vueCompleteNoel ? voirDemandeChoix : true;
   const [cmdOuverte, setCmdOuverte] = useState<string | null>(null);
   // Les commandes d'une fiche : rangées par client puis par base (par défaut), ou l'ancienne liste par date.
   const [vueCmds, setVueCmdsEtat] = useState<"base" | "date">(() => { try { return localStorage.getItem("noel-vue-cmds") === "date" ? "date" : "base"; } catch { return "base"; } });
@@ -1038,7 +1040,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const carteBesoin = (tableau: LigneTab[], entete?: any, sujet?: string) => {
     // Dépliage : un groupe (produit ou client) s'ouvre au clic, tout est replié au départ ; les bases sous
     // chaque client n'apparaissent qu'avec la case « voir les bases en détail ».
-    const estOuvert = (g: string) => !groupe || !!ouverts[g];
+    const estOuvert = (g: string) => !groupe || !ouverts[g]; // ouverts[g] = replié à la main
     const aDesBases = new Set<string>();
     const sousLignes = new Set(tableau.filter(t => !t.titre && !t.base).map(t => t.cle));
     const visibles = !groupe ? tableau : tableau.filter(t => t.titre || (estOuvert(t.client || "") && (!t.base || !sousLignes.has(`${t.client}|${t.base}`) || voirBases)));
@@ -1072,9 +1074,9 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                       au
                       <select value={periode.au || jours[jours.length - 1]} onChange={e => setPeriode(p => ({ au: e.target.value, du: p.du && p.du > e.target.value ? e.target.value : p.du }))} style={{ ...sel, fontWeight: 800 }}>{jours.map(j => <option key={j} value={j}>{jjmm(j)}</option>)}</select>
                       {(periode.du || periode.au) && <button type="button" onClick={() => setPeriode({ du: "", au: "" })} style={{ border: "none", background: "none", color: "#6b7280", fontSize: 12, textDecoration: "underline", cursor: "pointer" }}>tout Noël</button>}
-                      <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 11px", borderRadius: 9, border: `1.5px solid ${voirDemande ? "#305a55" : "#e8e0d0"}`, background: voirDemande ? "#eef4f2" : "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
+                      {vueCompleteNoel && <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 11px", borderRadius: 9, border: `1.5px solid ${voirDemande ? "#305a55" : "#e8e0d0"}`, background: voirDemande ? "#eef4f2" : "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
                         <input type="checkbox" checked={voirDemande} onChange={e => setVoirDemande(e.target.checked)} style={{ width: 16, height: 16 }} /> voir les manquants
-                      </label>
+                      </label>}
                       {aBases && (
                         <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 11px", borderRadius: 9, border: `1.5px solid ${voirBases ? "#305a55" : "#e8e0d0"}`, background: voirBases ? "#eef4f2" : "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
                           <input type="checkbox" checked={voirBases} onChange={e => demarrer(() => setVoirBases(e.target.checked))} style={{ width: 16, height: 16 }} /> voir les bases en détail
@@ -1105,7 +1107,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                       <table style={{ borderCollapse: "collapse", fontSize: 12 }}>
                         <thead><tr>
                           <th style={{ ...th, position: "sticky", left: 0, top: 0, zIndex: 2, minWidth: 280 }}>{lignesPar === "article" ? "Article" : lignesPar === "client" ? "Client" : lignesPar === "fournisseurArticle" ? "Fournisseur › article" : lignesPar === "articleClient" ? "Article › client › base" : "Client › article"}
-                            {groupe && <button type="button" onClick={() => setOuverts(o => (Object.keys(o).length ? {} : Object.fromEntries(tableau.filter(x => x.titre).map(x => [x.art, true]))))} style={{ marginLeft: 10, border: "none", background: "none", color: "#305a55", fontSize: 11, fontWeight: 800, textDecoration: "underline", cursor: "pointer" }}>{Object.keys(ouverts).length ? "▸ tout replier" : "▾ tout déplier"}</button>}
+                            {groupe && vueCompleteNoel && <button type="button" onClick={() => setOuverts(o => (Object.keys(o).length ? {} : Object.fromEntries(tableau.filter(x => x.titre).map(x => [x.art, true]))))} style={{ marginLeft: 10, border: "none", background: "none", color: "#305a55", fontSize: 11, fontWeight: 800, textDecoration: "underline", cursor: "pointer" }}>{Object.keys(ouverts).length ? "▾ tout déplier" : "▸ tout replier"}</button>}
                           </th>
                           {colonnes.map(c => <th key={c.cle} style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>{c.lib}{c.sous && <div style={{ fontSize: 9.5, fontWeight: 500 }}>{c.sous}</div>}</th>)}
                           <th style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>Total</th>

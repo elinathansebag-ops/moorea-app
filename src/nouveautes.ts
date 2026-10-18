@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 152, date: "18/10", pages: ["extractions"], texte: "🧹 Noël 2025 › tableau jour par jour : produits dépliés et manquants affichés d'office (livré en vert, manquant en rouge, demandé en gris) ; il ne reste que la case « voir les bases en détail »." },
   { id: 151, date: "18/10", pages: ["extractions"], texte: "🎄 Noël 2025 : un bandeau de fête en haut de la page (« Programme des fêtes · Noël 2025 · livraisons du 01/12/2025 au 06/01/2026 ») pour bien voir qu'on est dans le programme Noël." },
   { id: 150, date: "18/10", pages: ["extractions"], texte: "🧹 Noël 2025 › tableau jour par jour : tout est replié au départ (touchez ▸ un produit pour voir ses clients) ; la case « voir les bases en détail » affiche les bases sous chaque client." },
   { id: 149, date: "18/10", pages: ["extractions"], texte: "🔎 Noël 2025 › recherche « Quoi ? » : une famille indique combien de réfs elle regroupe (« Famille · 2 réfs ») et les chiffres proposés sont ceux de la page (livrés Geslot + manquants)." },
