@@ -282,7 +282,11 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const [voirDemandeChoix, setVoirDemandeEtat] = useState(() => { try { return localStorage.getItem("noel-voir-manquants") === "oui"; } catch { return false; } });
   const setVoirDemande = (v: boolean) => { setVoirDemandeEtat(v); try { localStorage.setItem("noel-voir-manquants", v ? "oui" : "non"); } catch { /* */ } };
   // Puis : « par défaut comme ça (produit déplié, manquants affichés) + le bouton voir les bases, c'est tout ».
-  const voirDemande = vueCompleteNoel ? voirDemandeChoix : true;
+  // Puis : « si je veux juste voir le besoin, ce que les clients ont commandé ? » → 2 boutons
+  // « ✅ Livré et manquants » / « 📦 Besoin (commandé) ».
+  const [voirBesoin, setVoirBesoinEtat] = useState(() => { try { return localStorage.getItem("noel-voir-besoin") === "oui"; } catch { return false; } });
+  const setVoirBesoin = (v: boolean) => { setVoirBesoinEtat(v); try { localStorage.setItem("noel-voir-besoin", v ? "oui" : "non"); } catch { /* */ } };
+  const voirDemande = vueCompleteNoel ? voirDemandeChoix : !voirBesoin;
   const [cmdOuverte, setCmdOuverte] = useState<string | null>(null);
   // Les commandes d'une fiche : rangées par client puis par base (par défaut), ou l'ancienne liste par date.
   const [vueCmds, setVueCmdsEtat] = useState<"base" | "date">(() => { try { return localStorage.getItem("noel-vue-cmds") === "date" ? "date" : "base"; } catch { return "base"; } });
@@ -688,7 +692,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const besoin = vue === "besoin", vueLitiges = vue === "litiges", vueGeslot = vue === "geslot", global = f.type === "global";
     const nbClients = new Set(lc.map(l => l.c)).size;
     const tableBesoin = () => <div style={{ marginTop: 14 }}>{carteBesoin(construireTableau(lc.filter(l => (!periode.du || l.d >= periode.du) && (!periode.au || l.d <= periode.au))),
-      <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 10 }}>📅 Livré jour par jour <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— {f.valeur}</span></div>, f.valeur)}</div>;
+      <div style={{ fontSize: 15, fontWeight: 900, marginBottom: 10 }}>{voirBesoin && !vueCompleteNoel ? "📦 Besoin jour par jour" : "📅 Livré jour par jour"} <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— {f.valeur}</span></div>, f.valeur)}</div>;
     // Fiche d'un jour : le graphique garde tous les jours de la fiche d'origine (jour choisi en évidence) ;
     // toucher un autre jour change de jour, retoucher le même revient à la fiche complète.
     const origine = f.base || f;
@@ -1000,7 +1004,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     col.jours.forEach(j => { const y = r[j]; if (y) x = { q: (x?.q || 0) + y.q, lv: (x?.lv || 0) + y.lv, m: (x?.m || 0) + y.m }; });
     return x;
   };
-  const valeur = (x?: { q: number; lv: number; m: number }) => !x || (!x.q && !x.lv) ? "" : (
+  const valeur = (x?: { q: number; lv: number; m: number }) => !x || (!x.q && !x.lv) ? "" : voirBesoin && !vueCompleteNoel ? ent(x.q) : (
     // 18/10/2026 — « ne mets pas le livré en rouge, mets-le en vert, une légende, et il manque le 44 » :
     // livré en vert ; avec « voir les manquants » : −manquant en rouge et la demande (livré + manquant) en gris.
     <><span style={{ color: voirDemande && x.m > 0 ? "#15803d" : undefined }}>{ent(x.lv)}</span>{voirDemande && x.m > 0 && <>
@@ -1015,7 +1019,9 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const estCocheT = (o: Option) => (o.type === "client" ? tClients : o.type === "famille" ? tFamilles : o.type === "fournisseur" ? tFournisseurs : tArticles).includes(o.valeur);
   const exporterTableau = async (format: "excel" | "pdf" | "imprimer", tableau: LigneTab[], sujet?: string) => {
     const { exporterExcelMoorea, exporterPdfMoorea, imprimerPdfMoorea } = await import("./exportsMoorea");
-    const lib = voirDemande ? "livrés et manquants" : "livrés";
+    const besoinSeul = voirBesoin && !vueCompleteNoel;
+    const lignesB: (string | number)[][] = [], couleursB: (string | null)[] = [], fondsB: (string | null)[] = [], grasB: boolean[] = [], bandesB: number[] = [];
+    const lib = besoinSeul ? "commandés (besoin)" : voirDemande ? "livrés et manquants" : "livrés";
     const par = { article: "par produit", articleClient: "par produit et par client", clientArticle: "par client et par produit", fournisseurArticle: "par fournisseur et par produit", client: "par client" }[lignesPar] + (parSemaine ? " et par semaine" : " et par jour");
     const nomG = lignesPar === "fournisseurArticle" ? "Fournisseur" : lignesPar === "articleClient" ? "Article" : "Client";
     // 16/10/2026 — Une seule valeur de regroupement (ex. un seul fournisseur) : pas de colonne inutile,
@@ -1030,8 +1036,20 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     // 16/10/2026 — « le besoin par jour ET le manquant, en rouge » : sous chaque ligne qui a eu des
     // manquants, une ligne « dont manquants » jour par jour (texte rouge, fond rose).
     const avecManq = voirDemande;
+    if (besoinSeul) {
+      // Besoin : une ligne « Commandé » par réf (et, sous celles qui ont manqué, « dont manquants » en rouge).
+      tableau.forEach(({ art, client, titre, base, r, tq, tlv, tm }, k) => {
+        const debut = [...(deux ? [client || ""] : []), titre && groupe ? (deux ? `TOTAL ${nomG.toUpperCase()}` : `TOTAL ${art}`) : base ? base : art, ...(lignesPar === "articleClient" ? [base ? art : titre ? "" : "TOUTES BASES"] : [])];
+        lignesB.push([...debut, "Commandé", ...colonnes.map(c => vx(cellule(r, c), "q")), Math.round(tq), Math.round(tlv), tm ? Math.round(tm) : ""]);
+        couleursB.push(null); fondsB.push(null); grasB.push(!!titre); bandesB.push(k);
+        if (tm > 0) {
+          lignesB.push([...debut.map(() => ""), "dont manquants", ...colonnes.map(c => { const x = cellule(r, c); return x?.m ? Math.round(x.m) : ""; }), "", "", Math.round(tm)]);
+          couleursB.push("#B91C1C"); fondsB.push("#FEF2F2"); grasB.push(true); bandesB.push(k);
+        }
+      });
+    }
     const lignes: (string | number)[][] = [], couleurs: (string | null)[] = [], fonds: (string | null)[] = [], gras: boolean[] = [], bandes: number[] = [];
-    tableau.forEach(({ art, client, titre, base, r, tq, tlv, tm }, k) => {
+    if (!besoinSeul) tableau.forEach(({ art, client, titre, base, r, tq, tlv, tm }, k) => {
       const debut = [...(deux ? [client || ""] : []), titre && groupe ? (deux ? `TOTAL ${nomG.toUpperCase()}` : `TOTAL ${art}`) : base ? base : art, ...(lignesPar === "articleClient" ? [base ? art : titre ? "" : "TOUTES BASES"] : [])];
       lignes.push([...debut, ...(avecManq ? ["Livré"] : []), ...colonnes.map(c => vx(cellule(r, c))), Math.round(tlv), ...(avecManq ? [tm ? Math.round(tm) : "", Math.round(tq)] : [])]);
       couleurs.push(avecManq && tm > 0 ? "#15803D" : null); fonds.push(null); gras.push(!!titre); bandes.push(k);
@@ -1045,9 +1063,9 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
     const e = { nomFichier: nomFichierNoel(sujet || seul, `${lib} ${par}`), titre: `Noël 2025 — colis ${lib} ${par}`,
       sousTitre: periodeTxt(joursT[0], joursT[joursT.length - 1]),
       filtres,
-      entetes: [...(deux ? [nomG] : []), lignesPar === "client" || lignesPar === "articleClient" ? "Client" : "Article", ...(lignesPar === "articleClient" ? ["Base"] : []), ...(avecManq ? ["Détail"] : []),
-        ...colonnes.map(c => (c.sous ? `${c.lib} (${c.sous})` : c.lib)), "Total livré", ...(avecManq ? ["Manquant", "Total demandé"] : [])],
-      lignes, couleurs, fonds, gras, groupes: bandes };
+      entetes: [...(deux ? [nomG] : []), lignesPar === "client" || lignesPar === "articleClient" ? "Client" : "Article", ...(lignesPar === "articleClient" ? ["Base"] : []), ...(avecManq || besoinSeul ? ["Détail"] : []),
+        ...colonnes.map(c => (c.sous ? `${c.lib} (${c.sous})` : c.lib)), ...(besoinSeul ? ["Total commandé", "Total livré", "Manquant"] : ["Total livré", ...(avecManq ? ["Manquant", "Total demandé"] : [])])],
+      ...(besoinSeul ? { lignes: lignesB, couleurs: couleursB, fonds: fondsB, gras: grasB, groupes: bandesB } : { lignes, couleurs, fonds, gras, groupes: bandes }) };
     if (format === "excel") await exporterExcelMoorea(e); else if (format === "imprimer") await imprimerPdfMoorea(e); else await exporterPdfMoorea(e);
   };
 
@@ -1078,7 +1096,13 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                     {/* 18/10/2026 — « trop de trucs dans tous les sens » : les 5 groupes de boutons deviennent une
                         phrase de menus déroulants (Voir … rangé … par … du … au …), exports à droite. */}
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", marginBottom: 10, fontSize: 13.5, fontWeight: 800, color: "#374151" }}>
-                      ✅ Livré
+                      {!vueCompleteNoel ? (
+                        <span style={{ display: "inline-flex", border: "1.5px solid #305a55", borderRadius: 9, overflow: "hidden" }}>
+                          {([[false, "✅ Livré et manquants"], [true, "📦 Besoin (commandé)"]] as const).map(([v, lib]) => (
+                            <button key={lib} type="button" onClick={() => demarrer(() => setVoirBesoin(v))} style={{ padding: "7px 12px", border: "none", background: voirBesoin === v ? "#305a55" : "#fff", color: voirBesoin === v ? "#fff" : "#305a55", fontWeight: 800, fontSize: 13, cursor: "pointer" }}>{lib}</button>
+                          ))}
+                        </span>
+                      ) : <>✅ Livré</>}
                       {vueCompleteNoel ? <>
                       rangé
                       <select value={lignesPar} onChange={e => setLignesPar(e.target.value as any)} style={{ ...sel, fontWeight: 800 }}>
@@ -1127,8 +1151,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                     </div>
                     <div style={{ display: "flex", gap: 14, flexWrap: "wrap", alignItems: "center", fontSize: 12.5, fontWeight: 700, color: "#374151", margin: "0 0 8px" }}>
                       <span>Légende :</span>
-                      <span><b style={{ color: voirDemande ? "#15803d" : "#1f2937" }}>19</b> = livré (Geslot)</span>
-                      {voirDemande ? <>
+                      {voirBesoin && !vueCompleteNoel ? <span><b>44</b> = colis commandés par les clients (livré + manquant)</span> : <span><b style={{ color: voirDemande ? "#15803d" : "#1f2937" }}>19</b> = livré (Geslot)</span>}
+                      {voirBesoin && !vueCompleteNoel ? null : voirDemande ? <>
                         <span><b style={{ color: "#dc2626" }}>−25</b> = manquant</span>
                         <span><b style={{ color: "#6b7280" }}>= 44</b> = demandé (livré + manquant)</span>
                         <span style={{ color: "#9ca3af", fontWeight: 500 }}>· seulement les jours où il a manqué</span>
