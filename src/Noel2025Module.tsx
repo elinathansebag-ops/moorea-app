@@ -731,7 +731,6 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                   : tot.m ? <>Il a manqué <b style={{ color: "#fecaca", fontSize: 17 }}>{ent(tot.m)} colis</b> sur {ent(tot.q)} commandés</> : <>✅ Tout a été livré ({ent(tot.q)} colis)</>}
               </div>
             </div>
-            {boutonsExport(f.valeur, ls)}
             <button type="button" onClick={() => { fermerFiche(); if (f.type === "selection") toutDecocher(); }} style={{ padding: "8px 12px", borderRadius: 9, border: `1.5px solid ${vueLitiges ? "rgba(66,32,6,.4)" : "rgba(255,255,255,.4)"}`, background: "transparent", color: vueLitiges ? "#422006" : "#fff", fontWeight: 800, cursor: "pointer" }}>✕ Effacer</button>
           </div>
         )}
@@ -866,6 +865,10 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
         )}
         {!global && !vueLitiges && !vueGeslot && voirD("commandes") && (
         <div style={{ ...carte, marginTop: 14 }}>
+          {/* 18/10/2026 — Exports de la liste des commandes : déplacés du bandeau vers ce bloc (on exporte ce qu'on voit). */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 10, fontSize: 13, fontWeight: 800, color: "#374151" }}>
+            Exporter la liste des commandes : {boutonsExport(f.valeur, ls)}
+          </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", marginBottom: 8 }}>
             <div style={{ fontSize: 15, fontWeight: 900, flex: 1 }}>🧾 Bons de commande reçus ({listeCmds.length}) <span style={{ fontSize: 12, fontWeight: 500, color: "#9ca3af" }}>— les commandes mail / papier des clients, avec le scan</span></div>
             <div style={{ display: "flex", border: "1.5px solid #305a55", borderRadius: 9, overflow: "hidden" }}>
@@ -1229,9 +1232,9 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                       );
                     })}
                   </div>
-                  <div style={{ fontSize: 14, color: "#4b5563", margin: "2px 2px 12px" }}>
-                    {sujet.type === "global" ? <>🎄 <b style={{ color: "#9f1239" }}>Tout Noël 2025</b> <span style={{ color: "#9ca3af" }}>— tapez un nom dans « Quoi ? » pour ne voir que lui</span></> : <>🎄 Noël 2025 · <b style={{ color: "#1a2e1a" }}>{sujet.valeur}</b></>}
-                  </div>
+                  {sujet.type === "global" ? <div style={{ fontSize: 14, color: "#4b5563", margin: "2px 2px 12px" }}>
+                    🎄 <b style={{ color: "#9f1239" }}>Tout Noël 2025</b> <span style={{ color: "#9ca3af" }}>— tapez un nom dans « Quoi ? » pour ne voir que lui</span>
+                  </div> : <div style={{ height: 6 }} />}
                   {rendreFiche(sujet)}
                 </>
               );
