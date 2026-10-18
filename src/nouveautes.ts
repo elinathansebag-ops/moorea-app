@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 156, date: "18/10", pages: ["extractions"], texte: "✂️ Noël 2025 : les 4 chiffres (Commandés, Livrés, Manquants, Litiges) ne s'affichent plus sur « tout Noël », seulement quand on cherche un client, un produit, un fournisseur…" },
   { id: 155, date: "18/10", pages: ["extractions"], texte: "✂️ Noël 2025 : la phrase « Tout Noël 2025 — tapez un nom… » sous les onglets est retirée." },
   { id: 154, date: "18/10", pages: ["extractions"], texte: "🧹 Noël 2025 : moins de bandeaux — un seul bloc « 🎄 Noël 2025 » avec la recherche dedans (plus de grand « Quoi ? »), et une simple ligne avec le nom de ce qu'on regarde + ✕ Effacer." },
   { id: 153, date: "18/10", pages: ["extractions"], texte: "🧹 Noël 2025 : les boutons Excel / PDF / Imprimer du bandeau passent dans « 🧾 Bons de commande » (« Exporter la liste des commandes ») ; la ligne qui répétait le nom de la recherche sous les onglets est retirée." },

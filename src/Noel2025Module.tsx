@@ -742,7 +742,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
             <button type="button" onClick={() => { fermerFiche(); if (f.type === "selection") toutDecocher(); }} style={{ padding: "8px 12px", borderRadius: 9, border: `1.5px solid ${vueLitiges ? "rgba(66,32,6,.4)" : "rgba(255,255,255,.4)"}`, background: "transparent", color: vueLitiges ? "#422006" : "#fff", fontWeight: 800, cursor: "pointer" }}>✕ Effacer</button>
           </div>
         )}
-        {!vueGeslot && chiffres(tot, lits.length)}
+        {/* 18/10/2026 — « sur la page d'accueil ces chiffres ne veulent rien dire » : seulement pour une recherche précise. */}
+        {!vueGeslot && (!global || vueCompleteNoel) && chiffres(tot, lits.length)}
         {vueCompleteNoel && !vueGeslot && !vueLitiges && lignesGeslot.length > 0 && (() => {
           // 17/10/2026 — « qu'on comprenne bien quels chiffres on prend en compte, avec leur fiabilité » puis
           // « 2 boutons, commande client / commande Geslot, fais simple » ; retour de Jennifer : en mode Geslot,
