@@ -3652,7 +3652,10 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
     </div>
   ) : null;
   const invitationNotif = user ? <><InvitationNotifications darkMode={darkMode} />{popupPhotos}{popupNouveautes}</> : null;
-  const fabScanner = !showScanner && !showPalette && !showStock && !showRH && !showPointeuse && !showRecapQualite && (
+  // 18/10/2026 — Demande d'Elinathan : « le bouton 📷 ne sert à rien dans Stats, on peut l'enlever pour tous les
+  // utilisateurs sur ordinateur » : seulement sur téléphone / tablette (écran tactile), et jamais dans 📊 Stats.
+  const ecranTactile = typeof window !== "undefined" && ((navigator.maxTouchPoints || 0) > 0 || window.matchMedia?.("(pointer: coarse)").matches);
+  const fabScanner = ecranTactile && !showScanner && !showPalette && !showStock && !showRH && !showPointeuse && !showRecapQualite && (
     <button
       onClick={() => { setScannerMode("palette"); setShowScanner(true); setShowAccueil(false); }}
       style={{ position: "fixed", bottom: 24, right: 24, width: 58, height: 58, borderRadius: "50%", background: "#0a0a0a", border: "2.5px solid #c8a84b", cursor: "pointer", fontSize: 24, display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "0 4px 20px rgba(0,0,0,0.3)", zIndex: 9999, transition: "transform 0.15s" }}
@@ -4816,7 +4819,7 @@ _📩 Le PDF du rapport est envoyé par email, pas par WhatsApp._`;
   if (showExtractions) {
     const fermer = () => { setShowExtractions(false); setShowAccueil(true); };
     if (!monAcces.hasModule("extractions") && !monAcces.isAdmin && !monAcces.hasModule("statt")) return <AccesRefuse onRetour={fermer} />;
-    return <>{fabScanner}{invitationNotif}<Extractions onClose={() => { setStatsDepart(null); fermer(); }} ongletInitial={statsDepart?.onglet} presetInitial={statsDepart?.preset} darkMode={darkMode} voirMarge={!!monAcces.isAdmin || monAcces.hasModule("marge")} voirEuros={!!monAcces.isAdmin || monAcces.hasModule("euros")} estAdmin={!!monAcces.isAdmin} email={(user?.email || "").toLowerCase()} voirExtractions={monAcces.hasModule("extractions") || !!monAcces.isAdmin} voirProgramme={monAcces.hasModule("statt")} userName={nomAfficheGarde} /></>;
+    return <>{invitationNotif}<Extractions onClose={() => { setStatsDepart(null); fermer(); }} ongletInitial={statsDepart?.onglet} presetInitial={statsDepart?.preset} darkMode={darkMode} voirMarge={!!monAcces.isAdmin || monAcces.hasModule("marge")} voirEuros={!!monAcces.isAdmin || monAcces.hasModule("euros")} estAdmin={!!monAcces.isAdmin} email={(user?.email || "").toLowerCase()} voirExtractions={monAcces.hasModule("extractions") || !!monAcces.isAdmin} voirProgramme={monAcces.hasModule("statt")} userName={nomAfficheGarde} /></>;
   }
 
   // 14/10/2026 — Choix de la langue + aperçu du PDF du rapport : partagés par l'écran principal et la Recherche.

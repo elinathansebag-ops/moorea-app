@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 158, date: "18/10", texte: "📷 Le bouton rond « Scanner une palette » en bas à droite n'apparaît plus sur ordinateur (seulement téléphone / tablette), et plus du tout dans 📊 Stats." },
   { id: 157, date: "18/10", pages: ["extractions"], texte: "🧹 Noël 2025 › tableau : pour un fournisseur (ou tout Noël), une ligne par produit ; la case « voir le détail par client » ajoute les clients, puis « voir les bases en détail ». Pour un produit ou un client, le détail est déjà là, il ne reste que la case des bases." },
   { id: 156, date: "18/10", pages: ["extractions"], texte: "✂️ Noël 2025 : les 4 chiffres (Commandés, Livrés, Manquants, Litiges) ne s'affichent plus sur « tout Noël », seulement quand on cherche un client, un produit, un fournisseur…" },
   { id: 155, date: "18/10", pages: ["extractions"], texte: "✂️ Noël 2025 : la phrase « Tout Noël 2025 — tapez un nom… » sous les onglets est retirée." },
