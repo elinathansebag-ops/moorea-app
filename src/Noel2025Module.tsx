@@ -1162,10 +1162,20 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
 
         {don && !vide && (
           <>
+            {/* 18/10/2026 — « rends plus clair qu'on est dans le programme Noël » : bandeau de fête en tête de page. */}
+            <div style={{ ...carte, display: "flex", alignItems: "center", gap: 14, flexWrap: "wrap", background: "linear-gradient(135deg, #9f1239, #b91c1c 55%, #166534)", border: "none", color: "#fff", padding: "14px 18px", position: "relative", overflow: "hidden" }}>
+              <span style={{ fontSize: 42, lineHeight: 1 }}>🎄</span>
+              <div style={{ flex: 1, minWidth: 220 }}>
+                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: ".08em", textTransform: "uppercase", opacity: 0.85 }}>Programme des fêtes</div>
+                <div style={{ fontSize: 24, fontWeight: 900, lineHeight: 1.15 }}>Noël 2025</div>
+                <div style={{ fontSize: 13.5, opacity: 0.92 }}>Livraisons du 01/12/2025 au 06/01/2026 · ce qui a été commandé, livré et ce qui a manqué pendant les fêtes</div>
+              </div>
+              <span aria-hidden style={{ fontSize: 26, opacity: 0.9, letterSpacing: 6 }}>❄️🎁⭐</span>
+            </div>
             {/* Grande recherche intelligente */}
             <div style={{ ...carte, background: "linear-gradient(135deg, #305a55, #1f4440)", border: "none", color: "#fff" }}>
               <div style={{ fontSize: 20, fontWeight: 900, marginBottom: 4 }}>🎯 Quoi ?</div>
-              <div style={{ fontSize: 13, color: "#d9e7e1", marginBottom: 10 }}>Touchez un client, un fournisseur, un article (ou <b>cochez-en plusieurs</b>), un jour (« 19/12 »), un BL… puis choisissez l'onglet <b>Besoin</b>, <b>Manquants</b> ou <b>Litiges</b>. Barre vide = tout Noël.</div>
+              <div style={{ fontSize: 13, color: "#d9e7e1", marginBottom: 10 }}>Touchez un client, un fournisseur, un article (ou <b>cochez-en plusieurs</b>), un jour (« 19/12 »), un BL… puis choisissez l'onglet {vueCompleteNoel ? <><b>Besoin</b>, <b>Manquants</b> ou <b>Litiges</b></> : <><b>Commandes</b>, <b>Litiges</b> ou <b>Geslot / scans</b></>}. Barre vide = tout Noël.</div>
               <RechercheIntelligente options={options} placeholder="🏭 Yukon · 👤 Carrefour · 🫛 hv · 🗂️ passion · 📅 19/12 · 🧾 BL…" onChoisir={o => { toutDecocher(); setHistorique([]); ouvrir(o); }} c={C} grand extra={extra}
                 onCocher={cocher} estChoisi={estCocheT} />
               {selection.length > 0 && (
@@ -1217,8 +1227,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                       );
                     })}
                   </div>
-                  <div style={{ fontSize: 12, color: "#6b7280", margin: "0 2px 12px" }}>
-                    {sujet.type === "global" ? <>🎄 <b>Tout Noël 2025</b> — tapez un nom dans « Quoi ? » pour ne voir que lui.</> : <>🔎 Pour : <b style={{ color: "#1a2e1a" }}>{sujet.valeur}</b></>}
+                  <div style={{ fontSize: 14, color: "#4b5563", margin: "2px 2px 12px" }}>
+                    {sujet.type === "global" ? <>🎄 <b style={{ color: "#9f1239" }}>Tout Noël 2025</b> <span style={{ color: "#9ca3af" }}>— tapez un nom dans « Quoi ? » pour ne voir que lui</span></> : <>🎄 Noël 2025 · <b style={{ color: "#1a2e1a" }}>{sujet.valeur}</b></>}
                   </div>
                   {rendreFiche(sujet)}
                 </>
