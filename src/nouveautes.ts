@@ -8,6 +8,7 @@ export const NOUVEAUTES_POUR = ["elinathan.sebag@moorea.fr"];
 //   « extractions », « rapports »… ; onglet : « prestataires.ifco », « qualite.rapports »,
 //   « admin.acces », « droits.modules », « extractions.produits »…
 export const NOUVEAUTES: { id: number; date: string; texte: string; pages?: string[] }[] = [
+  { id: 150, date: "18/10", pages: ["extractions"], texte: "🧹 Noël 2025 › tableau jour par jour : tout est replié au départ (touchez ▸ un produit pour voir ses clients) ; la case « voir les bases en détail » affiche les bases sous chaque client." },
   { id: 149, date: "18/10", pages: ["extractions"], texte: "🔎 Noël 2025 › recherche « Quoi ? » : une famille indique combien de réfs elle regroupe (« Famille · 2 réfs ») et les chiffres proposés sont ceux de la page (livrés Geslot + manquants)." },
   { id: 148, date: "18/10", pages: ["extractions"], texte: "✂️ Noël 2025 › tableau jour par jour : les liens « fiche › » à côté des clients sont retirés." },
   { id: 147, date: "18/10", pages: ["extractions"], texte: "✏️ Noël et fiches Stats : le lien « Vue complète » s'appelle maintenant « Voir l'ancienne version de la page » (et « ↩ Revenir à la nouvelle page » pour revenir)." },

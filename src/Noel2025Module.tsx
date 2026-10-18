@@ -264,6 +264,9 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
   const [fournisseurDe, setFournisseurDe] = useState<Record<string, string>>({});
   // 18/10/2026 — Tableau qu'on déplie en cliquant (produit ▸ clients ▸ bases), tout replié au départ.
   const [ouverts, setOuverts] = useState<Record<string, boolean>>({});
+  // Puis : « tout replié par défaut, et une case à cocher pour voir les bases en détail ».
+  const [voirBases, setVoirBasesEtat] = useState(() => { try { return localStorage.getItem("noel-voir-bases") === "oui"; } catch { return false; } });
+  const setVoirBases = (v: boolean) => { setVoirBasesEtat(v); try { localStorage.setItem("noel-voir-bases", v ? "oui" : "non"); } catch { /* */ } };
   const basculerOuvert = (k: string) => setOuverts(o => { const n = { ...o }; if (n[k]) delete n[k]; else n[k] = true; return n; });
   // Une seule recherche (en haut) : ce qui y est coché filtre le tableau « Besoin » et la fiche « sélection ».
   const selection: Option[] = [...tFournisseurs.map(valeur => ({ type: "fournisseur", valeur })), ...tClients.map(valeur => ({ type: "client", valeur })),
@@ -1033,12 +1036,13 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
 
   // Carte « besoin » (réglages + tableau) — onglet Besoin et fiches.
   const carteBesoin = (tableau: LigneTab[], entete?: any, sujet?: string) => {
-    // Dépliage : un groupe (produit ou client) s'ouvre au clic ; s'il n'y en a qu'un, il est ouvert d'office.
-    const nbGroupes = tableau.filter(t => t.titre).length;
-    const estOuvert = (g: string) => !groupe || nbGroupes === 1 || !!ouverts[g];
-    const aDesBases = new Set(tableau.filter(t => t.base).map(t => `${t.client}|${t.base}`));
+    // Dépliage : un groupe (produit ou client) s'ouvre au clic, tout est replié au départ ; les bases sous
+    // chaque client n'apparaissent qu'avec la case « voir les bases en détail ».
+    const estOuvert = (g: string) => !groupe || !!ouverts[g];
+    const aDesBases = new Set<string>();
     const sousLignes = new Set(tableau.filter(t => !t.titre && !t.base).map(t => t.cle));
-    const visibles = !groupe ? tableau : tableau.filter(t => t.titre || (estOuvert(t.client || "") && (!t.base || !sousLignes.has(`${t.client}|${t.base}`) || !!ouverts[`${t.client}|${t.base}`])));
+    const visibles = !groupe ? tableau : tableau.filter(t => t.titre || (estOuvert(t.client || "") && (!t.base || !sousLignes.has(`${t.client}|${t.base}`) || voirBases)));
+    const aBases = lignesPar === "articleClient" && tableau.some(t => t.base && sousLignes.has(`${t.client}|${t.base}`));
     const deuxDebuts = vuesUtiles.includes("articleClient") && vuesUtiles.includes("clientArticle") && typeSujet !== "article" && typeSujet !== "client";
     return (
                   <div style={carte}>
@@ -1071,6 +1075,11 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                       <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 11px", borderRadius: 9, border: `1.5px solid ${voirDemande ? "#305a55" : "#e8e0d0"}`, background: voirDemande ? "#eef4f2" : "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
                         <input type="checkbox" checked={voirDemande} onChange={e => setVoirDemande(e.target.checked)} style={{ width: 16, height: 16 }} /> voir les manquants
                       </label>
+                      {aBases && (
+                        <label style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "7px 11px", borderRadius: 9, border: `1.5px solid ${voirBases ? "#305a55" : "#e8e0d0"}`, background: voirBases ? "#eef4f2" : "#fff", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>
+                          <input type="checkbox" checked={voirBases} onChange={e => demarrer(() => setVoirBases(e.target.checked))} style={{ width: 16, height: 16 }} /> voir les bases en détail
+                        </label>
+                      )}
                       {tArticles.length > 1 && (
                         <label style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 12.5, fontWeight: 700, cursor: "pointer" }}>
                           <input type="checkbox" checked={cumulRefs} onChange={e => setCumulRefs(e.target.checked)} /> réfs cumulées
@@ -1096,7 +1105,7 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                       <table style={{ borderCollapse: "collapse", fontSize: 12 }}>
                         <thead><tr>
                           <th style={{ ...th, position: "sticky", left: 0, top: 0, zIndex: 2, minWidth: 280 }}>{lignesPar === "article" ? "Article" : lignesPar === "client" ? "Client" : lignesPar === "fournisseurArticle" ? "Fournisseur › article" : lignesPar === "articleClient" ? "Article › client › base" : "Client › article"}
-                            {groupe && <button type="button" onClick={() => setOuverts(o => (Object.keys(o).length ? {} : Object.fromEntries(tableau.filter(x => !x.base).map(x => [x.titre ? x.art : x.cle, true]))))} style={{ marginLeft: 10, border: "none", background: "none", color: "#305a55", fontSize: 11, fontWeight: 800, textDecoration: "underline", cursor: "pointer" }}>{Object.keys(ouverts).length ? "▸ tout replier" : "▾ tout déplier"}</button>}
+                            {groupe && <button type="button" onClick={() => setOuverts(o => (Object.keys(o).length ? {} : Object.fromEntries(tableau.filter(x => x.titre).map(x => [x.art, true]))))} style={{ marginLeft: 10, border: "none", background: "none", color: "#305a55", fontSize: 11, fontWeight: 800, textDecoration: "underline", cursor: "pointer" }}>{Object.keys(ouverts).length ? "▸ tout replier" : "▾ tout déplier"}</button>}
                           </th>
                           {colonnes.map(c => <th key={c.cle} style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>{c.lib}{c.sous && <div style={{ fontSize: 9.5, fontWeight: 500 }}>{c.sous}</div>}</th>)}
                           <th style={{ ...th, position: "sticky", top: 0, textAlign: "right" }}>Total</th>
@@ -1110,8 +1119,8 @@ export function Noel2025Module({ onClose, estAdmin }: { onClose: () => void; est
                             const ficheType = lignesPar === "client" || lignesPar === "articleClient" ? "client" : "article";
                             return (
                               <tr key={cle} style={{ background: titre ? fond : undefined }}>
-                                <td style={{ ...td, position: "sticky", left: 0, background: fond, fontWeight: titre ? 900 : base ? 500 : 700, color: base ? "#4b5563" : undefined, fontSize: base ? 12 : undefined, maxWidth: 340, cursor: "pointer", paddingLeft: base ? 46 : groupe && !titre ? 26 : 8, borderTop: titre ? "2px solid #305a55" : undefined }}
-                                  onClick={() => (titre ? basculerOuvert(art) : aSous ? basculerOuvert(cle) : ouvrirType(ficheType, base || art, undefined, "besoin"))}
+                                <td style={{ ...td, position: "sticky", left: 0, background: fond, fontWeight: titre ? 900 : base ? 500 : 700, color: base ? "#4b5563" : undefined, fontSize: base ? 12 : undefined, maxWidth: 340, cursor: titre || !groupe ? "pointer" : "default", paddingLeft: base ? 46 : groupe && !titre ? 26 : 8, borderTop: titre ? "2px solid #305a55" : undefined }}
+                                  onClick={() => (titre ? basculerOuvert(art) : !groupe ? ouvrirType(ficheType, base || art, undefined, "besoin") : undefined)}
                                   title={titre || aSous ? "Déplier / replier" : ficheType === "client" ? "Ouvrir la fiche du client" : "Ouvrir la fiche du produit"}>
                                   {titre ? <><span style={{ display: "inline-block", width: 14, color: "#305a55" }}>{ferme ? "▸" : "▾"}</span>{iconeGroupe(art)} {art}</>
                                     : base ? <>📍 {art}</>
